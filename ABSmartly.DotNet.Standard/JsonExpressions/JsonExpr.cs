@@ -5,7 +5,7 @@ namespace ABSmartly.JsonExpressions;
 
 public class JsonExpr
 {
-    private static Dictionary<string, IOperator> operators;
+    private static readonly Dictionary<string, IOperator> operators;
 
     static JsonExpr()
     {
@@ -28,13 +28,13 @@ public class JsonExpr
 
     public bool EvaluateBooleanExpr(object expression, Dictionary<string, object> variables)
     {
-        var evaluator = new ExprEvaluator(operators, variables);
+        var evaluator = new ExprEvaluator(variables, operators);
         return evaluator.BooleanConvert(evaluator.Evaluate(expression));
     }
 
     public object EvaluateExpression(object expression, Dictionary<string, object> variables)
     {
-        var evaluator = new ExprEvaluator(operators, variables);
+        var evaluator = new ExprEvaluator(variables, operators);
         return evaluator.Evaluate(expression);
     }
 }
