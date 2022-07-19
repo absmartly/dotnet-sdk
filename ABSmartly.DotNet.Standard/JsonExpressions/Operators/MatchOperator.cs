@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text.RegularExpressions;
 
 namespace ABSmartly.JsonExpressions.Operators;
 
@@ -17,9 +18,12 @@ public class MatchOperator : BinaryOperator
             
         try
         {
-            var compiled = Pattern.Compile(pattern);
-            var matcher = compiled.matcher(text);
-            return matcher.find();
+            var match = Regex.Match(text, pattern);
+            // Todo: finish the regex..
+
+            //var compiled = Pattern.Compile(pattern);
+            //var matcher = compiled.matcher(text);
+            //return matcher.find();
         }
         catch (Exception e)
         {

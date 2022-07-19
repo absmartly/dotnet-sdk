@@ -9,7 +9,7 @@ public interface IEvaluator
     bool BooleanConvert(object x);
 
     // Todo: Tegu: Number is not exist in C#!!!! int, float, double, decimal, etc... It's a pain in the .. but needs to handle somehow
-    int NumberConvert(object x);
+    int? NumberConvert(object x);
 
     string StringConvert(object x);
 

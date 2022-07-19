@@ -9,19 +9,21 @@ public class JsonExpr
 
     static JsonExpr()
     {
-        operators = new Dictionary<string, IOperator>();
-        operators.Add("and", new AndCombinator());
-        operators.Add("or", new OrCombinator());
-        operators.Add("var", new VarOperator());
-        operators.Add("null", new NullOperator());
-        operators.Add("not", new NotOperator());
-        operators.Add("in", new InOperator());
-        operators.Add("match", new MatchOperator());
-        operators.Add("eq", new EqualsOperator());
-        operators.Add("gt", new GreaterThanOperator());
-        operators.Add("gte", new GreaterThanOrEqualOperator());
-        operators.Add("lt", new LessThanOperator());
-        operators.Add("lte", new LessThanOrEqualOperator());
+        operators = new Dictionary<string, IOperator>
+        {
+            { "and", new AndCombinator() },
+            { "or", new OrCombinator() },
+            { "var", new VarOperator() },
+            { "null", new NullOperator() },
+            { "not", new NotOperator() },
+            { "in", new InOperator() },
+            { "match", new MatchOperator() },
+            { "eq", new EqualsOperator() },
+            { "gt", new GreaterThanOperator() },
+            { "gte", new GreaterThanOrEqualOperator() },
+            { "lt", new LessThanOperator() },
+            { "lte", new LessThanOrEqualOperator() }
+        };
     }
 
     public bool EvaluateBooleanExpr(object expression, Dictionary<string, object> variables)
