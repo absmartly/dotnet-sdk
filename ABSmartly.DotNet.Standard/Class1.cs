@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace ABSmartly.DotNet.Standard
+﻿namespace ABSmartly
 {
     public class Class1
     {
