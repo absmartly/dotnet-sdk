@@ -1,7 +1,6 @@
-﻿namespace ABSmartly
+﻿namespace ABSmartly;
+
+public class Class1
 {
-    public class Class1
-    {
          
-    }
 }
