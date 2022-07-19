@@ -1,6 +1,23 @@
-﻿namespace ABSmartly;
+﻿using System;
 
-public class ABSmartly
+namespace ABSmartly;
+
+public class ABSmartly : IDisposable
 {
-    
+
+
+
+
+
+
+
+
+    #region IDisposable
+
+    public void Dispose()
+    {
+
+    }
+
+    #endregion
 }
