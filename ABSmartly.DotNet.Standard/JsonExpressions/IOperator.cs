@@ -2,5 +2,5 @@
 
 public interface IOperator
 {
-    object Evaluate(IEvaluator evaluator, object arg);
+    object Evaluate(IEvaluator evaluator, object args);
 }
