@@ -10,7 +10,7 @@ public class ABSmartlyConfig
     private readonly ContextEventLogger _contextEventLogger;
     private readonly VariableParser _variableParser;
 
-    private readonly AudienceDeserializer _audienceDeserializer;
+    private readonly IAudienceDeserializer _audienceDeserializer;
     private readonly ScheduledExecutorService _scheduler;
     private readonly Client _client;
 
@@ -19,7 +19,7 @@ public class ABSmartlyConfig
         ContextEventHandler contextEventHandler = null,
         ContextEventLogger contextEventLogger = null, 
         VariableParser variableParser = null, 
-        AudienceDeserializer audienceDeserializer = null,
+        IAudienceDeserializer audienceDeserializer = null,
         ScheduledExecutorService scheduler = null,
         Client client = null
         )
@@ -28,7 +28,7 @@ public class ABSmartlyConfig
         _contextEventHandler = contextEventHandler ?? new ContextEventHandler();
         _contextEventLogger = contextEventLogger ?? new ContextEventLogger();
         _variableParser = variableParser ?? new VariableParser();
-        _audienceDeserializer = audienceDeserializer ?? new AudienceDeserializer();
+        _audienceDeserializer = audienceDeserializer ?? new IAudienceDeserializer();
         _scheduler = scheduler ?? new ScheduledExecutorService();
         _client = client ?? new Client();
     }
@@ -39,7 +39,7 @@ public class ABSmartlyConfig
         ContextEventHandler contextEventHandler = null,
         ContextEventLogger contextEventLogger = null, 
         VariableParser variableParser = null, 
-        AudienceDeserializer audienceDeserializer = null,
+        IAudienceDeserializer audienceDeserializer = null,
         ScheduledExecutorService scheduler = null,
         Client client = null
         )
@@ -56,7 +56,7 @@ public class ABSmartlyConfig
     public ContextEventLogger ContextEventLogger => _contextEventLogger;
     public VariableParser VariableParser => _variableParser;
 
-    public AudienceDeserializer AudienceDeserializer => _audienceDeserializer;
+    public IAudienceDeserializer AudienceDeserializer => _audienceDeserializer;
     public ScheduledExecutorService Scheduler => _scheduler;
     public Client Client => _client;
 
