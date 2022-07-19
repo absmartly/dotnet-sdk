@@ -19,6 +19,7 @@ public class Attribute
     }
 
 
+    // Todo: review equality and hash!
     protected bool Equals(Attribute other)
     {
         return Name == other.Name && Equals(Value, other.Value) && SetAt == other.SetAt;
