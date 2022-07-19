@@ -5,11 +5,11 @@ namespace ABSmartly.JsonExpressions;
 
 public class JsonExpr
 {
-    private static Dictionary<string, Operator> operators;
+    private static Dictionary<string, IOperator> operators;
 
     static JsonExpr()
     {
-        operators = new Dictionary<string, Operator>();
+        operators = new Dictionary<string, IOperator>();
         operators.Add("and", new AndCombinator());
         operators.Add("or", new OrCombinator());
         operators.Add("var", new VarOperator());
