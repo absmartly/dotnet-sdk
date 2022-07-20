@@ -7,7 +7,7 @@ public class ABSmartlyConfig
     private readonly IContextDataProvider _contextDataProvider;
     private readonly IContextEventHandler _contextEventHandler;
 
-    private readonly ContextEventLogger _contextEventLogger;
+    private readonly IContextEventLogger _contextEventLogger;
     private readonly VariableParser _variableParser;
 
     private readonly IAudienceDeserializer _audienceDeserializer;
@@ -17,7 +17,7 @@ public class ABSmartlyConfig
     public ABSmartlyConfig(
         IContextDataProvider contextDataProvider = null, 
         IContextEventHandler contextEventHandler = null,
-        ContextEventLogger contextEventLogger = null, 
+        IContextEventLogger contextEventLogger = null, 
         VariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
         ScheduledExecutorService scheduler = null,
@@ -26,7 +26,7 @@ public class ABSmartlyConfig
     {
         _contextDataProvider = contextDataProvider ?? new IContextDataProvider();
         _contextEventHandler = contextEventHandler ?? new IContextEventHandler();
-        _contextEventLogger = contextEventLogger ?? new ContextEventLogger();
+        _contextEventLogger = contextEventLogger ?? new IContextEventLogger();
         _variableParser = variableParser ?? new VariableParser();
         _audienceDeserializer = audienceDeserializer ?? new IAudienceDeserializer();
         _scheduler = scheduler ?? new ScheduledExecutorService();
@@ -37,7 +37,7 @@ public class ABSmartlyConfig
     public static ABSmartlyConfig Create(
         IContextDataProvider contextDataProvider = null, 
         IContextEventHandler contextEventHandler = null,
-        ContextEventLogger contextEventLogger = null, 
+        IContextEventLogger contextEventLogger = null, 
         VariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
         ScheduledExecutorService scheduler = null,
@@ -53,7 +53,7 @@ public class ABSmartlyConfig
     public IContextDataProvider ContextDataProvider => _contextDataProvider;
     public IContextEventHandler ContextEventHandler => _contextEventHandler;
 
-    public ContextEventLogger ContextEventLogger => _contextEventLogger;
+    public IContextEventLogger ContextEventLogger => _contextEventLogger;
     public VariableParser VariableParser => _variableParser;
 
     public IAudienceDeserializer AudienceDeserializer => _audienceDeserializer;

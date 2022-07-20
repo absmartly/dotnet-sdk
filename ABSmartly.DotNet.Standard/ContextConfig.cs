@@ -9,7 +9,7 @@ public class ContextConfig
     private Dictionary<string, int> _overrides;
     private Dictionary<string, int> _cassigmnents;
 
-    private ContextEventLogger _eventLogger;
+    private IContextEventLogger _eventLogger;
 
     private long _publishDelay;
     private long _refreshInterval;
@@ -154,12 +154,12 @@ public class ContextConfig
 		return _cassigmnents;
 	}
 
-	public ContextEventLogger GetEventLogger() 
+	public IContextEventLogger GetEventLogger() 
     {
 		return _eventLogger;
 	}
 
-	public ContextConfig SetEventLogger(ContextEventLogger eventLogger) 
+	public ContextConfig SetEventLogger(IContextEventLogger eventLogger) 
     {
 		_eventLogger = eventLogger;
 		return this;
