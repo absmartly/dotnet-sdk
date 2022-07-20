@@ -12,7 +12,7 @@ public class Context
     private readonly Clock clock_;
 	private readonly long publishDelay_;
 	private readonly long refreshInterval_;
-	private readonly ContextEventHandler eventHandler_;
+	private readonly IContextEventHandler eventHandler_;
 	private readonly ContextEventLogger eventLogger_;
 	private readonly IContextDataProvider dataProvider_;
 	private readonly VariableParser variableParser_;

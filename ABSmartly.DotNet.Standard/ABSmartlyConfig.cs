@@ -5,7 +5,7 @@ namespace ABSmartly;
 public class ABSmartlyConfig
 {
     private readonly IContextDataProvider _contextDataProvider;
-    private readonly ContextEventHandler _contextEventHandler;
+    private readonly IContextEventHandler _contextEventHandler;
 
     private readonly ContextEventLogger _contextEventLogger;
     private readonly VariableParser _variableParser;
@@ -16,7 +16,7 @@ public class ABSmartlyConfig
 
     public ABSmartlyConfig(
         IContextDataProvider contextDataProvider = null, 
-        ContextEventHandler contextEventHandler = null,
+        IContextEventHandler contextEventHandler = null,
         ContextEventLogger contextEventLogger = null, 
         VariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
@@ -25,7 +25,7 @@ public class ABSmartlyConfig
         )
     {
         _contextDataProvider = contextDataProvider ?? new IContextDataProvider();
-        _contextEventHandler = contextEventHandler ?? new ContextEventHandler();
+        _contextEventHandler = contextEventHandler ?? new IContextEventHandler();
         _contextEventLogger = contextEventLogger ?? new ContextEventLogger();
         _variableParser = variableParser ?? new VariableParser();
         _audienceDeserializer = audienceDeserializer ?? new IAudienceDeserializer();
@@ -36,7 +36,7 @@ public class ABSmartlyConfig
 
     public static ABSmartlyConfig Create(
         IContextDataProvider contextDataProvider = null, 
-        ContextEventHandler contextEventHandler = null,
+        IContextEventHandler contextEventHandler = null,
         ContextEventLogger contextEventLogger = null, 
         VariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
@@ -51,7 +51,7 @@ public class ABSmartlyConfig
     // Todo: Tegu: Add public Getters if needed
 
     public IContextDataProvider ContextDataProvider => _contextDataProvider;
-    public ContextEventHandler ContextEventHandler => _contextEventHandler;
+    public IContextEventHandler ContextEventHandler => _contextEventHandler;
 
     public ContextEventLogger ContextEventLogger => _contextEventLogger;
     public VariableParser VariableParser => _variableParser;
