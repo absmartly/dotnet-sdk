@@ -14,7 +14,7 @@ public class Context
 	private readonly long refreshInterval_;
 	private readonly ContextEventHandler eventHandler_;
 	private readonly ContextEventLogger eventLogger_;
-	private readonly ContextDataProvider dataProvider_;
+	private readonly IContextDataProvider dataProvider_;
 	private readonly VariableParser variableParser_;
 	private readonly AudienceMatcher audienceMatcher_;
 	private readonly ScheduledExecutorService scheduler_;
@@ -45,9 +45,9 @@ public class Context
 	//private readonly AtomicBoolean closed_ = new AtomicBoolean(false);
 	//private readonly AtomicBoolean refreshing_ = new AtomicBoolean(false);
 
-	//private volatile CompletableFuture<Void> readyFuture_;
-	//private volatile CompletableFuture<Void> closingFuture_;
-	//private volatile CompletableFuture<Void> refreshFuture_;
+	//private volatile Task readyFuture_;
+	//private volatile Task closingFuture_;
+	//private volatile Task refreshFuture_;
 
 	//private readonly ReentrantLock timeoutLock_ = new ReentrantLock();
 	//private volatile ScheduledFuture<?> timeout_ = null;

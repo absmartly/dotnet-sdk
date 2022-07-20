@@ -4,7 +4,7 @@ namespace ABSmartly;
 
 public class ABSmartlyConfig
 {
-    private readonly ContextDataProvider _contextDataProvider;
+    private readonly IContextDataProvider _contextDataProvider;
     private readonly ContextEventHandler _contextEventHandler;
 
     private readonly ContextEventLogger _contextEventLogger;
@@ -15,7 +15,7 @@ public class ABSmartlyConfig
     private readonly Client _client;
 
     public ABSmartlyConfig(
-        ContextDataProvider contextDataProvider = null, 
+        IContextDataProvider contextDataProvider = null, 
         ContextEventHandler contextEventHandler = null,
         ContextEventLogger contextEventLogger = null, 
         VariableParser variableParser = null, 
@@ -24,7 +24,7 @@ public class ABSmartlyConfig
         Client client = null
         )
     {
-        _contextDataProvider = contextDataProvider ?? new ContextDataProvider();
+        _contextDataProvider = contextDataProvider ?? new IContextDataProvider();
         _contextEventHandler = contextEventHandler ?? new ContextEventHandler();
         _contextEventLogger = contextEventLogger ?? new ContextEventLogger();
         _variableParser = variableParser ?? new VariableParser();
@@ -35,7 +35,7 @@ public class ABSmartlyConfig
 
 
     public static ABSmartlyConfig Create(
-        ContextDataProvider contextDataProvider = null, 
+        IContextDataProvider contextDataProvider = null, 
         ContextEventHandler contextEventHandler = null,
         ContextEventLogger contextEventLogger = null, 
         VariableParser variableParser = null, 
@@ -50,7 +50,7 @@ public class ABSmartlyConfig
     // Todo: Tegu: Setters probably not needed
     // Todo: Tegu: Add public Getters if needed
 
-    public ContextDataProvider ContextDataProvider => _contextDataProvider;
+    public IContextDataProvider ContextDataProvider => _contextDataProvider;
     public ContextEventHandler ContextEventHandler => _contextEventHandler;
 
     public ContextEventLogger ContextEventLogger => _contextEventLogger;
