@@ -1,23 +1,23 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace ABSmartly;
 
 public class ContextConfig
 {
-    private Dictionary<string, string> units_;
-    private Dictionary<string, object> attributes_;
-    private Dictionary<string, int> overrides_;
-    private Dictionary<string, int> cassigmnents_;
+    private Dictionary<string, string> _units;
+    private Dictionary<string, object> _attributes;
+    private Dictionary<string, int> _overrides;
+    private Dictionary<string, int> _cassigmnents;
 
-    private ContextEventLogger eventLogger_;
+    private ContextEventLogger _eventLogger;
 
-    private long publishDelay_ = 100;
-    private long refreshInterval_ = 0;
+    private long _publishDelay;
+    private long _refreshInterval;
 
     public ContextConfig()
     {
-        
+        _publishDelay = 100;
+        _refreshInterval = 0;
     }
 
     public static ContextConfig Create()
@@ -27,157 +27,163 @@ public class ContextConfig
 
 
 
-    public ContextConfig setUnit(String unitType, String uid) {
-		if (units_ == null) {
-			units_ = new Dictionary<string, string>();
-		}
+    public ContextConfig SetUnit(string unitType, string uid) 
+    {
+		_units ??= new Dictionary<string, string>();
 
-		units_.Add(unitType, uid);
+		_units.Add(unitType, uid);
 		return this;
 	}
 
-	public ContextConfig setUnits(Dictionary<String, String> units) {
+	public ContextConfig SetUnits(Dictionary<string, string> units) 
+    {
         foreach (var kvp in units)
         {
-            setUnit(kvp.Key, kvp.Value);
+            SetUnit(kvp.Key, kvp.Value);
         }
 
 		return this;
 	}
 
-	public String getUnit(String unitType) {
-		if (units_.ContainsKey(unitType))
-			return units_[unitType];
+	public string GetUnit(string unitType) 
+    {
+		if (_units.ContainsKey(unitType))
+			return _units[unitType];
 
         return string.Empty;
     }
 
-	public Dictionary<String, String> getUnits() {
-		return units_;
+	public Dictionary<string, string> GetUnits() 
+    {
+		return _units;
 	}
 
-	public ContextConfig setAttribute(String name, Object value) {
-		if (attributes_ == null) {
-			attributes_ = new Dictionary<String, Object>();
-		}
-		attributes_.Add(name, value);
+	public ContextConfig SetAttribute(string name, object value) 
+    {
+		_attributes ??= new Dictionary<string, object>();
+		_attributes.Add(name, value);
 		return this;
 	}
 
-	public ContextConfig setAttributes(Dictionary<String, Object> attributes) {
-		if (attributes_ == null) {
-			attributes_ = new Dictionary<String, Object>(/*attributes.Count()*/);
-		}
+	public ContextConfig SetAttributes(Dictionary<string, object> attributes) 
+    {
+		_attributes ??= new Dictionary<string, object>( /*attributes.Count()*/);
 
         foreach (var kvp in attributes)
         {
-            attributes_.Add(kvp.Key, kvp.Value);
+            _attributes.Add(kvp.Key, kvp.Value);
         }
 
 		return this;
 	}
 
-	public Object getAttribute(String name) {
-		if (attributes_.ContainsKey(name))
-			return attributes_[name];
+	public object GetAttribute(string name) 
+    {
+		if (_attributes.ContainsKey(name))
+			return _attributes[name];
 
         return null;
     }
 
-	public Dictionary<String, Object> getAttributes() {
-		return this.attributes_;
+	public Dictionary<string, object> GetAttributes() 
+    {
+		return _attributes;
 	}
 
-	public ContextConfig setOverride(String experimentName, int variant) {
-		if (overrides_ == null) {
-			overrides_ = new Dictionary<String, int>();
-		}
-		overrides_.Add(experimentName, variant);
+	public ContextConfig SetOverride(string experimentName, int variant) 
+    {
+		_overrides ??= new Dictionary<string, int>();
+		_overrides.Add(experimentName, variant);
 		return this;
 	}
 
-	public ContextConfig setOverrides(Dictionary<String, int> overrides) {
-		if (overrides_ == null) {
-			overrides_ = new Dictionary<String, int>(/*overrides.size()*/);
-		}
+	public ContextConfig SetOverrides(Dictionary<string, int> overrides) 
+    {
+		_overrides ??= new Dictionary<string, int>( /*overrides.size()*/);
 
         foreach (var kvp in overrides)
         {
-            overrides_.Add(kvp.Key, kvp.Value);
+            _overrides.Add(kvp.Key, kvp.Value);
         }
 
 		return this;
 	}
 
-	public Object getOverride(String experimentName)
+	public object GetOverride(string experimentName)
     {
-        if (overrides_.ContainsKey(experimentName))
-            return overrides_[experimentName];
+        if (_overrides.ContainsKey(experimentName))
+            return _overrides[experimentName];
 
         return null;
     }
 
-	public Dictionary<String, int> getOverrides() {
-		return this.overrides_;
+	public Dictionary<string, int> GetOverrides() 
+    {
+		return _overrides;
 	}
 
-	public ContextConfig setCustomAssignment(String experimentName, int variant) {
-		if (cassigmnents_ == null) {
-			cassigmnents_ = new Dictionary<string, int>();
-		}
-		cassigmnents_.Add(experimentName, variant);
+	public ContextConfig SetCustomAssignment(string experimentName, int variant) 
+    {
+		_cassigmnents ??= new Dictionary<string, int>();
+		_cassigmnents.Add(experimentName, variant);
 		return this;
 	}
 
-	public ContextConfig setCustomAssignments(Dictionary<String, int> customAssignments) {
-		if (cassigmnents_ == null) {
-			cassigmnents_ = new Dictionary<String, int>(/*customAssignments.size()*/);
-		}
+	public ContextConfig SetCustomAssignments(Dictionary<string, int> customAssignments) 
+    {
+		_cassigmnents ??= new Dictionary<string, int>( /*customAssignments.size()*/);
 
         foreach (var kvp in customAssignments)
         {
-            cassigmnents_.Add(kvp.Key, kvp.Value);
+            _cassigmnents.Add(kvp.Key, kvp.Value);
         }
 
 		return this;
 	}
 
-	public Object getCustomAssignment(String experimentName)
+	public object GetCustomAssignment(string experimentName)
     {
-        if (cassigmnents_.ContainsKey(experimentName))
-            return cassigmnents_[experimentName];
+        if (_cassigmnents.ContainsKey(experimentName))
+            return _cassigmnents[experimentName];
 
         return null;
     }
 
-	public Dictionary<String, int> getCustomAssignments() {
-		return this.cassigmnents_;
+	public Dictionary<string, int> GetCustomAssignments() 
+    {
+		return _cassigmnents;
 	}
 
-	public ContextEventLogger getEventLogger() {
-		return this.eventLogger_;
+	public ContextEventLogger GetEventLogger() 
+    {
+		return _eventLogger;
 	}
 
-	public ContextConfig setEventLogger(ContextEventLogger eventLogger) {
-		this.eventLogger_ = eventLogger;
+	public ContextConfig SetEventLogger(ContextEventLogger eventLogger) 
+    {
+		_eventLogger = eventLogger;
 		return this;
 	}
 
-	public ContextConfig setPublishDelay(long delayMs) {
-		this.publishDelay_ = delayMs;
+	public ContextConfig SetPublishDelay(long delayMs) 
+    {
+		_publishDelay = delayMs;
 		return this;
 	}
 
-	public long getPublishDelay() {
-		return this.publishDelay_;
+	public long GetPublishDelay() 
+    {
+		return _publishDelay;
 	}
 
-	public ContextConfig setRefreshInterval(long intervalMs) {
-		this.refreshInterval_ = intervalMs;
+	public ContextConfig SetRefreshInterval(long intervalMs) 
+    {
+		_refreshInterval = intervalMs;
 		return this;
 	}
 
-	public long getRefreshInterval() {
-		return this.refreshInterval_;
+	public long GetRefreshInterval() 
+    {
+		return _refreshInterval;
 	}
 }
