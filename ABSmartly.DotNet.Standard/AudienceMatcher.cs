@@ -28,10 +28,12 @@ public class AudienceMatcher : IAudienceDeserializer
 
         //object filter = audienceMap.Get("filter");
         // Todo: Tegu: Generic type won't work out of the box, Dictionary and List of what type to look for?
-        if (filter.GetType() is typeof(Dictionary<>) || filter.GetType() is typeof(List<>))
+        if (filter is Dictionary<string, object> || filter is List<string>)
         {
-            return new Result(_jsonExpr.EvaluateBookeanExpr(filter, attributes));
+            return new Result(_jsonExpr.EvaluateBooleanExpr(filter, attributes));
         }
+
+        return null;
     }
 
 
