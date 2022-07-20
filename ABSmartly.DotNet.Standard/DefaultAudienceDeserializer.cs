@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Text.Json;
 
 namespace ABSmartly;
 
@@ -16,6 +18,18 @@ public class DefaultAudienceDeserializer : IAudienceDeserializer
 
     public Dictionary<string, object> Deserialize(byte[] bytes, int offset, int length)
     {
+        throw new NotImplementedException();
+
+        try
+        {
+
+        }
+        catch (Exception e)
+        {
+            
+        }
+
+        //JsonSerializer.Deserialize<Dictionary<string, object>>()
         //System.Text.j
     }
 }
