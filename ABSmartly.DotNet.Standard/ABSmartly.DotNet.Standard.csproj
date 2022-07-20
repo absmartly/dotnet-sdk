@@ -13,7 +13,6 @@
     <Folder Include="Internal\Hashing\" />
     <Folder Include="JsonExpressions\Operators\" />
     <Folder Include="Json\" />
-    <Folder Include="Temp\" />
   </ItemGroup>
 
   <ItemGroup>
