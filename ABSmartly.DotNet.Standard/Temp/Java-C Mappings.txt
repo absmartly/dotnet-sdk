@@ -13,3 +13,22 @@ Map<,> -> Dictionary<,>
 https://stackoverflow.com/questions/616487/best-match-in-c-sharp-to-java-reentrantlock-and-condition
 Java: ReentrantReadWriteLock
 C#: ReaderWriterLockSlim
+
+
+### DATE & TIMES ###
+
+Java:
+System.currentTimeMillis()
+
+C#:
+a,
+private static readonly DateTime Jan1st1970 = new DateTime
+    (1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+public static long CurrentTimeMillis()
+{
+    return (long) (DateTime.UtcNow - Jan1st1970).TotalMilliseconds;
+}
+
+b,
+DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()

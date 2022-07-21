@@ -1,6 +1,12 @@
-﻿namespace ABSmartly.DotNet.Time.Internal;
+﻿using System;
 
-public class SystemClockUTC
+namespace ABSmartly.DotNet.Time.Internal;
+
+public class SystemClockUTC : Clock
 {
-    
+    public override long Millis()
+    {
+        //return System.currentTimeMillis();
+        return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    }
 }
