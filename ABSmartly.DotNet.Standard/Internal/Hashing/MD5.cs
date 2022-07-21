@@ -5,7 +5,7 @@ namespace ABSmartly.Internal.Hashing;
 
 public class MD5
 {
-    public static byte[] digestBase64UrlNoPadding(byte[] key, int offset, int len) {
+    public static byte[] DigestBase64UrlNoPadding(byte[] key, int offset, int len) {
         int[] state = md5state(key, offset, len);
 
         int a = state[0];
