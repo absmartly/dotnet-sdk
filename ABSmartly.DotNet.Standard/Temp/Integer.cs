@@ -7,6 +7,9 @@ public static class Integer
     //    return (value << shift) | (value >> (32 - shift));
     //}
 
+    //
+    // // Todo: https://www.geeksforgeeks.org/integer-rotateleft-method-in-java/
+
     public static int RotateLeft(int value, int shift)
     {
         unchecked

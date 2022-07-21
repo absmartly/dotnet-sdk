@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using ABSmartly.Temp;
 
 namespace ABSmartly.Internal.Hashing;
 
@@ -54,8 +55,7 @@ public class MD5
 
     	private static int cmn(int q, int a, int b, int x, int s, int t) {
 		a = a + q + x + t;
-        // Todo: https://www.geeksforgeeks.org/integer-rotateleft-method-in-java/
-		return Integer.rotateLeft(a, s) + b;
+        return Integer.RotateLeft(a, s) + b;
 	}
 
 	private static int ff(int a, int b, int c, int d, int x, int s, int t) {
