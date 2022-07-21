@@ -16,37 +16,37 @@ public class MD5
         byte[] result = new byte[22];
 
         int t = a;
-        result[0] = Base64URLNoPaddingChars[(t >>> 2) & 63];
-        result[1] = Base64URLNoPaddingChars[((t & 3) << 4) | (((t >>> 12)) & 15)];
-        result[2] = Base64URLNoPaddingChars[(((t >>> 8) & 15) << 2) | ((t >>> 22) & 3)];
-        result[3] = Base64URLNoPaddingChars[(t >>> 16) & 63];
+        result[0] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
+        result[1] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
+        result[2] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
+        result[3] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
 
-        t = (a >>> 24) | (b << 8);
-        result[4] = Base64URLNoPaddingChars[(t >>> 2) & 63];
-        result[5] = Base64URLNoPaddingChars[((t & 3) << 4) | (((t >>> 12)) & 15)];
-        result[6] = Base64URLNoPaddingChars[(((t >>> 8) & 15) << 2) | ((t >>> 22) & 3)];
-        result[7] = Base64URLNoPaddingChars[(t >>> 16) & 63];
+        t = ((int)((uint)a >> 24)) | (b << 8);
+        result[4] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
+        result[5] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
+        result[6] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
+        result[7] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
 
-        t = (b >>> 16) | (c << 16);
-        result[8] = Base64URLNoPaddingChars[(t >>> 2) & 63];
-        result[9] = Base64URLNoPaddingChars[((t & 3) << 4) | (((t >>> 12)) & 15)];
-        result[10] = Base64URLNoPaddingChars[(((t >>> 8) & 15) << 2) | ((t >>> 22) & 3)];
-        result[11] = Base64URLNoPaddingChars[(t >>> 16) & 63];
+        t = ((int)((uint)b >> 16)) | (c << 16);
+        result[8] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
+        result[9] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
+        result[10] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
+        result[11] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
 
-        t = c >>> 8;
-        result[12] = Base64URLNoPaddingChars[(t >>> 2) & 63];
-        result[13] = Base64URLNoPaddingChars[((t & 3) << 4) | (((t >>> 12)) & 15)];
-        result[14] = Base64URLNoPaddingChars[(((t >>> 8) & 15) << 2) | ((t >>> 22) & 3)];
-        result[15] = Base64URLNoPaddingChars[(t >>> 16) & 63];
+        t = (int)((uint)c >> 8);
+        result[12] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
+        result[13] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
+        result[14] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
+        result[15] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
 
         t = d;
-        result[16] = Base64URLNoPaddingChars[(t >>> 2) & 63];
-        result[17] = Base64URLNoPaddingChars[((t & 3) << 4) | (((t >>> 12)) & 15)];
-        result[18] = Base64URLNoPaddingChars[(((t >>> 8) & 15) << 2) | ((t >>> 22) & 3)];
-        result[19] = Base64URLNoPaddingChars[(t >>> 16) & 63];
+        result[16] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
+        result[17] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
+        result[18] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
+        result[19] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
 
-        t = d >>> 24;
-        result[20] = Base64URLNoPaddingChars[(t >>> 2) & 63];
+        t = (int)((uint)d >> 24);
+        result[20] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
         result[21] = Base64URLNoPaddingChars[(t & 3) << 4];
 
         return result;
@@ -54,6 +54,7 @@ public class MD5
 
     	private static int cmn(int q, int a, int b, int x, int s, int t) {
 		a = a + q + x + t;
+        // Todo: https://www.geeksforgeeks.org/integer-rotateleft-method-in-java/
 		return Integer.rotateLeft(a, s) + b;
 	}
 
@@ -153,9 +154,9 @@ public class MD5
 		x[3] += d;
 	}
 
-    private static class BufferState {
-        int[] block = new int[16];
-        int[] state = new int[4];
+    private /*static*/ class BufferState {
+        internal int[] block = new int[16];
+        internal int[] state = new int[4];
     }
 
     private static ThreadLocal<BufferState> threadState = new ThreadLocal<BufferState>() {
@@ -168,7 +169,7 @@ public class MD5
 
     private static int[] md5state(byte[] key, int offset, int len) {
         int n = offset + (len & ~63);
-        BufferState bufferState = threadState.get();
+        BufferState bufferState = threadState.Value;
         int[] block = bufferState.block;
         int[] state = bufferState.state;
 
@@ -180,44 +181,44 @@ public class MD5
         int i = offset;
         for (; i < n; i += 64) {
             for (int w = 0; w < 16; ++w) {
-                block[w] = Buffers.getUInt32(key, i + (w << 2));
+                block[w] = Buffers.GetUInt32(key, i + (w << 2));
             }
 
             md5cycle(state, block);
         }
 
         int m = len & ~3;
-        int w = 0;
+        int w2 = 0;
         for (; i < m; i += 4) {
-            block[w++] = Buffers.getUInt32(key, i);
+            block[w2++] = Buffers.GetUInt32(key, i);
         }
 
         switch (len & 3) {
             case 3:
-                block[w++] = Buffers.getUInt24(key, i) | 0x80000000;
+                block[w2++] = (int)(Buffers.GetUInt24(key, i) | 0x80000000);
                 break;
             case 2:
-                block[w++] = Buffers.getUInt16(key, i) | 0x800000;
+                block[w2++] = Buffers.GetUInt16(key, i) | 0x800000;
                 break;
             case 1:
-                block[w++] = Buffers.getUInt8(key, i) | 0x8000;
+                block[w2++] = Buffers.GetUInt8(key, i) | 0x8000;
                 break;
             default:
-                block[w++] = 0x80;
+                block[w2++] = 0x80;
                 break;
         }
 
-        if (w > 14) {
-            if (w < 16) {
-                block[w] = 0;
+        if (w2 > 14) {
+            if (w2 < 16) {
+                block[w2] = 0;
             }
 
             md5cycle(state, block);
-            w = 0;
+            w2 = 0;
         }
 
-        for (; w < 16; ++w) {
-            block[w] = 0;
+        for (; w2 < 16; ++w2) {
+            block[w2] = 0;
         }
 
         block[14] = len << 3;
