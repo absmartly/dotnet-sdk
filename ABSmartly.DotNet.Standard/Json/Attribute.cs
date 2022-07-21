@@ -2,10 +2,6 @@
 
 public class Attribute
 {
-    public string Name { get; set; }
-    public object Value { get; set; }
-    public long SetAt { get; set; }
-
     public Attribute()
     {
         
@@ -17,6 +13,10 @@ public class Attribute
         Value = value;
         SetAt = setAt;
     }
+
+    public string Name { get; set; }
+    public object Value { get; set; }
+    public long SetAt { get; set; }
 
 
     // Todo: review equality and hash!
