@@ -8,7 +8,7 @@ public class ABSmartlyConfig
     private readonly IContextEventHandler _contextEventHandler;
 
     private readonly IContextEventLogger _contextEventLogger;
-    private readonly VariableParser _variableParser;
+    private readonly IVariableParser _variableParser;
 
     private readonly IAudienceDeserializer _audienceDeserializer;
     private readonly ScheduledExecutorService _scheduler;
@@ -18,7 +18,7 @@ public class ABSmartlyConfig
         IContextDataProvider contextDataProvider = null, 
         IContextEventHandler contextEventHandler = null,
         IContextEventLogger contextEventLogger = null, 
-        VariableParser variableParser = null, 
+        IVariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
         ScheduledExecutorService scheduler = null,
         Client client = null
@@ -27,7 +27,7 @@ public class ABSmartlyConfig
         _contextDataProvider = contextDataProvider ?? new IContextDataProvider();
         _contextEventHandler = contextEventHandler ?? new IContextEventHandler();
         _contextEventLogger = contextEventLogger ?? new IContextEventLogger();
-        _variableParser = variableParser ?? new VariableParser();
+        _variableParser = variableParser ?? new IVariableParser();
         _audienceDeserializer = audienceDeserializer ?? new IAudienceDeserializer();
         _scheduler = scheduler ?? new ScheduledExecutorService();
         _client = client ?? new Client();
@@ -38,7 +38,7 @@ public class ABSmartlyConfig
         IContextDataProvider contextDataProvider = null, 
         IContextEventHandler contextEventHandler = null,
         IContextEventLogger contextEventLogger = null, 
-        VariableParser variableParser = null, 
+        IVariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
         ScheduledExecutorService scheduler = null,
         Client client = null
@@ -54,7 +54,7 @@ public class ABSmartlyConfig
     public IContextEventHandler ContextEventHandler => _contextEventHandler;
 
     public IContextEventLogger ContextEventLogger => _contextEventLogger;
-    public VariableParser VariableParser => _variableParser;
+    public IVariableParser VariableParser => _variableParser;
 
     public IAudienceDeserializer AudienceDeserializer => _audienceDeserializer;
     public ScheduledExecutorService Scheduler => _scheduler;

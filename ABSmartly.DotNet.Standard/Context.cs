@@ -15,7 +15,7 @@ public class Context
 	private readonly IContextEventHandler eventHandler_;
 	private readonly IContextEventLogger eventLogger_;
 	private readonly IContextDataProvider dataProvider_;
-	private readonly VariableParser variableParser_;
+	private readonly IVariableParser variableParser_;
 	private readonly AudienceMatcher audienceMatcher_;
 	private readonly ScheduledExecutorService scheduler_;
 	private readonly Dictionary<string, string> units_;
