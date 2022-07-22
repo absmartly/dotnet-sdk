@@ -1,35 +1,42 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace ABSmartly;
 
 public class DefaultAudienceDeserializer : IAudienceDeserializer
 {
-    //private ILogger<DefaultAudienceDeserializer> _logger;
-    private object _reader;
+    private readonly ILogger<DefaultAudienceDeserializer> _logger;
 
-    public DefaultAudienceDeserializer()
+    public DefaultAudienceDeserializer(ILogger<DefaultAudienceDeserializer> logger)
     {
-        //_logger = new Logger<DefaultAudienceDeserializer>();
-        //var objectMapper = new ObjectMapper();
-        //_reader = new 
+        _logger = logger;
     }
 
     public Dictionary<string, object> Deserialize(byte[] bytes, int offset, int length)
     {
-        throw new NotImplementedException();
-
         try
         {
+            // Todo: Manual implementation to support offset and length on the byte array, review!!
 
+            var jsonBytes = new byte[length];
+
+            var b = 0;
+            for (var i = offset; i < length; i++)
+            {
+                jsonBytes[b] = bytes[i];
+                b++;
+            }
+
+            var jsonUtfReader = new Utf8JsonReader(jsonBytes);
+            var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(ref jsonUtfReader);
+            return dict;
         }
         catch (Exception e)
         {
-            
+            _logger.LogError(e.Message);
+            return null;
         }
-
-        //JsonSerializer.Deserialize<Dictionary<string, object>>()
-        //System.Text.j
     }
 }
