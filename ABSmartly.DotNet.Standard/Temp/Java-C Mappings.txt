@@ -1,8 +1,8 @@
-﻿### Modifiers ###
+﻿-------------------- Modifiers --------------------
 final -> readonly
 
 
-### Variable Types ###
+-------------------- Variable Types --------------------
 Set<> -> HashSet<>
 Map<,> -> Dictionary<,>
 
@@ -11,7 +11,7 @@ Arrays.toString(xyz[]) -> Extension method will be added
 
 
 
-### THREADING ###
+-------------------- THREADING --------------------
 
 https://stackoverflow.com/questions/616487/best-match-in-c-sharp-to-java-reentrantlock-and-condition
 Java: ReentrantReadWriteLock
@@ -20,7 +20,7 @@ C#: ReaderWriterLockSlim
 CompletableFuture<> -> Task<>
 
 
-### DATE & TIMES ###
+-------------------- DATE & TIMES --------------------
 
 Java:
 System.currentTimeMillis()
@@ -37,7 +37,7 @@ public static long CurrentTimeMillis()
 b,
 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
 
-### Overrides ###
+-------------------- Overrides --------------------
 
 Equality
 
@@ -47,8 +47,11 @@ ToString
 
 
 
-### Packages ###
+-------------------- Java - C# Packages --------------------
 
 com.fasterxml.jackson.databind -> System.Text.Json
 
 ObjectWriter.writeValueAsBytes -> JsonSerializer.SerializeToUtf8Bytes
+
+-------------------- NUGETS --------------------
+System.Net.Http.Json

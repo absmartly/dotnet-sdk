@@ -1,43 +1,41 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Threading.Tasks;
+using ABSmartly.Json;
 using ABSmartly.Temp;
 using Microsoft.Extensions.Logging;
 
 namespace ABSmartly;
 
-public class Client
+public class Client : IDisposable
 {
     private string _url;
-    private Dictionary<string, string> _query;
-    private Dictionary<string, string> _headers;
-    private IHTTPClient _httpClient;
+    //private Dictionary<string, string> _query;
+    //private Dictionary<string, string> _headers;
+    private IHttpClientFactory _httpClientFactory;
     private IExecutor _executor;
     private IContextDataDeserializer _deserializer;
     private IContextEventSerializer _serializer;
+    private ClientConfig _config;
 
-
-
-    public Client(ClientConfig config, IHTTPClient httpClient, ILoggerFactory loggerFactory)
+    public Client(ClientConfig config, IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory)
     {
-        var endpoint = config.Endpoint;
-        var apiKey = config.ApiKey;
-        var application = config.Application;
-        var environment = config.Environment;
+        if (config is null)
+            throw new ArgumentNullException(nameof(config), "Config is null..");
 
-        if (string.IsNullOrWhiteSpace(endpoint))
-            throw new ArgumentNullException(nameof(endpoint), "Missing Endpoint configuration");
+        if (string.IsNullOrWhiteSpace(_config.Endpoint))
+            throw new ArgumentNullException(nameof(_config.Endpoint), "Missing Endpoint configuration");
 
-        if (string.IsNullOrWhiteSpace(apiKey))
-            throw new ArgumentNullException(nameof(apiKey), "Missing APIKey configuration");
+        if (string.IsNullOrWhiteSpace(_config.ApiKey))
+            throw new ArgumentNullException(nameof(_config.ApiKey), "Missing APIKey configuration");
 
-        if (string.IsNullOrWhiteSpace(application))
-            throw new ArgumentNullException(nameof(application), "Missing Application configuration");
+        if (string.IsNullOrWhiteSpace(_config.Application))
+            throw new ArgumentNullException(nameof(_config.Application), "Missing Application configuration");
 
-        if (string.IsNullOrWhiteSpace(environment))
-            throw new ArgumentNullException(nameof(environment), "Missing Environment configuration");
-
-        _url = endpoint + "/context";
-        _httpClient = httpClient;
+        if (string.IsNullOrWhiteSpace(_config.Environment))
+            throw new ArgumentNullException(nameof(_config.Environment), "Missing Environment configuration");
 
         _deserializer = config.DataDeserializer;
         _deserializer ??= new DefaultContextDataDeserializer();
@@ -47,19 +45,41 @@ public class Client
         
         _executor = config.Executor;
 
-        _headers = new Dictionary<string, string>
-        {
-            { "X-API-Key", apiKey },
-            { "X-Application", application },
-            { "X-Environment", environment },
-            { "X-Application-Version", "0" },
-            { "X-Agent", "absmartly-dotnet-sdk" }
-        };
 
-        _query = new Dictionary<string, string>
-        {
-            { "application", application },
-            { "environment", environment }
-        };
+        _url = config.Endpoint + "/context";
+        _httpClientFactory = httpClientFactory;
     }
+
+    public async Task<ContextData> GetContextData()
+    {
+        var httpClient = _httpClientFactory.CreateClient();
+        httpClient.DefaultRequestHeaders.Add("X-API-Key", _config.ApiKey);
+        httpClient.DefaultRequestHeaders.Add("X-Application", _config.Application );
+        httpClient.DefaultRequestHeaders.Add("X-Environment", _config.Environment);
+        httpClient.DefaultRequestHeaders.Add("X-Application-Version", "0");
+        httpClient.DefaultRequestHeaders.Add("X-Agent", "absmartly-dotnet-sdk");
+        
+        var contextData = await httpClient.GetFromJsonAsync<ContextData>(_url);
+        return contextData;
+    }
+
+    private ContextData DataTask()
+    {
+        throw new NotImplementedException();
+    }
+
+
+
+
+
+
+
+    #region IDisposable
+
+    public void Dispose()
+    {
+        _httpClient?.Dispose();
+    }
+
+    #endregion
 }
