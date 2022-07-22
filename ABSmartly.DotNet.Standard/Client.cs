@@ -52,20 +52,46 @@ public class Client : IDisposable
 
     public async Task<ContextData> GetContextData()
     {
-        var httpClient = _httpClientFactory.CreateClient();
-        httpClient.DefaultRequestHeaders.Add("X-API-Key", _config.ApiKey);
-        httpClient.DefaultRequestHeaders.Add("X-Application", _config.Application );
-        httpClient.DefaultRequestHeaders.Add("X-Environment", _config.Environment);
-        httpClient.DefaultRequestHeaders.Add("X-Application-Version", "0");
-        httpClient.DefaultRequestHeaders.Add("X-Agent", "absmartly-dotnet-sdk");
+        try
+        {
+            var httpClient = _httpClientFactory.CreateClient();
+            httpClient.DefaultRequestHeaders.Add("X-API-Key", _config.ApiKey);
+            httpClient.DefaultRequestHeaders.Add("X-Application", _config.Application );
+            httpClient.DefaultRequestHeaders.Add("X-Environment", _config.Environment);
+            httpClient.DefaultRequestHeaders.Add("X-Application-Version", "0");
+            httpClient.DefaultRequestHeaders.Add("X-Agent", "absmartly-dotnet-sdk");
         
-        var contextData = await httpClient.GetFromJsonAsync<ContextData>(_url);
-        return contextData;
+            // Todo: add query?
+
+            var contextData = await httpClient.GetFromJsonAsync<ContextData>(_url);
+            return contextData;
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
     }
 
-    private ContextData DataTask()
+    public async Task<bool> Publish(PublishEvent publishEvent)
     {
-        throw new NotImplementedException();
+        try
+        {
+            var httpClient = _httpClientFactory.CreateClient();
+            httpClient.DefaultRequestHeaders.Add("X-API-Key", _config.ApiKey);
+            httpClient.DefaultRequestHeaders.Add("X-Application", _config.Application );
+            httpClient.DefaultRequestHeaders.Add("X-Environment", _config.Environment);
+            httpClient.DefaultRequestHeaders.Add("X-Application-Version", "0");
+            httpClient.DefaultRequestHeaders.Add("X-Agent", "absmartly-dotnet-sdk");
+
+            var result = await httpClient.PostAsJsonAsync(_url, publishEvent);
+            result.EnsureSuccessStatusCode();
+
+            return true;
+        }
+        catch (Exception e)
+        {
+            return false;
+        }
     }
 
 
