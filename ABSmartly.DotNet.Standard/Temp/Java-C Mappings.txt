@@ -1,5 +1,5 @@
 ﻿### Modifiers ###
-final --> readonly
+final -> readonly
 
 
 ### Variable Types ###
@@ -44,3 +44,11 @@ Equality
 Hash
 
 ToString
+
+
+
+### Packages ###
+
+com.fasterxml.jackson.databind -> System.Text.Json
+
+ObjectWriter.writeValueAsBytes -> JsonSerializer.SerializeToUtf8Bytes
