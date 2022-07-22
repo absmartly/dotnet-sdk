@@ -17,6 +17,8 @@ https://stackoverflow.com/questions/616487/best-match-in-c-sharp-to-java-reentra
 Java: ReentrantReadWriteLock
 C#: ReaderWriterLockSlim
 
+CompletableFuture<> -> Task<>
+
 
 ### DATE & TIMES ###
 
