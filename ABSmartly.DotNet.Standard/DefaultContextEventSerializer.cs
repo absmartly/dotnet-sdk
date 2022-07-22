@@ -9,9 +9,9 @@ public class DefaultContextEventSerializer : IContextEventSerializer
 {
     private readonly ILogger<DefaultContextEventSerializer> _logger;
 
-    public DefaultContextEventSerializer(ILogger<DefaultContextEventSerializer> logger)
+    public DefaultContextEventSerializer(ILoggerFactory loggerFactory)
     {
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger<DefaultContextEventSerializer>();
     }
 
     public byte[] Serialize(PublishEvent publishEvent)

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using ABSmartly.Temp;
+using Microsoft.Extensions.Logging;
 
 namespace ABSmartly;
 
@@ -16,12 +17,12 @@ public class Client
 
 
 
-    public Client(ClientConfig config, IHTTPClient httpClient)
+    public Client(ClientConfig config, IHTTPClient httpClient, ILoggerFactory loggerFactory)
     {
-        var endpoint = config.Endpoint();
-        var apiKey = config.ApiKey();
-        var application = config.Application();
-        var environment = config.Environment();
+        var endpoint = config.Endpoint;
+        var apiKey = config.ApiKey;
+        var application = config.Application;
+        var environment = config.Environment;
 
         if (string.IsNullOrWhiteSpace(endpoint))
             throw new ArgumentNullException(nameof(endpoint), "Missing Endpoint configuration");
@@ -37,6 +38,28 @@ public class Client
 
         _url = endpoint + "/context";
         _httpClient = httpClient;
-        _deserializer = 
+
+        _deserializer = config.DataDeserializer;
+        _deserializer ??= new DefaultContextDataDeserializer();
+
+        _serializer = config.Serializer;
+        _serializer ??= new DefaultContextEventSerializer(loggerFactory);
+        
+        _executor = config.Executor;
+
+        _headers = new Dictionary<string, string>
+        {
+            { "X-API-Key", apiKey },
+            { "X-Application", application },
+            { "X-Environment", environment },
+            { "X-Application-Version", "0" },
+            { "X-Agent", "absmartly-dotnet-sdk" }
+        };
+
+        _query = new Dictionary<string, string>
+        {
+            { "application", application },
+            { "environment", environment }
+        };
     }
 }

@@ -1,20 +1,18 @@
-﻿using System.Threading.Tasks;
-using ABSmartly.Json;
+﻿using ABSmartly.Json;
 
 namespace ABSmartly;
 
-public class DefaultContextDataDeserializer : IContextEventHandler
+public class DefaultContextDataDeserializer : IContextDataDeserializer
 {
-    private readonly Client _client;
 
-    public DefaultContextDataDeserializer(Client client)
+
+    public DefaultContextDataDeserializer()
     {
-        _client = client;
+
     }
 
-
-    public async Task PublishAsync(Context context, PublishEvent publishEvent)
+    public ContextData Deserialize(byte[] bytes, int offset, int length)
     {
-        return await _client.Publish(publishEvent);
+        throw new System.NotImplementedException();
     }
 }
