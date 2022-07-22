@@ -4,25 +4,17 @@ namespace ABSmartly;
 
 public class ClientConfig
 {
-    private string _endpoint;
-    private string _apiKey;
-    private string _environment;
-    private string _application;
-    private IContextDataDeserializer _deserializer;
-    private IContextEventSerializer _serializer;
     // Todo: https://www.codeproject.com/Questions/1273200/Is-there-an-equivalent-of-javas-executorservice-cl
-    //private Executor _executor;
 
-    public ClientConfig(string endpoint = null, string apiKey = null, string environment = null,
-        string application = null, IContextDataDeserializer deserializer = null,
-        IContextEventSerializer serializer = null)
+    public ClientConfig(string endpoint = null, string apiKey = null, string environment = null, string application = null, IContextDataDeserializer dataDeserializer = null, IContextEventSerializer serializer = null, IExecutor executor = null)
     {
-        _endpoint = endpoint;
-        _apiKey = apiKey;
-        _environment = environment;
-        _application = application;
-        _deserializer = deserializer;
-        _serializer = serializer;
+        Endpoint = endpoint;
+        ApiKey = apiKey;
+        Environment = environment;
+        Application = application;
+        DataDeserializer = dataDeserializer;
+        Serializer = serializer;
+        Executor = executor;
     }
 
     public static ClientConfig Create()
@@ -44,4 +36,21 @@ public class ClientConfig
             apiKey: configuration.ApiKey
         );
     }
+
+
+
+
+    public string Endpoint { get; }
+
+    public string ApiKey { get; }
+
+    public string Application { get; }
+
+    public string Environment { get; }
+
+    public IContextDataDeserializer DataDeserializer { get; }
+
+    public IContextEventSerializer Serializer { get; }
+
+    public IExecutor Executor { get; }
 }
