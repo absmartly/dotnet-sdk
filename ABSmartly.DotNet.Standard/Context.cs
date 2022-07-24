@@ -10,7 +10,7 @@ using Attribute = ABSmartly.Json.Attribute;
 
 namespace ABSmartly;
 
-public class Context
+public class Context : IDisposable
 {
     private readonly Clock _clock;
 	private readonly long _publishDelay;
@@ -63,10 +63,146 @@ public class Context
     // ScheduledFuture<?>
     private volatile Task<object> _refreshTimer = null;
 
-    public Context()
-    {
+    #region Constructor
 
+    	private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
+			Task<ContextData> dataFuture, IContextDataProvider dataProvider,
+			IContextEventHandler eventHandler, IContextEventLogger eventLogger, IVariableParser variableParser,
+			AudienceMatcher audienceMatcher) 
+        {
+		_clock = clock;
+		_publishDelay = config.GetPublishDelay();
+		_refreshInterval = config.GetRefreshInterval();
+		_eventHandler = eventHandler;
+		_eventLogger = config.GetEventLogger() != null ? config.GetEventLogger() : eventLogger;
+		_dataProvider = dataProvider;
+		_variableParser = variableParser;
+		_audienceMatcher = audienceMatcher;
+		_scheduler = scheduler;
+
+		_units = new Dictionary<String, String>();
+
+		Dictionary<String, String> units = config.GetUnits();
+		if (units != null) {
+			SetUnits(units);
+		}
+
+		_assigners = new Dictionary<String, VariantAssigner>(_units.Count);
+		_hashedUnits = new Dictionary<String, byte[]>(_units.Count);
+
+		Dictionary<String, Object> attributes = config.GetAttributes();
+		if (attributes != null) {
+			SetAttributes(attributes);
+		}
+
+        Dictionary<String, int> overrides = config.GetOverrides();
+		_overrides = (overrides != null) ? new Dictionary<String, int>(overrides) : new Dictionary<String, int>();
+
+        Dictionary<String, int> cassignments = config.GetCustomAssignments();
+		_cassignments = (cassignments != null) ? new Dictionary<String, int>(cassignments)
+				: new Dictionary<String, int>();
+
+		// Todo: simplify it..
+		//if (dataFuture.IsCompleted) {
+		//	dataFuture.thenAccept(new Consumer<ContextData>() 
+  //          {
+		//		@Override
+		//		public void accept(ContextData data) {
+		//			Context.this.setData(data);
+		//			Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
+		//		}
+		//	}).exceptionally(new Function<Throwable, Void>() {
+		//		@Override
+		//		public Void apply(Throwable exception) {
+		//			Context.this.setDataFailed(exception);
+		//			Context.this.logError(exception);
+		//			return null;
+		//		}
+		//	});
+		//} 
+  //      else 
+  //      {
+		//	_readyFuture = new Task();
+		//	dataFuture.thenAccept(new Consumer<ContextData>() 
+  //          {
+		//		@Override
+		//		public void accept(ContextData data) {
+		//			Context.this.setData(data);
+		//			readyFuture_.complete(null);
+		//			readyFuture_ = null;
+
+		//			Context.this.logEvent(ContextEventLogger.EventType.Ready, data);
+
+		//			if (Context.this.getPendingCount() > 0) {
+		//				Context.this.setTimeout();
+		//			}
+		//		}
+		//	}).exceptionally(new Function<Throwable, Void>() 
+  //          {
+		//		@Override
+		//		public Void apply(Throwable exception) {
+		//			Context.this.setDataFailed(exception);
+		//			readyFuture_.complete(null);
+		//			readyFuture_ = null;
+
+		//			Context.this.logError(exception);
+
+		//			return null;
+		//		}
+		//	});
+		//}
+	}
+
+    #endregion
+
+
+    public static Context Create(Clock clock, ContextConfig config,
+    ScheduledExecutorService scheduler,
+        Task<ContextData> dataFuture, IContextDataProvider dataProvider,
+        IContextEventHandler eventHandler, IContextEventLogger? eventLogger,
+        IVariableParser variableParser, AudienceMatcher audienceMatcher) 
+    {
+        return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
+            variableParser, audienceMatcher);
     }
+
+
+
+    public bool IsReady() {
+        return _data != null;
+    }
+
+    public bool isFailed() {
+        return _failed;
+    }
+
+    public bool isClosed() {
+        return _closed.Get();
+    }
+
+    public bool isClosing() {
+        return !_closed.get() && _closing.get();
+    }
+
+
+
+
+    #region IDisposable
+
+    public void Dispose()
+    {
+        _dataLock?.Dispose();
+        _contextLock?.Dispose();
+        _eventLock?.Dispose();
+        _readyFuture?.Dispose();
+        _closingFuture?.Dispose();
+        _refreshFuture?.Dispose();
+        _timeoutLock?.Dispose();
+        _timeout?.Dispose();
+        _refreshTimer?.Dispose();
+    }
+
+    #endregion
 }
 
 
