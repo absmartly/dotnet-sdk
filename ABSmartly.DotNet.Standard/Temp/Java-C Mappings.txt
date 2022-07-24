@@ -19,6 +19,10 @@ C#: ReaderWriterLockSlim
 
 CompletableFuture<> -> Task<>
 
+AtomicBoolean -* ??
+AtomicInteger -> ??
+
+
 
 -------------------- DATE & TIMES --------------------
 

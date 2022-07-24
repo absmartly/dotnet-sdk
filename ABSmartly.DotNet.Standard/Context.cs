@@ -1,4 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using ABSmartly.DotNet.Time;
 using ABSmartly.Internal;
 using ABSmartly.Json;
@@ -9,47 +12,86 @@ namespace ABSmartly;
 
 public class Context
 {
-    private readonly Clock clock_;
-	private readonly long publishDelay_;
-	private readonly long refreshInterval_;
-	private readonly IContextEventHandler eventHandler_;
-	private readonly IContextEventLogger eventLogger_;
-	private readonly IContextDataProvider dataProvider_;
-	private readonly IVariableParser variableParser_;
-	private readonly AudienceMatcher audienceMatcher_;
-	private readonly ScheduledExecutorService scheduler_;
-	private readonly Dictionary<string, string> units_;
-	private bool failed_;
+    private readonly Clock _clock;
+	private readonly long _publishDelay;
+	private readonly long _refreshInterval;
+	private readonly IContextEventHandler _eventHandler;
+	private readonly IContextEventLogger _eventLogger;
+	private readonly IContextDataProvider _dataProvider;
+	private readonly IVariableParser _variableParser;
+	private readonly AudienceMatcher _audienceMatcher;
+	private readonly ScheduledExecutorService _scheduler;
+	private readonly Dictionary<string, string> _units;
+	private bool _failed;
 
-	//private readonly ReentrantReadWriteLock dataLock_ = new ReentrantReadWriteLock();
-	private ContextData data_;
-	//private Dictionary<string, ExperimentVariables> index_;
-	//private Dictionary<string, ExperimentVariables> indexVariables_;
+	private readonly ReaderWriterLockSlim _dataLock = new ReaderWriterLockSlim();
+	private ContextData _data;
+	private Dictionary<string, ExperimentVariables> _index;
+	private Dictionary<string, ExperimentVariables> _indexVariables;
 
-	//private readonly ReentrantReadWriteLock contextLock_ = new ReentrantReadWriteLock();
+    private readonly ReaderWriterLockSlim _contextLock = new ReaderWriterLockSlim();
 
-	private readonly Dictionary<string, byte[]> hashedUnits_;
-	private readonly Dictionary<string, VariantAssigner> assigners_;
-	//private readonly Dictionary<string, Assignment> assignmentCache_ = new();
+	private readonly Dictionary<string, byte[]> _hashedUnits;
+	private readonly Dictionary<string, VariantAssigner> _assigners;
+	private readonly Dictionary<string, Assignment> _assignmentCache = new();
 
-	//private readonly ReentrantLock eventLock_ = new ReentrantLock();
-	private readonly List<Exposure> exposures_ = new List<Exposure>();
-	private readonly List<GoalAchievement> achievements_ = new List<GoalAchievement>();
+	private readonly ReaderWriterLockSlim _eventLock = new ReaderWriterLockSlim();
+	private readonly List<Exposure> _exposures = new List<Exposure>();
+	private readonly List<GoalAchievement> _achievements = new List<GoalAchievement>();
 
-	private readonly List<Attribute> attributes_ = new List<Attribute>();
-	private readonly Dictionary<string, int> overrides_;
-	private readonly Dictionary<string, int> cassignments_;
-	
-	//private readonly AtomicInteger pendingCount_ = new AtomicInteger(0);
-	//private readonly AtomicBoolean closing_ = new AtomicBoolean(false);
-	//private readonly AtomicBoolean closed_ = new AtomicBoolean(false);
-	//private readonly AtomicBoolean refreshing_ = new AtomicBoolean(false);
+	private readonly List<Attribute> _attributes = new List<Attribute>();
+	private readonly Dictionary<string, int> _overrides;
+	private readonly Dictionary<string, int> _cassignments;
 
-	//private volatile Task readyFuture_;
-	//private volatile Task closingFuture_;
-	//private volatile Task refreshFuture_;
+	// AtomicInteger
+    private readonly int pendingCount_;
+	// AtomicBoolean
+    private readonly bool _closing;
+    // AtomicBoolean
+    private readonly bool _closed;
+    // AtomicBoolean
+    private readonly bool _refreshing;
 
-	//private readonly ReentrantLock timeoutLock_ = new ReentrantLock();
-	//private volatile ScheduledFuture<?> timeout_ = null;
-	//private volatile ScheduledFuture<?> refreshTimer_ = null;
+	private volatile Task _readyFuture;
+	private volatile Task _closingFuture;
+	private volatile Task _refreshFuture;
+
+	private readonly ReaderWriterLockSlim _timeoutLock = new ReaderWriterLockSlim();
+
+	// ScheduledFuture<?>
+    private volatile Task<object> _timeout = null;
+    // ScheduledFuture<?>
+    private volatile Task<object> _refreshTimer = null;
+
+    public Context()
+    {
+
+    }
+}
+
+
+internal class Assignment 
+{
+    int id;
+    int iteration;
+    int fullOnVariant;
+    String name;
+    String unitType;
+    double[] trafficSplit;
+    int variant;
+    bool assigned;
+    bool overridden;
+    bool eligible;
+    bool fullOn;
+    bool custom;
+
+    bool audienceMismatch;
+    private Dictionary<String, Object> variables = new Dictionary<string, object>();
+
+    //final AtomicBoolean exposed = new AtomicBoolean(false);
+}
+
+internal class ExperimentVariables {
+    Experiment data;
+    List<Dictionary<String, Object>> variables;
 }
