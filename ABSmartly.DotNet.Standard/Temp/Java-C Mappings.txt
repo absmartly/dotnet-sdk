@@ -59,3 +59,8 @@ ObjectWriter.writeValueAsBytes -> JsonSerializer.SerializeToUtf8Bytes
 
 -------------------- NUGETS --------------------
 System.Net.Http.Json
+
+
+-------------------- EXCECPTIONS --------------------
+
+IllegalArgumentException -> ??? using simple Exception

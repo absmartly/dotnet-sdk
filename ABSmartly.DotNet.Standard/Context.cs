@@ -44,7 +44,7 @@ public class Context : IDisposable
 	private readonly Dictionary<string, int> _cassignments;
 
 	// AtomicInteger
-    private readonly int pendingCount_;
+    private readonly int _pendingCount;
 	// AtomicBoolean
     private readonly bool _closing;
     // AtomicBoolean
@@ -155,16 +155,25 @@ public class Context : IDisposable
 
     #endregion
 
+    #region Builder
 
-    public static Context Create(Clock clock, ContextConfig config,
-    ScheduledExecutorService scheduler,
-        Task<ContextData> dataFuture, IContextDataProvider dataProvider,
-        IContextEventHandler eventHandler, IContextEventLogger? eventLogger,
-        IVariableParser variableParser, AudienceMatcher audienceMatcher) 
+    public static Context Create(Clock clock, 
+                                 ContextConfig config,
+                                 ScheduledExecutorService scheduler,
+                                 Task<ContextData> dataFuture, 
+                                 IContextDataProvider dataProvider,
+                                 IContextEventHandler eventHandler, 
+                                 IContextEventLogger? eventLogger,
+                                 IVariableParser variableParser, 
+                                 AudienceMatcher audienceMatcher) 
     {
         return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
             variableParser, audienceMatcher);
-    }
+    }    
+
+    #endregion
+
+
 
 
 
@@ -172,17 +181,326 @@ public class Context : IDisposable
         return _data != null;
     }
 
-    public bool isFailed() {
+    public bool IsFailed() {
         return _failed;
     }
 
-    public bool isClosed() {
+    public bool IsClosed() {
         return _closed.Get();
     }
 
-    public bool isClosing() {
-        return !_closed.get() && _closing.get();
+    public bool IsClosing() {
+        return !_closed.Get() && _closing.Get();
     }
+
+    public Task<Context> WaitUntilReadyAsync() {
+        if (_data != null) 
+        {
+            return Task.FromResult(this);
+        }
+        else 
+        {
+            //return readyFuture_.thenApply(new Function<Void, Context>() {
+            //    @Override
+            //    public Context apply(Void k) {
+            //    return Context.this;
+            //}
+
+            //}
+            //    );
+
+            // Todo: finish..
+            throw new NotImplementedException();
+        }
+    }
+
+    public Context WaitUntilReady() 
+    {
+        if (_data == null) 
+        {
+            Task future = _readyFuture; // cache here to avoid locking
+            if (future != null && !future.IsCompleted) 
+            {
+                //future.join();
+
+                // Todo: finish..
+                throw new NotImplementedException();
+            }
+        }
+        return this;
+    }
+
+    public string[] GetExperiments() {
+        CheckReady(true);
+
+        try 
+        {
+            _dataLock.EnterReadLock();
+            //dataLock_.readLock().lock();
+            string[] experimentNames = new string[_data.Experiments.Length];
+
+            int index = 0;
+
+            foreach (var dataExperiment in _data.Experiments)
+            {
+                experimentNames[index] = dataExperiment.Name;
+                index++;
+            }
+
+            return experimentNames;
+        } 
+        finally 
+        {
+            _dataLock.ExitReadLock();
+        }
+    }
+
+    public ContextData GetData() 
+    {
+        CheckReady(true);
+
+        try 
+        {
+            _dataLock.EnterReadLock();
+            return _data;
+        } 
+        finally 
+        {
+            _dataLock.ExitReadLock();
+        }
+    }
+
+    #region Override
+
+    public void SetOverride(string experimentName, int variant) 
+    {
+        CheckNotClosed();
+
+        Concurrency.PutRW(_contextLock, _overrides, experimentName, variant);
+    }
+
+    public int GetOverride(string experimentName) 
+    {
+        return Concurrency.GetRW(_contextLock, _overrides, experimentName);
+    }
+
+    public void SetOverrides(Dictionary<string, int> overrides) 
+    {
+        foreach (var kvp in overrides)
+        {
+            var key = kvp.Key;
+            var value = kvp.Value;
+            SetOverride(key, value);
+        }
+    }    
+
+    #endregion
+
+    #region CustomAssignment
+
+    public void SetCustomAssignment(string experimentName, int variant) 
+    {
+        CheckNotClosed();
+
+        Concurrency.PutRW(_contextLock, _cassignments, experimentName, variant);
+    }
+
+    public int GetCustomAssignment(string experimentName) 
+    {
+        return Concurrency.GetRW(_contextLock, _cassignments, experimentName);
+    }
+
+    public void SetCustomAssignments(Dictionary<string, int> customAssignments) 
+    {
+        foreach (var kvp in customAssignments)
+        {
+            SetCustomAssignment(kvp.Key, kvp.Value);
+        }
+    }
+
+    #endregion
+
+    #region Unit
+
+    public void SetUnit(string unitType, string uid) 
+    {
+        CheckNotClosed();
+
+        try 
+        {
+            _contextLock.EnterWriteLock();
+
+            string previous = _units[unitType];
+            if ((previous != null) && !previous.Equals(uid))
+            {
+                throw new Exception(string.Format("Unit '%s' already set.", unitType));
+            }
+
+            string trimmed = uid.Trim();
+            if (string.IsNullOrEmpty(trimmed)) 
+            {
+                throw new Exception(string.Format("Unit '%s' UID must not be blank.", unitType));
+            }
+
+            _units.Add(unitType, trimmed);
+        } 
+        finally 
+        {
+            _contextLock.ExitWriteLock();
+        }
+    }
+
+    public void setUnits(Dictionary<string, string> units) 
+    {
+        foreach (var kvp in units)
+        {
+            SetUnit(kvp.Key, kvp.Value);
+        }
+    }
+
+    #endregion
+
+    #region Attribute
+
+    public void SetAttribute(string name, object value) 
+    {
+        CheckNotClosed();
+
+        Concurrency.AddRW(_contextLock, _attributes, new Attribute(name, value, _clock.Millis()));
+    }
+
+    public void SetAttributes(Dictionary<string, object> attributes) 
+    {
+        foreach (var kvp in attributes)
+        {
+            SetAttribute(kvp.Key, kvp.Value);
+        }
+    }
+
+    #endregion
+
+
+    public int GetTreatment(string experimentName) 
+    {
+        CheckReady(true);
+
+        Assignment assignment = GetAssignment(experimentName);
+        if (!assignment.exposed.get()) 
+        {
+            QueueExposure(assignment);
+        }
+
+        return assignment.Variant;
+    }
+
+    private void QueueExposure(Assignment assignment) 
+    {
+        if (assignment.Exposed.CompareAndSet(false, true)) 
+        {
+            Exposure exposure = new Exposure
+            {
+                Id = assignment.Id,
+                Name = assignment.Name,
+                Unit = assignment.UnitType,
+                Variant = assignment.Variant,
+                ExposedAt = _clock.Millis(),
+                Assigned = assignment.Assigned,
+                Eligible = assignment.Eligible,
+                Overridden = assignment.Overridden,
+                FullOn = assignment.FullOn,
+                Custom = assignment.Custom,
+                AudienceMismatch = assignment.AudienceMismatch
+            };
+
+            try 
+            {
+                // Todo: add lock
+                //eventLock_.lock();
+                _pendingCount.IncrementAndGet();
+                _exposures.Add(exposure);
+            } 
+            finally 
+            {
+                //eventLock_.unlock();
+            }
+
+            LogEvent(ContextEventLogger.EventType.Exposure, exposure);
+
+            SetTimeout();
+        }
+    }
+
+    public int PeekTreatment(string experimentName) 
+    {
+        CheckReady(true);
+
+        return GetAssignment(experimentName).variant;
+    }
+
+    public Dictionary<string, string> GetVariableKeys() {
+        CheckReady(true);
+
+        var variableKeys = new Dictionary<string, string>(_indexVariables.Count);
+
+        try 
+        {
+            _dataLock.EnterReadLock();
+
+            foreach (var kvp in _indexVariables)
+            {
+                variableKeys.Add(kvp.Key, kvp.Value.Data.Name);
+            }
+        } 
+        finally 
+        {
+            _dataLock.ExitReadLock();
+        }
+        
+        return variableKeys;
+    }
+
+    public object GetVariableValue(string key, object defaultValue) 
+    {
+        CheckReady(true);
+
+        Assignment assignment = GetVariableAssignment(key);
+        if (assignment != null) 
+        {
+            if (assignment.Variables != null) 
+            {
+                if (!assignment.Exposed.Get()) 
+                {
+                    QueueExposure(assignment);
+                }
+
+                if (assignment.Variables.ContainsKey(key)) 
+                {
+                    return assignment.Variables[key];
+                }
+            }
+        }
+
+        return defaultValue;
+    }
+
+    public object PeekVariableValue(string key, object defaultValue) 
+    {
+        CheckReady(true);
+
+        Assignment assignment = GetVariableAssignment(key);
+        if (assignment != null) 
+        {
+            if (assignment.Variables != null) 
+            {
+                if (assignment.Variables.ContainsKey(key)) {
+                    return assignment.Variables[key];
+                }
+            }
+        }
+
+        return defaultValue;
+    }
+
 
 
 
@@ -208,26 +526,28 @@ public class Context : IDisposable
 
 internal class Assignment 
 {
-    int id;
-    int iteration;
-    int fullOnVariant;
-    String name;
-    String unitType;
-    double[] trafficSplit;
-    int variant;
-    bool assigned;
-    bool overridden;
-    bool eligible;
-    bool fullOn;
-    bool custom;
+    public int Id { get; set; }
+    public int Iteration { get; set; }
+    public int FullOnVariant { get; set; }
+    public string Name { get; set; }
+    public string UnitType { get; set; }
+    public double[] TrafficSplit { get; set; }
+    public int Variant { get; set; }
+    public bool Assigned { get; set; }
+    public bool Overridden { get; set; }
+    public bool Eligible { get; set; }
+    public bool FullOn { get; set; }
+    public bool Custom { get; set; }
 
-    bool audienceMismatch;
-    private Dictionary<String, Object> variables = new Dictionary<string, object>();
+    public bool AudienceMismatch { get; set; }
+
+    public Dictionary<string, object> Variables = new Dictionary<string, object>();
 
     //final AtomicBoolean exposed = new AtomicBoolean(false);
 }
 
-internal class ExperimentVariables {
-    Experiment data;
-    List<Dictionary<String, Object>> variables;
+internal class ExperimentVariables 
+{
+    public Experiment Data { get; set; }
+    public List<Dictionary<string, object>> Variables { get; set; }
 }
