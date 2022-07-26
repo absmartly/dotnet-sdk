@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using ABSmartly.DotNet.Nio.Charset;
 using ABSmartly.DotNet.Time;
 using ABSmartly.Internal;
+using ABSmartly.Internal.Hashing;
 using ABSmartly.Json;
 using ABSmartly.Temp;
 using Attribute = ABSmartly.Json.Attribute;
@@ -953,6 +954,51 @@ public class Context : IDisposable
 
     #endregion
 
+
+    private Assignment GetVariableAssignment(String key) 
+    {
+        ExperimentVariables experiment = GetVariableExperiment(key);
+
+        if (experiment != null) 
+        {
+            return GetAssignment(experiment.Data.Name);
+        }
+        return null;
+    }
+
+    private ExperimentVariables GetExperiment(String experimentName) 
+    {
+        try 
+        {
+            _dataLock.EnterReadLock();
+            return _index[experimentName];
+        } 
+        finally 
+        {
+            _dataLock.ExitReadLock();
+        }
+    }
+
+    private ExperimentVariables GetVariableExperiment(String key) 
+    {
+        return Concurrency.GetRW(_dataLock, _indexVariables, key);
+    }
+
+    private byte[] GetUnitHash(String unitType, String unitUID)
+    {
+        return Concurrency.ComputeIfAbsentRW<string, byte[]>(_contextLock, _hashedUnits, unitType,
+            null
+        );
+            //(byte[] a, string b) =>
+            //{
+            //    return Hashing.HashUnit(unitUID.ToCharArray());
+
+            //    //byte[] Apply(String key)
+            //    //{
+            //    //    return Hashing.HashUnit(unitUID.ToCharArray());
+            //    //}
+            //}
+    }
 
 
 
