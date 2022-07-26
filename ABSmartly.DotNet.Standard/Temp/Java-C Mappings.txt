@@ -5,7 +5,7 @@ final -> readonly
 -------------------- Variable Types --------------------
 Set<> -> HashSet<>
 Map<,> -> Dictionary<,>
-
+TreeMap<,> -> SortedDictionary<,>
 
 Arrays.toString(xyz[]) -> Extension method will be added
 
@@ -16,6 +16,8 @@ Arrays.toString(xyz[]) -> Extension method will be added
 https://stackoverflow.com/questions/616487/best-match-in-c-sharp-to-java-reentrantlock-and-condition
 Java: ReentrantReadWriteLock
 C#: ReaderWriterLockSlim
+
+ReEntrantLock -> Monitor (static class)
 
 CompletableFuture<> -> Task<>
 

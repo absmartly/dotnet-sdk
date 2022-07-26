@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using ABSmartly.DotNet.Nio.Charset;
 using ABSmartly.DotNet.Time;
 using ABSmartly.Internal;
 using ABSmartly.Json;
@@ -35,7 +37,8 @@ public class Context : IDisposable
 	private readonly Dictionary<string, VariantAssigner> _assigners;
 	private readonly Dictionary<string, Assignment> _assignmentCache = new();
 
-	private readonly ReaderWriterLockSlim _eventLock = new ReaderWriterLockSlim();
+	//private readonly ReaderWriterLockSlim _eventLock = new ReaderWriterLockSlim();
+    //private readonly Monitor _eventLock;
 	private readonly List<Exposure> _exposures = new List<Exposure>();
 	private readonly List<GoalAchievement> _achievements = new List<GoalAchievement>();
 
@@ -501,6 +504,454 @@ public class Context : IDisposable
         return defaultValue;
     }
 
+    public void Track(string goalName, Dictionary<String, Object> properties) 
+    {
+        CheckNotClosed();
+
+        GoalAchievement achievement = new GoalAchievement();
+        achievement.AchievedAt = _clock.Millis();
+        achievement.Name = goalName;
+        achievement.Properties = (properties == null) ? null : new SortedDictionary<String, Object>(properties);
+
+        try 
+        {
+            Monitor.Enter(achievement);
+            _pendingCount.IncrementAndGet();
+            _achievements.Add(achievement);
+        } 
+        finally 
+        {
+            Monitor.Exit(achievement);
+        }
+
+        LogEvent(ContextEventLogger.EventType.Goal, achievement);
+
+        SetTimeout();
+    }
+
+    public Task PublishAsync() 
+    {
+        CheckNotClosed();
+
+        return Flush();
+    }
+
+    public void Publish() {
+        //PublishAsync().join();
+        PublishAsync();
+    }
+
+    public int GetPendingCount() 
+    {
+        return _pendingCount;
+    }
+
+    #region Refresh
+
+    public Task RefreshAsync() 
+    {
+        CheckNotClosed();
+
+        //if (_refreshing.CompareAndSet(false, true)) 
+        //{
+        //    _refreshFuture = new Task();
+
+        //    _dataProvider.GetContextData().thenAccept(new Consumer<ContextData>() 
+        //    { 
+        //        public void accept(ContextData data) 
+        //        {
+        //            Context.this.setData(data);
+        //            refreshing_.set(false);
+        //            refreshFuture_.complete(null);
+
+        //            Context.this.logEvent(ContextEventLogger.EventType.Refresh, data);
+        //        }
+        //    }).exceptionally(new Function<Throwable, Void>() {
+        //        @Override
+        //        public Void apply(Throwable exception) {
+        //        refreshing_.set(false);
+        //        refreshFuture_.completeExceptionally(exception);
+
+        //        Context.this.logError(exception);
+        //        return null;
+        //    }
+        //    });
+        //}
+
+        Task future = _refreshFuture;
+        if (future != null) {
+            return future;
+        }
+
+        return Task.CompletedTask;
+        //return CompletableFuture.completedFuture(null);
+    }
+
+    public void Refresh()
+    {
+        RefreshAsync();
+    }
+
+    #endregion
+
+    #region Close
+
+    public Task CloseAsync() 
+    {
+        if (!_closed) 
+        {
+            //if (closing_.compareAndSet(false, true)) 
+            //{
+            //    clearRefreshTimer();
+
+            //    if (pendingCount_.get() > 0) 
+            //    {
+            //        closingFuture_ = new CompletableFuture<Void>();
+
+            //        flush().thenAccept(new Consumer<Void>() {
+            //            @Override
+            //            public void accept(Void x) {
+            //            closed_.set(true);
+            //            closing_.set(false);
+            //            closingFuture_.complete(null);
+
+            //            Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+            //        }
+            //        }).exceptionally(new Function<Throwable, Void>() {
+            //            @Override
+            //            public Void apply(Throwable exception) {
+            //            closed_.set(true);
+            //            closing_.set(false);
+            //            closingFuture_.completeExceptionally(exception);
+            //            // event logger gets this error during publish
+
+            //            return null;
+            //        }
+            //        });
+
+            //        return closingFuture_;
+            //    } else {
+            //        closed_.set(true);
+            //        closing_.set(false);
+
+            //        Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+            //    }
+            //}
+
+            Task future = _closingFuture;
+            if (future != null) 
+            {
+                return future;
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public void Close()
+    {
+        CloseAsync();
+    }
+
+    #endregion
+
+    private Task Flush() 
+    {
+		ClearTimeout();
+
+		if (!_failed)
+        {
+			if (_pendingCount > 0) 
+            {
+				Exposure[] exposures = null;
+				GoalAchievement[] achievements = null;
+				int eventCount;
+
+				try 
+                {
+                    Monitor.Enter(this);
+			
+					eventCount = _pendingCount;
+
+					if (eventCount > 0) 
+                    {
+						if (_exposures.Count > 0) 
+                        {
+							exposures = _exposures.ToArray(new Exposure[0]);
+							_exposures.Clear();
+						}
+
+						if (_achievements.Count > 0) 
+                        {
+							achievements = _achievements.ToArray(new GoalAchievement[0]);
+							_achievements.Clear();
+						}
+
+						_pendingCount = 0;
+					}
+				} 
+                finally 
+                {
+					Monitor.Exit(this);
+				}
+
+				//if (eventCount > 0) {
+				//	PublishEvent publishevent = new PublishEvent();
+    //                publishevent.Hashed = true;
+    //                publishevent.PublishedAt = _clock.Millis();
+    //                publishevent.Units = Algorithm.mapSetToArray(units_.entrySet(), new Unit[0],
+				//			new Function<Map.Entry<String, String>, Unit>() {
+				//				@Override
+				//				public Unit apply(Map.Entry<String, String> entry) {
+				//					return new Unit(entry.getKey(),
+				//							new String(getUnitHash(entry.getKey(), entry.getValue()),
+				//									StandardCharsets.US_ASCII));
+				//				}
+				//			});
+    //                        publishevent.attributes = attributes_.isEmpty() ? null : attributes_.toArray(new Attribute[0]);
+    //                        publishevent.exposures = exposures;
+    //                        publishevent.goals = achievements;
+
+				//	final CompletableFuture<Void> result = new CompletableFuture<Void>();
+
+				//	eventHandler_.publish(this, event).thenRunAsync(new Runnable() {
+				//		@Override
+				//		public void run() {
+				//			Context.this.logEvent(ContextEventLogger.EventType.Publish, event);
+				//			result.complete(null);
+				//		}
+				//	}).exceptionally(new Function<Throwable, Void>() {
+				//		@Override
+				//		public Void apply(Throwable throwable) {
+				//			Context.this.logError(throwable);
+
+				//			result.completeExceptionally(throwable);
+				//			return null;
+				//		}
+				//	});
+
+				//	return result;
+				//}
+			}
+		} 
+        else 
+        {
+			try 
+            {
+                Monitor.Enter(this);
+			
+				_exposures.Clear();
+				_achievements.Clear();
+                _pendingCount = 0;
+            } 
+            finally 
+            {
+                Monitor.Exit(this);
+            }
+		}
+
+		return Task.CompletedTask;
+	}
+
+    #region Checks
+
+    private void CheckNotClosed() 
+    {
+        if (_closed) 
+        {
+            throw new Exception("ABSmartly Context is closed");
+        } 
+        if (_closing) 
+        {
+            throw new Exception("ABSmartly Context is closing");
+        }
+    }    
+
+    private void CheckReady(bool expectNotClosed) 
+    {
+        if (!IsReady())
+        {
+            throw new Exception("ABSmartly Context is not yet ready");
+        } 
+        if (expectNotClosed) 
+        {
+            CheckNotClosed();
+        }
+    }
+
+    #endregion
+
+    private bool ExperimentMatches(Experiment experiment, Assignment assignment) 
+    {
+        return experiment.Id == assignment.Id &&
+               experiment.UnitType.Equals(assignment.UnitType) &&
+               experiment.Iteration == assignment.Iteration &&
+               experiment.FullOnVariant == assignment.FullOnVariant &&
+               Array.Equals(experiment.TrafficSplit, assignment.TrafficSplit);
+    }
+
+
+    #region Assignment
+
+    private Assignment GetAssignment(string experimentName) 
+    {
+        var readLock = new ReaderWriterLockSlim();
+
+		try
+        {
+            readLock.EnterReadLock();
+
+            var assignment = _assignmentCache[experimentName];
+
+			if (assignment != null) 
+            {
+				var custom = _cassignments[experimentName];
+				var overrideppp = _overrides[experimentName];
+				ExperimentVariables experiment = GetExperiment(experimentName);
+
+				if (overrideppp != null) 
+                {
+					if (assignment.Overridden && assignment.Variant == overrideppp) 
+                    {
+						// override up-to-date
+						return assignment;
+					}
+				} 
+                else if (experiment == null) 
+                {
+					if (!assignment.Assigned) 
+                    {
+						// previously not-running experiment
+						return assignment;
+					}
+				} 
+                else if ((custom == null) || custom == assignment.Variant) 
+                {
+					if (ExperimentMatches(experiment.Data, assignment)) 
+                    {
+						// assignment up-to-date
+						return assignment;
+					}
+				}
+			}
+		} 
+        finally 
+        {
+            readLock.ExitReadLock();
+        }
+
+		// cache miss or out-dated
+        try 
+        {
+            _contextLock.EnterWriteLock();
+
+            var custom = _cassignments[experimentName];
+			var overrideppp = _overrides[experimentName];
+			ExperimentVariables experiment = GetExperiment(experimentName);
+
+			Assignment assignment = new Assignment();
+			assignment.Name = experimentName;
+			assignment.Eligible = true;
+
+			if (overrideppp != null) 
+            {
+				if (experiment != null) 
+                {
+					assignment.Id = experiment.Data.Id;
+					assignment.UnitType = experiment.Data.UnitType;
+				}
+
+				assignment.Overridden = true;
+				assignment.Variant = overrideppp;
+			} 
+            else 
+            {
+				if (experiment != null) 
+                {
+                    String unitType = experiment.Data.UnitType;
+
+					if (experiment.Data.Audience != null && experiment.Data.Audience.Length > 0) 
+                    {
+						var attrs = new Dictionary<String, Object>(_attributes.Count);
+                        foreach (var attribute in _attributes)
+                        {
+                            attrs.Add(attribute.Name, attribute.Value);
+                        }
+
+                        var match = _audienceMatcher.Evaluate(experiment.Data.Audience, attrs);
+                        if (match != null) 
+                        {
+							assignment.AudienceMismatch = !match.Value;
+						}
+					}
+
+					if (experiment.Data.AudienceStrict && assignment.AudienceMismatch) 
+                    {
+						assignment.Variant = 0;
+					} 
+                    else if (experiment.Data.FullOnVariant == 0) 
+                    {
+						String uid = _units[experiment.Data.UnitType];
+						if (uid != null) 
+                        {
+							byte[] unitHash = GetUnitHash(unitType, uid);
+
+							VariantAssigner assigner = GetVariantAssigner(unitType, unitHash);
+							bool eligible = assigner.assign(experiment.Data.TrafficSplit, experiment.Data.TrafficSeedHi, experiment.Data.TrafficSeedLo) == 1;
+							if (eligible) 
+                            {
+								if (custom != null) 
+                                {
+									assignment.Variant = custom;
+									assignment.Custom = true;
+								} 
+                                else 
+                                {
+									assignment.Variant = assigner.assign(experiment.Data.Split,
+											experiment.Data.SeedHi,
+											experiment.Data.SeedLo);
+								}
+							} 
+                            else
+                            {
+								assignment.Eligible = false;
+								assignment.Variant = 0;
+							}
+
+							assignment.Assigned = true;
+						}
+					} 
+                    else 
+                    {
+						assignment.Assigned = true;
+						assignment.Variant = experiment.Data.FullOnVariant;
+						assignment.FullOn = true;
+					}
+
+					assignment.UnitType = unitType;
+					assignment.Id = experiment.Data.Id;
+					assignment.Iteration = experiment.Data.Iteration;
+					assignment.TrafficSplit = experiment.Data.TrafficSplit;
+					assignment.FullOnVariant = experiment.Data.FullOnVariant;
+				}
+			}
+
+			if ((experiment != null) && (assignment.Variant < experiment.Data.Variants.Length)) 
+            {
+				assignment.Variables = experiment.Variables.Get(assignment.Variant);
+			}
+
+			_assignmentCache.Add(experimentName, assignment);
+
+			return assignment;
+		} 
+        finally 
+        {
+            _contextLock.ExitWriteLock();
+        }
+	}
+
+    #endregion
 
 
 
@@ -511,7 +962,7 @@ public class Context : IDisposable
     {
         _dataLock?.Dispose();
         _contextLock?.Dispose();
-        _eventLock?.Dispose();
+        //_eventLock?.Dispose();
         _readyFuture?.Dispose();
         _closingFuture?.Dispose();
         _refreshFuture?.Dispose();

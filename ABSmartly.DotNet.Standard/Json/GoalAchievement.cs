@@ -20,7 +20,8 @@ public class GoalAchievement
 
     public string Name { get; set; }
     public long AchievedAt { get; set; }
-    public Dictionary<string, object> Properties { get; set; }
+    // Todo: Dictionary or SortedDictionary -> IDictionary??
+    public IDictionary<string, object> Properties { get; set; }
 
     protected bool Equals(GoalAchievement other)
     {
