@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.Threading;
 using System.Threading.Tasks;
 using ABSmartly.DotNet.Time;
@@ -21,26 +20,26 @@ public class Context : IDisposable
 	private readonly IContextDataProvider _dataProvider;
 	private readonly IVariableParser _variableParser;
 	private readonly AudienceMatcher _audienceMatcher;
-	private readonly ScheduledExecutorService _scheduler;
+	private readonly IScheduledExecutorService _scheduler;
 	private readonly Dictionary<string, string> _units;
 	private bool _failed;
 
-	private readonly ReaderWriterLockSlim _dataLock = new ReaderWriterLockSlim();
+	private readonly ReaderWriterLockSlim _dataLock = new();
 	private ContextData _data;
 	private Dictionary<string, ExperimentVariables> _index;
 	private Dictionary<string, ExperimentVariables> _indexVariables;
 
-    private readonly ReaderWriterLockSlim _contextLock = new ReaderWriterLockSlim();
+    private readonly ReaderWriterLockSlim _contextLock = new();
 
 	private readonly Dictionary<string, byte[]> _hashedUnits;
 	private readonly Dictionary<string, VariantAssigner> _assigners;
 	private readonly Dictionary<string, Assignment> _assignmentCache = new();
 
     //private readonly Monitor _eventLock; => replaced with Monitor
-	private readonly List<Exposure> _exposures = new List<Exposure>();
-	private readonly List<GoalAchievement> _achievements = new List<GoalAchievement>();
+	private readonly List<Exposure> _exposures = new();
+	private readonly List<GoalAchievement> _achievements = new();
 
-	private readonly List<Attribute> _attributes = new List<Attribute>();
+	private readonly List<Attribute> _attributes = new();
 	private readonly Dictionary<string, int> _overrides;
 	private readonly Dictionary<string, int> _cassignments;
 
@@ -57,16 +56,16 @@ public class Context : IDisposable
 	private volatile Task _closingFuture;
 	private volatile Task _refreshFuture;
 
-	private readonly ReaderWriterLockSlim _timeoutLock = new ReaderWriterLockSlim();
+	private readonly ReaderWriterLockSlim _timeoutLock = new();
 
 	// ScheduledFuture<?>
-    private volatile Task<object> _timeout = null;
+    private volatile Task<object> _timeout;
     // ScheduledFuture<?>
-    private volatile Task<object> _refreshTimer = null;
+    private volatile Task<object> _refreshTimer;
 
     #region Constructor
 
-    private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
+    private Context(Clock clock, ContextConfig config, IScheduledExecutorService scheduler,
 			Task<ContextData> dataFuture, IContextDataProvider dataProvider,
 			IContextEventHandler eventHandler, IContextEventLogger eventLogger, IVariableParser variableParser,
 			AudienceMatcher audienceMatcher) 
@@ -160,7 +159,7 @@ public class Context : IDisposable
 
     public static Context Create(Clock clock, 
                                  ContextConfig config,
-                                 ScheduledExecutorService scheduler,
+                                 IScheduledExecutorService scheduler,
                                  Task<ContextData> dataFuture, 
                                  IContextDataProvider dataProvider,
                                  IContextEventHandler eventHandler, 

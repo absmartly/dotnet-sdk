@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Threading.Tasks;
-using System.Timers;
 using ABSmartly.DotNet.Time;
 using ABSmartly.Json;
 using ABSmartly.Temp;
-using Microsoft.Extensions.Logging;
 
 namespace ABSmartly;
 
@@ -17,7 +15,6 @@ public class ABSmartly : IDisposable
     private readonly IVariableParser _variableParser;
 
     private readonly IAudienceDeserializer _audienceDeserializer;
-    //private ScheduledExecutorService _scheduler;
     private IScheduledExecutorService _scheduler;
 
 

@@ -6,19 +6,21 @@ using ABSmartly.Temp;
 
 namespace ABSmartly;
 
-public class AudienceMatcher : IAudienceDeserializer
+public class AudienceMatcher
 {
+    private readonly IAudienceDeserializer _audienceDeserializer;
     private readonly JsonExpr _jsonExpr;
 
-    public AudienceMatcher()
+    public AudienceMatcher(IAudienceDeserializer audienceDeserializer)
     {
+        _audienceDeserializer = audienceDeserializer;
         _jsonExpr = new JsonExpr();
     }
 
     public Result Evaluate(string audience, Dictionary<string, object> attributes)
     {
         var bytes = Encoding.UTF8.GetBytes(audience);
-        var audienceMap = Deserialize(bytes, 0, bytes.Length);
+        var audienceMap = _audienceDeserializer.Deserialize(bytes, 0, bytes.Length);
 
         if (audienceMap is null)
             return null;
@@ -34,12 +36,5 @@ public class AudienceMatcher : IAudienceDeserializer
         }
 
         return null;
-    }
-
-
-
-    public Dictionary<string, object> Deserialize(byte[] bytes, int offset, int length)
-    {
-        throw new System.NotImplementedException();
     }
 }
