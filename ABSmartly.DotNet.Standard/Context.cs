@@ -69,12 +69,12 @@ public class Context : IDisposable
 
     #region Constructor
 
-    	private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
+    private Context(Clock clock, ContextConfig config, ScheduledExecutorService scheduler,
 			Task<ContextData> dataFuture, IContextDataProvider dataProvider,
 			IContextEventHandler eventHandler, IContextEventLogger eventLogger, IVariableParser variableParser,
 			AudienceMatcher audienceMatcher) 
-        {
-		_clock = clock;
+    {
+        _clock = clock;
 		_publishDelay = config.GetPublishDelay();
 		_refreshInterval = config.GetRefreshInterval();
 		_eventHandler = eventHandler;
@@ -87,7 +87,8 @@ public class Context : IDisposable
 		_units = new Dictionary<String, String>();
 
 		Dictionary<String, String> units = config.GetUnits();
-		if (units != null) {
+		if (units != null) 
+        {
 			SetUnits(units);
 		}
 
@@ -987,6 +988,7 @@ public class Context : IDisposable
     private byte[] GetUnitHash(String unitType, String unitUID)
     {
         return Concurrency.ComputeIfAbsentRW<string, byte[]>(_contextLock, _hashedUnits, unitType,
+            // Todo: () =>
             null
         );
             //(byte[] a, string b) =>
@@ -1000,6 +1002,197 @@ public class Context : IDisposable
             //}
     }
 
+    private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash) 
+    {
+        return Concurrency.ComputeIfAbsentRW(_contextLock, _assigners, unitType,
+            null
+            // Todo: () =>
+        //    new Function<String, VariantAssigner>() {
+        //        @Override
+        //        public VariantAssigner apply(String key) {
+        //        return new VariantAssigner(unitHash);
+        //    }
+        //}
+            );
+    }
+
+    #region Timeout
+
+    private void SetTimeout() 
+    {
+        if (IsReady()) 
+        {
+            if (_timeout == null) 
+            {
+                try 
+                {
+                    // Todo: Monitor??
+                    _timeoutLock.EnterWriteLock();
+              
+                    if (_timeout == null) 
+                    {
+                        //_timeout = _scheduler.Schedule(new Runnable() 
+                        //{
+                        //    @Override
+                        //    public void run() {
+                        //    Context.this.flush();
+                        //}
+                        //}, _publishDelay, TimeUnit.MILLISECONDS);
+                    }
+                } 
+                finally 
+                {
+                    _timeoutLock.ExitWriteLock();
+                }
+            }
+        }
+    }
+
+    private void ClearTimeout() 
+    {
+        if (_timeout != null) 
+        {
+            try 
+            {
+                _timeoutLock.EnterWriteLock();
+                if (_timeout != null) 
+                {
+                    // Todo: Task.Cancel..
+                    _timeout.Cancel(false);
+                    _timeout = null;
+                }
+            } 
+            finally
+            {
+                _timeoutLock.ExitWriteLock();
+            }
+        }
+    }    
+
+    #endregion
+
+    #region RefreshTimer
+
+    private void SetRefreshTimer() 
+    {
+        if ((_refreshInterval > 0) && (_refreshTimer == null)) 
+        {
+            //_refreshTimer = _scheduler.ScheduleWithFixedDelay(
+            //    new Runnable() {
+            //    @Override
+            //    public void run() {
+            //    Context.this.refreshAsync();
+            //}
+            //}, refreshInterval_, refreshInterval_, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void ClearRefreshTimer()
+    {
+        if (_refreshTimer != null) 
+        {
+            // Todo: Task.Cancel
+            _refreshTimer.Cancel(false);
+            _refreshTimer = null;
+        }
+    }
+
+
+    #endregion
+
+    #region Data
+
+    private void SetData(ContextData data) 
+    {
+        Dictionary<String, ExperimentVariables> index = new Dictionary<String, ExperimentVariables>();
+        Dictionary<String, ExperimentVariables> indexVariables = new Dictionary<String, ExperimentVariables>();
+
+        foreach (var experiment in data.Experiments)
+        {
+            ExperimentVariables experimentVariables = new ExperimentVariables();
+            experimentVariables.Data = experiment;
+            experimentVariables.Variables = new List<Dictionary<String, Object>>(experiment.Variants.Length);
+
+            foreach (var variant in experiment.Variants)
+            {
+                if (variant.Config != null && !string.IsNullOrWhiteSpace(variant.Config)) 
+                {
+                    Dictionary<String, Object> variables = _variableParser.Parse(this, experiment.Name, variant.Name, variant.Config);
+
+                    foreach (var key in variables.Keys)
+                    {
+                        indexVariables.Add(key, experimentVariables);
+                    }
+
+                    experimentVariables.Variables.Add(variables);
+                } 
+                else 
+                {
+                    experimentVariables.Variables.Add(new Dictionary<string, object>());
+                }                
+            }
+
+            index.Add(experiment.Name, experimentVariables);            
+        }
+
+        try 
+        {
+            _dataLock.EnterWriteLock();
+
+            _index = index;
+            _indexVariables = indexVariables;
+            _data = data;
+
+            SetRefreshTimer();
+        } 
+        finally 
+        {
+            _dataLock.ExitWriteLock();
+        }
+    }
+
+    private void SetDataFailed(Exception exception) 
+    {
+        try 
+        {
+            _dataLock.EnterWriteLock();
+            _index = new Dictionary<String, ExperimentVariables>();
+            _indexVariables = new Dictionary<String, ExperimentVariables>();
+            _data = new ContextData();
+            _failed = true;
+        } 
+        finally 
+        {
+            _dataLock.ExitWriteLock();
+        }
+    }
+
+    #endregion
+
+    #region Log
+
+    private void LogEvent(EventType eventType, Object data) 
+    {
+        if (_eventLogger != null) 
+        {
+            _eventLogger.HandleEvent(this, eventType, data);
+        }
+    }
+
+    private void logError(Exception error) 
+    {
+        if (_eventLogger != null) 
+        {
+            //while (error instanceof CompletionException) 
+            //{
+            //    error = error.getCause();
+            //}
+            //eventLogger_.handleEvent(this, ContextEventLogger.EventType.Error, error);
+            _eventLogger.HandleEvent(this, EventType.Error, error.Message);
+        }
+    }
+
+    #endregion
 
 
     #region IDisposable
