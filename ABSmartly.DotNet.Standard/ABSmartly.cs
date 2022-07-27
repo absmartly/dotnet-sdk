@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using System.Timers;
 using ABSmartly.DotNet.Time;
 using ABSmartly.Json;
 using ABSmartly.Temp;
@@ -16,7 +17,8 @@ public class ABSmartly : IDisposable
     private readonly IVariableParser _variableParser;
 
     private readonly IAudienceDeserializer _audienceDeserializer;
-    private ScheduledExecutorService _scheduler;
+    //private ScheduledExecutorService _scheduler;
+    private IScheduledExecutorService _scheduler;
 
 
     public static ABSmartly Create(ABSmartlyConfig config)
@@ -45,9 +47,9 @@ public class ABSmartly : IDisposable
             _contextEventHandler ??= new DefaultContextEventHandler(_client);
         }
 
-        _variableParser ??= new DefaultVariableParser();
+        _variableParser ??= new DefaultVariableParser(config.LoggerFactory);
 
-        _audienceDeserializer ??= new DefaultAudienceDeserializer();
+        _audienceDeserializer ??= new DefaultAudienceDeserializer(config.LoggerFactory);
 
         _scheduler ??= new ScheduledThreadPoolExecutor(1);
     }
@@ -75,17 +77,17 @@ public class ABSmartly : IDisposable
 
     public void Dispose()
     {
-        if (_client != null)
+        if (_client is not null)
         {
-            _client.Close();
+            //_client.Close();
             _client = null;
         }
 
-        if (_scheduler != null) 
+        if (_scheduler is not null) 
         {
             try
             {
-                _scheduler.AwaitTermination(5000, TimeUnit.MILLISECONDS);
+                //_scheduler.AwaitTermination(5000, TimeUnit.MILLISECONDS);
             }
             catch (Exception ignored)
             {

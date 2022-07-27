@@ -16,7 +16,7 @@ public class ABSmartlyConfig
         IContextEventLogger contextEventLogger = null, 
         IVariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
-        ScheduledExecutorService scheduler = null
+        IScheduledExecutorService scheduler = null
     )
     {
         LoggerFactory = loggerFactory ?? new LoggerFactory();
@@ -27,7 +27,7 @@ public class ABSmartlyConfig
         ContextEventLogger = contextEventLogger ?? new DefaultContextEventLogger();
         VariableParser = variableParser ?? new DefaultVariableParser(loggerFactory);
         AudienceDeserializer = audienceDeserializer ?? new DefaultAudienceDeserializer(loggerFactory);
-        Scheduler = scheduler ?? new ScheduledExecutorService();
+        Scheduler = scheduler ?? new ScheduledThreadPoolExecutor(1);
     }
 
 
@@ -41,7 +41,7 @@ public class ABSmartlyConfig
         IContextEventLogger contextEventLogger = null, 
         IVariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
-        ScheduledExecutorService scheduler = null
+        IScheduledExecutorService scheduler = null
     )
     {
         return new ABSmartlyConfig(httpClientFactory, loggerFactory, client, contextDataProvider, contextEventHandler, contextEventLogger, variableParser, audienceDeserializer, scheduler);
@@ -60,7 +60,7 @@ public class ABSmartlyConfig
 
     public IAudienceDeserializer AudienceDeserializer { get; }
 
-    public ScheduledExecutorService Scheduler { get; }
+    public IScheduledExecutorService Scheduler { get; }
 
 
 }

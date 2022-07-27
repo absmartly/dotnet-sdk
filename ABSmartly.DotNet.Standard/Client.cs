@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
@@ -14,16 +13,18 @@ public class Client : IDisposable
     private string _url;
     //private Dictionary<string, string> _query;
     //private Dictionary<string, string> _headers;
-    private IHttpClientFactory _httpClientFactory;
+
+    private readonly ClientConfig _config;
+    private readonly IHttpClientFactory _httpClientFactory;
+
     private IExecutor _executor;
     private IContextDataDeserializer _deserializer;
     private IContextEventSerializer _serializer;
-    private ClientConfig _config;
+
 
     public Client(ClientConfig config, IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory)
     {
-        if (config is null)
-            throw new ArgumentNullException(nameof(config), "Config is null..");
+        _config = config ?? throw new ArgumentNullException(nameof(config), "Config is null..");
 
         if (string.IsNullOrWhiteSpace(_config.Endpoint))
             throw new ArgumentNullException(nameof(_config.Endpoint), "Missing Endpoint configuration");
@@ -37,12 +38,8 @@ public class Client : IDisposable
         if (string.IsNullOrWhiteSpace(_config.Environment))
             throw new ArgumentNullException(nameof(_config.Environment), "Missing Environment configuration");
 
-        _deserializer = config.DataDeserializer;
-        _deserializer ??= new DefaultContextDataDeserializer();
-
-        _serializer = config.Serializer;
-        _serializer ??= new DefaultContextEventSerializer(loggerFactory);
-        
+        _deserializer = config.DataDeserializer ?? new DefaultContextDataDeserializer();
+        _serializer = config.Serializer ?? new DefaultContextEventSerializer(loggerFactory);
         _executor = config.Executor;
 
 
@@ -50,7 +47,7 @@ public class Client : IDisposable
         _httpClientFactory = httpClientFactory;
     }
 
-    public async Task<ContextData> GetContextData()
+    public async Task<ContextData> GetContextDataAsync()
     {
         try
         {
@@ -72,7 +69,7 @@ public class Client : IDisposable
         }
     }
 
-    public async Task<bool> Publish(PublishEvent publishEvent)
+    public async Task<bool> PublishAsync(PublishEvent publishEvent)
     {
         try
         {
@@ -104,7 +101,7 @@ public class Client : IDisposable
 
     public void Dispose()
     {
-        _httpClient?.Dispose();
+  
     }
 
     #endregion
