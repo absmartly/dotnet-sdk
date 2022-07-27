@@ -1,63 +1,66 @@
-﻿using ABSmartly.Temp;
+﻿using System.Net.Http;
+using ABSmartly.Temp;
+using Microsoft.Extensions.Logging;
 
 namespace ABSmartly;
 
 public class ABSmartlyConfig
 {
-    private readonly IContextDataProvider _contextDataProvider;
-    private readonly IContextEventHandler _contextEventHandler;
-
-    private readonly IContextEventLogger _contextEventLogger;
-    private readonly IVariableParser _variableParser;
-
-    private readonly IAudienceDeserializer _audienceDeserializer;
-    private readonly ScheduledExecutorService _scheduler;
-    private readonly Client _client;
-
     public ABSmartlyConfig(
+        IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory = null,
+        Client client = null,
+
         IContextDataProvider contextDataProvider = null, 
         IContextEventHandler contextEventHandler = null,
         IContextEventLogger contextEventLogger = null, 
         IVariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
-        ScheduledExecutorService scheduler = null,
-        Client client = null
-        )
+        ScheduledExecutorService scheduler = null
+    )
     {
-        _contextDataProvider = contextDataProvider ?? new IContextDataProvider();
-        _contextEventHandler = contextEventHandler ?? new IContextEventHandler();
-        _contextEventLogger = contextEventLogger ?? new IContextEventLogger();
-        _variableParser = variableParser ?? new IVariableParser();
-        _audienceDeserializer = audienceDeserializer ?? new IAudienceDeserializer();
-        _scheduler = scheduler ?? new ScheduledExecutorService();
-        _client = client ?? new Client();
+        LoggerFactory = loggerFactory ?? new LoggerFactory();
+        Client = client ?? new Client(new ClientConfig(), httpClientFactory, loggerFactory);
+
+        ContextDataProvider = contextDataProvider ?? new DefaultContextDataProvider(Client);
+        ContextEventHandler = contextEventHandler ?? new DefaultContextEventHandler(Client);
+        ContextEventLogger = contextEventLogger ?? new DefaultContextEventLogger();
+        VariableParser = variableParser ?? new DefaultVariableParser(loggerFactory);
+        AudienceDeserializer = audienceDeserializer ?? new DefaultAudienceDeserializer(loggerFactory);
+        Scheduler = scheduler ?? new ScheduledExecutorService();
     }
 
 
     public static ABSmartlyConfig Create(
+        IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory = null,
+        Client client = null,
+
         IContextDataProvider contextDataProvider = null, 
         IContextEventHandler contextEventHandler = null,
         IContextEventLogger contextEventLogger = null, 
         IVariableParser variableParser = null, 
         IAudienceDeserializer audienceDeserializer = null,
-        ScheduledExecutorService scheduler = null,
-        Client client = null
-        )
+        ScheduledExecutorService scheduler = null
+    )
     {
-        return new ABSmartlyConfig(contextDataProvider, contextEventHandler, contextEventLogger, variableParser, audienceDeserializer, scheduler, client);
+        return new ABSmartlyConfig(httpClientFactory, loggerFactory, client, contextDataProvider, contextEventHandler, contextEventLogger, variableParser, audienceDeserializer, scheduler);
     }
 
-    // Todo: Tegu: Setters probably not needed
-    // Todo: Tegu: Add public Getters if needed
+    public Client Client { get; }
+    public ILoggerFactory LoggerFactory { get; } 
 
-    public IContextDataProvider ContextDataProvider => _contextDataProvider;
-    public IContextEventHandler ContextEventHandler => _contextEventHandler;
+    public IContextDataProvider ContextDataProvider { get; }
 
-    public IContextEventLogger ContextEventLogger => _contextEventLogger;
-    public IVariableParser VariableParser => _variableParser;
+    public IContextEventHandler ContextEventHandler { get; }
 
-    public IAudienceDeserializer AudienceDeserializer => _audienceDeserializer;
-    public ScheduledExecutorService Scheduler => _scheduler;
-    public Client Client => _client;
+    public IContextEventLogger ContextEventLogger { get; }
+
+    public IVariableParser VariableParser { get; }
+
+    public IAudienceDeserializer AudienceDeserializer { get; }
+
+    public ScheduledExecutorService Scheduler { get; }
+
 
 }

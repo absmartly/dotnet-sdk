@@ -10,9 +10,9 @@ public class DefaultVariableParser : IVariableParser
 
     // Todo: add the com.fasterxml.jackson.databind C# (Jackson.Core?) package???? or use simple JSON
 
-    public DefaultVariableParser(ILogger<DefaultVariableParser> logger)
+    public DefaultVariableParser(ILoggerFactory loggerFactory)
     {
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger<DefaultVariableParser>();
     }
 
     public Dictionary<string, object> Parse(Context context, string experimentName, string variantName, string variableValue)

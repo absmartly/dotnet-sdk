@@ -9,9 +9,9 @@ public class DefaultAudienceDeserializer : IAudienceDeserializer
 {
     private readonly ILogger<DefaultAudienceDeserializer> _logger;
 
-    public DefaultAudienceDeserializer(ILogger<DefaultAudienceDeserializer> logger)
+    public DefaultAudienceDeserializer(ILoggerFactory loggerFactory)
     {
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger<DefaultAudienceDeserializer>();
     }
 
     public Dictionary<string, object> Deserialize(byte[] bytes, int offset, int length)
