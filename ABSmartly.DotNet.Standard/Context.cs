@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Collections.Specialized;
 using System.Threading;
 using System.Threading.Tasks;
-using ABSmartly.DotNet.Nio.Charset;
 using ABSmartly.DotNet.Time;
 using ABSmartly.Internal;
-using ABSmartly.Internal.Hashing;
 using ABSmartly.Json;
 using ABSmartly.Temp;
 using Attribute = ABSmartly.Json.Attribute;
@@ -38,8 +36,7 @@ public class Context : IDisposable
 	private readonly Dictionary<string, VariantAssigner> _assigners;
 	private readonly Dictionary<string, Assignment> _assignmentCache = new();
 
-	//private readonly ReaderWriterLockSlim _eventLock = new ReaderWriterLockSlim();
-    //private readonly Monitor _eventLock;
+    //private readonly Monitor _eventLock; => replaced with Monitor
 	private readonly List<Exposure> _exposures = new List<Exposure>();
 	private readonly List<GoalAchievement> _achievements = new List<GoalAchievement>();
 
@@ -48,7 +45,7 @@ public class Context : IDisposable
 	private readonly Dictionary<string, int> _cassignments;
 
 	// AtomicInteger
-    private readonly int _pendingCount;
+    private int _pendingCount;
 	// AtomicBoolean
     private readonly bool _closing;
     // AtomicBoolean
@@ -84,28 +81,27 @@ public class Context : IDisposable
 		_audienceMatcher = audienceMatcher;
 		_scheduler = scheduler;
 
-		_units = new Dictionary<String, String>();
+		_units = new Dictionary<string, string>();
 
-		Dictionary<String, String> units = config.GetUnits();
+		var units = config.GetUnits();
 		if (units != null) 
         {
 			SetUnits(units);
 		}
 
-		_assigners = new Dictionary<String, VariantAssigner>(_units.Count);
-		_hashedUnits = new Dictionary<String, byte[]>(_units.Count);
+		_assigners = new Dictionary<string, VariantAssigner>(_units.Count);
+		_hashedUnits = new Dictionary<string, byte[]>(_units.Count);
 
-		Dictionary<String, Object> attributes = config.GetAttributes();
+		var attributes = config.GetAttributes();
 		if (attributes != null) {
 			SetAttributes(attributes);
 		}
 
-        Dictionary<String, int> overrides = config.GetOverrides();
-		_overrides = (overrides != null) ? new Dictionary<String, int>(overrides) : new Dictionary<String, int>();
+        var overrides = config.GetOverrides();
+		_overrides = overrides != null ? new Dictionary<string, int>(overrides) : new Dictionary<string, int>();
 
-        Dictionary<String, int> cassignments = config.GetCustomAssignments();
-		_cassignments = (cassignments != null) ? new Dictionary<String, int>(cassignments)
-				: new Dictionary<String, int>();
+        var cassignments = config.GetCustomAssignments();
+		_cassignments = cassignments != null ? new Dictionary<string, int>(cassignments) : new Dictionary<string, int>();
 
 		// Todo: simplify it..
 		//if (dataFuture.IsCompleted) {
@@ -191,11 +187,11 @@ public class Context : IDisposable
     }
 
     public bool IsClosed() {
-        return _closed.Get();
+        return _closed;
     }
 
     public bool IsClosing() {
-        return !_closed.Get() && _closing.Get();
+        return !_closed && _closing;
     }
 
     public Task<Context> WaitUntilReadyAsync() {
@@ -223,7 +219,7 @@ public class Context : IDisposable
     {
         if (_data == null) 
         {
-            Task future = _readyFuture; // cache here to avoid locking
+            var future = _readyFuture; // cache here to avoid locking
             if (future != null && !future.IsCompleted) 
             {
                 //future.join();
@@ -242,9 +238,9 @@ public class Context : IDisposable
         {
             _dataLock.EnterReadLock();
             //dataLock_.readLock().lock();
-            string[] experimentNames = new string[_data.Experiments.Length];
+            var experimentNames = new string[_data.Experiments.Length];
 
-            int index = 0;
+            var index = 0;
 
             foreach (var dataExperiment in _data.Experiments)
             {
@@ -335,13 +331,13 @@ public class Context : IDisposable
         {
             _contextLock.EnterWriteLock();
 
-            string previous = _units[unitType];
-            if ((previous != null) && !previous.Equals(uid))
+            var previous = _units[unitType];
+            if (previous != null && !previous.Equals(uid))
             {
                 throw new Exception(string.Format("Unit '%s' already set.", unitType));
             }
 
-            string trimmed = uid.Trim();
+            var trimmed = uid.Trim();
             if (string.IsNullOrEmpty(trimmed)) 
             {
                 throw new Exception(string.Format("Unit '%s' UID must not be blank.", unitType));
@@ -355,7 +351,7 @@ public class Context : IDisposable
         }
     }
 
-    public void setUnits(Dictionary<string, string> units) 
+    public void SetUnits(Dictionary<string, string> units) 
     {
         foreach (var kvp in units)
         {
@@ -389,20 +385,22 @@ public class Context : IDisposable
     {
         CheckReady(true);
 
-        Assignment assignment = GetAssignment(experimentName);
-        if (!assignment.exposed.get()) 
-        {
+        var assignment = GetAssignment(experimentName);
+        if (!assignment.Exposed) 
             QueueExposure(assignment);
-        }
 
         return assignment.Variant;
     }
 
-    private void QueueExposure(Assignment assignment) 
+    private void QueueExposure(Assignment assignment)
     {
-        if (assignment.Exposed.CompareAndSet(false, true)) 
+        // Todo: review
+        //if (assignment.Exposed.CompareAndSet(false, true)) 
+        if (assignment.Exposed == false) 
         {
-            Exposure exposure = new Exposure
+            assignment.Exposed = true;
+
+            var exposure = new Exposure
             {
                 Id = assignment.Id,
                 Name = assignment.Name,
@@ -419,17 +417,16 @@ public class Context : IDisposable
 
             try 
             {
-                // Todo: add lock
-                //eventLock_.lock();
-                _pendingCount.IncrementAndGet();
+                Monitor.Enter(this);
+                _pendingCount++;
                 _exposures.Add(exposure);
             } 
             finally 
             {
-                //eventLock_.unlock();
+                Monitor.Exit(this);
             }
 
-            LogEvent(ContextEventLogger.EventType.Exposure, exposure);
+            LogEvent(EventType.Exposure, exposure);
 
             SetTimeout();
         }
@@ -439,7 +436,7 @@ public class Context : IDisposable
     {
         CheckReady(true);
 
-        return GetAssignment(experimentName).variant;
+        return GetAssignment(experimentName).Variant;
     }
 
     public Dictionary<string, string> GetVariableKeys() {
@@ -468,12 +465,12 @@ public class Context : IDisposable
     {
         CheckReady(true);
 
-        Assignment assignment = GetVariableAssignment(key);
+        var assignment = GetVariableAssignment(key);
         if (assignment != null) 
         {
             if (assignment.Variables != null) 
             {
-                if (!assignment.Exposed.Get()) 
+                if (!assignment.Exposed) 
                 {
                     QueueExposure(assignment);
                 }
@@ -492,7 +489,7 @@ public class Context : IDisposable
     {
         CheckReady(true);
 
-        Assignment assignment = GetVariableAssignment(key);
+        var assignment = GetVariableAssignment(key);
         if (assignment != null) 
         {
             if (assignment.Variables != null) 
@@ -506,19 +503,19 @@ public class Context : IDisposable
         return defaultValue;
     }
 
-    public void Track(string goalName, Dictionary<String, Object> properties) 
+    public void Track(string goalName, Dictionary<string, object> properties) 
     {
         CheckNotClosed();
 
-        GoalAchievement achievement = new GoalAchievement();
+        var achievement = new GoalAchievement();
         achievement.AchievedAt = _clock.Millis();
         achievement.Name = goalName;
-        achievement.Properties = (properties == null) ? null : new SortedDictionary<String, Object>(properties);
+        achievement.Properties = properties == null ? null : new SortedDictionary<string, object>(properties);
 
         try 
         {
             Monitor.Enter(achievement);
-            _pendingCount.IncrementAndGet();
+            _pendingCount++;
             _achievements.Add(achievement);
         } 
         finally 
@@ -526,7 +523,7 @@ public class Context : IDisposable
             Monitor.Exit(achievement);
         }
 
-        LogEvent(ContextEventLogger.EventType.Goal, achievement);
+        LogEvent(EventType.Goal, achievement);
 
         SetTimeout();
     }
@@ -580,7 +577,7 @@ public class Context : IDisposable
         //    });
         //}
 
-        Task future = _refreshFuture;
+        var future = _refreshFuture;
         if (future != null) {
             return future;
         }
@@ -640,7 +637,7 @@ public class Context : IDisposable
             //    }
             //}
 
-            Task future = _closingFuture;
+            var future = _closingFuture;
             if (future != null) 
             {
                 return future;
@@ -679,13 +676,13 @@ public class Context : IDisposable
                     {
 						if (_exposures.Count > 0) 
                         {
-							exposures = _exposures.ToArray(new Exposure[0]);
+							exposures = _exposures.ToArray();
 							_exposures.Clear();
 						}
 
 						if (_achievements.Count > 0) 
                         {
-							achievements = _achievements.ToArray(new GoalAchievement[0]);
+							achievements = _achievements.ToArray();
 							_achievements.Clear();
 						}
 
@@ -809,7 +806,7 @@ public class Context : IDisposable
             {
 				var custom = _cassignments[experimentName];
 				var overrideppp = _overrides[experimentName];
-				ExperimentVariables experiment = GetExperiment(experimentName);
+				var experiment = GetExperiment(experimentName);
 
 				if (overrideppp != null) 
                 {
@@ -827,7 +824,7 @@ public class Context : IDisposable
 						return assignment;
 					}
 				} 
-                else if ((custom == null) || custom == assignment.Variant) 
+                else if (custom == null || custom == assignment.Variant) 
                 {
 					if (ExperimentMatches(experiment.Data, assignment)) 
                     {
@@ -849,13 +846,15 @@ public class Context : IDisposable
 
             var custom = _cassignments[experimentName];
 			var overrideppp = _overrides[experimentName];
-			ExperimentVariables experiment = GetExperiment(experimentName);
+			var experiment = GetExperiment(experimentName);
 
-			Assignment assignment = new Assignment();
-			assignment.Name = experimentName;
-			assignment.Eligible = true;
+			var assignment = new Assignment
+            {
+                Name = experimentName,
+                Eligible = true
+            };
 
-			if (overrideppp != null) 
+            if (overrideppp != null) 
             {
 				if (experiment != null) 
                 {
@@ -870,11 +869,11 @@ public class Context : IDisposable
             {
 				if (experiment != null) 
                 {
-                    String unitType = experiment.Data.UnitType;
+                    var unitType = experiment.Data.UnitType;
 
 					if (experiment.Data.Audience != null && experiment.Data.Audience.Length > 0) 
                     {
-						var attrs = new Dictionary<String, Object>(_attributes.Count);
+						var attrs = new Dictionary<string, object>(_attributes.Count);
                         foreach (var attribute in _attributes)
                         {
                             attrs.Add(attribute.Name, attribute.Value);
@@ -893,13 +892,13 @@ public class Context : IDisposable
 					} 
                     else if (experiment.Data.FullOnVariant == 0) 
                     {
-						String uid = _units[experiment.Data.UnitType];
+						var uid = _units[experiment.Data.UnitType];
 						if (uid != null) 
                         {
-							byte[] unitHash = GetUnitHash(unitType, uid);
+							var unitHash = GetUnitHash(unitType, uid);
 
-							VariantAssigner assigner = GetVariantAssigner(unitType, unitHash);
-							bool eligible = assigner.assign(experiment.Data.TrafficSplit, experiment.Data.TrafficSeedHi, experiment.Data.TrafficSeedLo) == 1;
+							var assigner = GetVariantAssigner(unitType, unitHash);
+							var eligible = assigner.assign(experiment.Data.TrafficSplit, experiment.Data.TrafficSeedHi, experiment.Data.TrafficSeedLo) == 1;
 							if (eligible) 
                             {
 								if (custom != null) 
@@ -938,10 +937,11 @@ public class Context : IDisposable
 				}
 			}
 
-			if ((experiment != null) && (assignment.Variant < experiment.Data.Variants.Length)) 
+			if (experiment != null && assignment.Variant < experiment.Data.Variants.Length) 
             {
-				assignment.Variables = experiment.Variables.Get(assignment.Variant);
-			}
+                // Todo: resolve.. ??
+				//assignment.Variables = experiment.Variables.Get(assignment.Variant);
+            }
 
 			_assignmentCache.Add(experimentName, assignment);
 
@@ -956,9 +956,9 @@ public class Context : IDisposable
     #endregion
 
 
-    private Assignment GetVariableAssignment(String key) 
+    private Assignment GetVariableAssignment(string key) 
     {
-        ExperimentVariables experiment = GetVariableExperiment(key);
+        var experiment = GetVariableExperiment(key);
 
         if (experiment != null) 
         {
@@ -967,7 +967,7 @@ public class Context : IDisposable
         return null;
     }
 
-    private ExperimentVariables GetExperiment(String experimentName) 
+    private ExperimentVariables GetExperiment(string experimentName) 
     {
         try 
         {
@@ -980,12 +980,12 @@ public class Context : IDisposable
         }
     }
 
-    private ExperimentVariables GetVariableExperiment(String key) 
+    private ExperimentVariables GetVariableExperiment(string key) 
     {
         return Concurrency.GetRW(_dataLock, _indexVariables, key);
     }
 
-    private byte[] GetUnitHash(String unitType, String unitUID)
+    private byte[] GetUnitHash(string unitType, string unitUID)
     {
         return Concurrency.ComputeIfAbsentRW<string, byte[]>(_contextLock, _hashedUnits, unitType,
             // Todo: () =>
@@ -1018,54 +1018,55 @@ public class Context : IDisposable
 
     #region Timeout
 
-    private void SetTimeout() 
+    private void SetTimeout()
     {
-        if (IsReady()) 
+        if (!IsReady()) 
+            return;
+
+
+        if (_timeout != null) 
+            return;
+        
+        try 
         {
+            // Todo: Monitor??
+            _timeoutLock.EnterWriteLock();
+              
             if (_timeout == null) 
             {
-                try 
-                {
-                    // Todo: Monitor??
-                    _timeoutLock.EnterWriteLock();
-              
-                    if (_timeout == null) 
-                    {
-                        //_timeout = _scheduler.Schedule(new Runnable() 
-                        //{
-                        //    @Override
-                        //    public void run() {
-                        //    Context.this.flush();
-                        //}
-                        //}, _publishDelay, TimeUnit.MILLISECONDS);
-                    }
-                } 
-                finally 
-                {
-                    _timeoutLock.ExitWriteLock();
-                }
+                //_timeout = _scheduler.Schedule(new Runnable() 
+                //{
+                //    @Override
+                //    public void run() {
+                //    Context.this.flush();
+                //}
+                //}, _publishDelay, TimeUnit.MILLISECONDS);
             }
+        } 
+        finally 
+        {
+            _timeoutLock.ExitWriteLock();
         }
     }
 
-    private void ClearTimeout() 
+    private void ClearTimeout()
     {
-        if (_timeout != null) 
+        if (_timeout == null) 
+            return;
+        
+        try 
         {
-            try 
+            _timeoutLock.EnterWriteLock();
+            if (_timeout != null) 
             {
-                _timeoutLock.EnterWriteLock();
-                if (_timeout != null) 
-                {
-                    // Todo: Task.Cancel..
-                    _timeout.Cancel(false);
-                    _timeout = null;
-                }
-            } 
-            finally
-            {
-                _timeoutLock.ExitWriteLock();
+                // Todo: Task.Cancel..
+                //_timeout.Cancel(false);
+                _timeout = null;
             }
+        } 
+        finally
+        {
+            _timeoutLock.ExitWriteLock();
         }
     }    
 
@@ -1075,7 +1076,7 @@ public class Context : IDisposable
 
     private void SetRefreshTimer() 
     {
-        if ((_refreshInterval > 0) && (_refreshTimer == null)) 
+        if (_refreshInterval > 0 && _refreshTimer == null) 
         {
             //_refreshTimer = _scheduler.ScheduleWithFixedDelay(
             //    new Runnable() {
@@ -1092,7 +1093,7 @@ public class Context : IDisposable
         if (_refreshTimer != null) 
         {
             // Todo: Task.Cancel
-            _refreshTimer.Cancel(false);
+            //_refreshTimer.Cancel(false);
             _refreshTimer = null;
         }
     }
@@ -1104,20 +1105,20 @@ public class Context : IDisposable
 
     private void SetData(ContextData data) 
     {
-        Dictionary<String, ExperimentVariables> index = new Dictionary<String, ExperimentVariables>();
-        Dictionary<String, ExperimentVariables> indexVariables = new Dictionary<String, ExperimentVariables>();
+        var index = new Dictionary<string, ExperimentVariables>();
+        var indexVariables = new Dictionary<string, ExperimentVariables>();
 
         foreach (var experiment in data.Experiments)
         {
-            ExperimentVariables experimentVariables = new ExperimentVariables();
+            var experimentVariables = new ExperimentVariables();
             experimentVariables.Data = experiment;
-            experimentVariables.Variables = new List<Dictionary<String, Object>>(experiment.Variants.Length);
+            experimentVariables.Variables = new List<Dictionary<string, object>>(experiment.Variants.Length);
 
             foreach (var variant in experiment.Variants)
             {
                 if (variant.Config != null && !string.IsNullOrWhiteSpace(variant.Config)) 
                 {
-                    Dictionary<String, Object> variables = _variableParser.Parse(this, experiment.Name, variant.Name, variant.Config);
+                    var variables = _variableParser.Parse(this, experiment.Name, variant.Name, variant.Config);
 
                     foreach (var key in variables.Keys)
                     {
@@ -1156,8 +1157,8 @@ public class Context : IDisposable
         try 
         {
             _dataLock.EnterWriteLock();
-            _index = new Dictionary<String, ExperimentVariables>();
-            _indexVariables = new Dictionary<String, ExperimentVariables>();
+            _index = new Dictionary<string, ExperimentVariables>();
+            _indexVariables = new Dictionary<string, ExperimentVariables>();
             _data = new ContextData();
             _failed = true;
         } 
@@ -1171,7 +1172,7 @@ public class Context : IDisposable
 
     #region Log
 
-    private void LogEvent(EventType eventType, Object data) 
+    private void LogEvent(EventType eventType, object data) 
     {
         if (_eventLogger != null) 
         {
@@ -1233,6 +1234,7 @@ internal class Assignment
 
     public Dictionary<string, object> Variables = new Dictionary<string, object>();
 
+    public bool Exposed { get; set; }
     //final AtomicBoolean exposed = new AtomicBoolean(false);
 }
 

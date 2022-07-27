@@ -24,6 +24,8 @@ CompletableFuture<> -> Task<>
 AtomicBoolean -* ??
 AtomicInteger -> ??
 
+C# article:
+https://medium.com/@wayneye/atomic-operation-in-c-a40590a4d2a8
 
 
 -------------------- DATE & TIMES --------------------
