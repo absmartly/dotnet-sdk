@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ABSmartly.DotNet.Time;
 using ABSmartly.Internal;
+using ABSmartly.Internal.Hashing;
 using ABSmartly.Json;
 using ABSmartly.Temp;
 using Attribute = ABSmartly.Json.Attribute;
@@ -44,7 +45,7 @@ public class Context : IDisposable
 	private readonly Dictionary<string, int> _cassignments;
 
 	// AtomicInteger
-    private int _pendingCount;
+    public int PendingCount { get; private set; }
 	// AtomicBoolean
     private readonly bool _closing;
     // AtomicBoolean
@@ -174,8 +175,7 @@ public class Context : IDisposable
     #endregion
 
 
-
-
+    #region Status
 
     public bool IsReady() {
         return _data != null;
@@ -192,6 +192,12 @@ public class Context : IDisposable
     public bool IsClosing() {
         return !_closed && _closing;
     }
+
+    #endregion
+
+
+
+
 
     public Task<Context> WaitUntilReadyAsync() {
         if (_data != null) 
@@ -417,7 +423,7 @@ public class Context : IDisposable
             try 
             {
                 Monitor.Enter(this);
-                _pendingCount++;
+                PendingCount++;
                 _exposures.Add(exposure);
             } 
             finally 
@@ -514,7 +520,7 @@ public class Context : IDisposable
         try 
         {
             Monitor.Enter(achievement);
-            _pendingCount++;
+            PendingCount++;
             _achievements.Add(achievement);
         } 
         finally 
@@ -537,11 +543,6 @@ public class Context : IDisposable
     public void Publish() {
         //PublishAsync().join();
         PublishAsync();
-    }
-
-    public int GetPendingCount() 
-    {
-        return _pendingCount;
     }
 
     #region Refresh
@@ -659,7 +660,7 @@ public class Context : IDisposable
 
 		if (!_failed)
         {
-			if (_pendingCount > 0) 
+			if (PendingCount > 0) 
             {
 				Exposure[] exposures = null;
 				GoalAchievement[] achievements = null;
@@ -669,7 +670,7 @@ public class Context : IDisposable
                 {
                     Monitor.Enter(this);
 			
-					eventCount = _pendingCount;
+					eventCount = PendingCount;
 
 					if (eventCount > 0) 
                     {
@@ -685,7 +686,7 @@ public class Context : IDisposable
 							_achievements.Clear();
 						}
 
-						_pendingCount = 0;
+						PendingCount = 0;
 					}
 				} 
                 finally 
@@ -740,7 +741,7 @@ public class Context : IDisposable
 			
 				_exposures.Clear();
 				_achievements.Clear();
-                _pendingCount = 0;
+                PendingCount = 0;
             } 
             finally 
             {
@@ -986,19 +987,7 @@ public class Context : IDisposable
 
     private byte[] GetUnitHash(string unitType, string unitUID)
     {
-        return Concurrency.ComputeIfAbsentRW<string, byte[]>(_contextLock, _hashedUnits, unitType,
-            // Todo: () =>
-            null
-        );
-            //(byte[] a, string b) =>
-            //{
-            //    return Hashing.HashUnit(unitUID.ToCharArray());
-
-            //    //byte[] Apply(String key)
-            //    //{
-            //    //    return Hashing.HashUnit(unitUID.ToCharArray());
-            //    //}
-            //}
+        return Concurrency.ComputeIfAbsentRW(_contextLock, _hashedUnits, unitType, (_ => Hashing.HashUnit(unitUID.ToCharArray())));
     }
 
     private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash) 
