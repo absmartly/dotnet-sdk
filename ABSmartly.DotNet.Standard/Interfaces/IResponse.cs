@@ -1,12 +1,12 @@
 ﻿namespace ABSmartly.Interfaces;
 
-public interface IResponse
-{
-    int GetStatusCode();
+//public interface IResponse
+//{
+//    int GetStatusCode();
 
-    string GetStatusMessage();
+//    string GetStatusMessage();
 
-    string GetContentType();
+//    string GetContentType();
 
-    byte[] GetContent();
-}
+//    byte[] GetContent();
+//}
