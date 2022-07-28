@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace ABSmartly.DefaultServiceImplementations;
 
-internal class DefaultHttpClient : /*IHttpClient,*/ IDisposable
+internal class DefaultHttpClient : IHttpClient, IDisposable
 {
     private IHttpClientFactory _httpClientFactory;
 
@@ -72,26 +72,15 @@ internal class DefaultHttpClient : /*IHttpClient,*/ IDisposable
         }
     }
 
-    public async Task<IResponse> PutAsync(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body)
+    public async Task<T> PutAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body)
     {
         throw new System.NotImplementedException();
     }
 
-    public async Task<IResponse> PostAsync(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body)
+    public async Task<T> PostAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body)
     {
         throw new System.NotImplementedException();
     }
-
-
-
-    //private void BuildRequest(HttpClient httpClient, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body)
-    //{
-    //    HttpClient httpClient;
-    //    httpClient = new HttpClient();
-    //    httpClient.re
-    //}
-
-
 
     #region IDisposable
 
@@ -103,25 +92,3 @@ internal class DefaultHttpClient : /*IHttpClient,*/ IDisposable
     #endregion
 }
 
-//public class DefaultResponse : IResponse
-//{
-//    public int GetStatusCode()
-//    {
-//        throw new System.NotImplementedException();
-//    }
-
-//    public string GetStatusMessage()
-//    {
-//        throw new System.NotImplementedException();
-//    }
-
-//    public string GetContentType()
-//    {
-//        throw new System.NotImplementedException();
-//    }
-
-//    public byte[] GetContent()
-//    {
-//        throw new System.NotImplementedException();
-//    }
-//}

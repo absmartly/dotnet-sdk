@@ -6,8 +6,8 @@ namespace ABSmartly.Interfaces;
 
 public interface IHttpClient : IDisposable
 {
-    Task<IResponse> GetAsync(string url, Dictionary<string, string> query, Dictionary<string, string> headers);
-    Task<IResponse> PutAsync(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body);
-    Task<IResponse> PostAsync(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body);
+    Task<T> GetAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers);
+    Task<T> PutAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body);
+    Task<T> PostAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body);
 
 }
