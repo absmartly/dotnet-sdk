@@ -3,7 +3,6 @@ using ABSmartly.Interfaces;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -11,7 +10,7 @@ namespace ABSmartly.DefaultServiceImplementations;
 
 internal class DefaultHttpClient : IHttpClient, IDisposable
 {
-    private IHttpClientFactory _httpClientFactory;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     #region Lifecycle
 
@@ -31,13 +30,11 @@ internal class DefaultHttpClient : IHttpClient, IDisposable
 
     // Todo: Comment: I usually use a 'Result' object for return value, now I made it generic, so returns the expected data directly
 
-
-
     public async Task<T> GetAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers)
     {
         var httpClient = _httpClientFactory.CreateClient();
 
-        var queryurlstring = "";
+        var requestQueryString = "";
 
         try
         {
@@ -47,7 +44,7 @@ internal class DefaultHttpClient : IHttpClient, IDisposable
                 var dictFormUrlEncoded = new FormUrlEncodedContent(query);
                 var queryString = await dictFormUrlEncoded.ReadAsStringAsync();
                 if (!string.IsNullOrWhiteSpace(queryString))
-                    queryurlstring = $"?{queryString}";
+                    requestQueryString = $"?{queryString}";
             }
 
             if (headers is not null)
@@ -57,7 +54,7 @@ internal class DefaultHttpClient : IHttpClient, IDisposable
             }
 
             // Step 2: Send the request
-            var responseMessage = await httpClient.GetAsync($"{url}{queryurlstring}");
+            var responseMessage = await httpClient.GetAsync($"{url}{requestQueryString}");
             responseMessage.EnsureSuccessStatusCode();
 
             var content = await responseMessage.Content.ReadAsStringAsync();
@@ -74,20 +71,92 @@ internal class DefaultHttpClient : IHttpClient, IDisposable
 
     public async Task<T> PutAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body)
     {
-        throw new System.NotImplementedException();
+        var httpClient = _httpClientFactory.CreateClient();
+
+        var requestQueryString = "";
+
+        try
+        {
+            // Step 1: Buiild the request
+            if (query is not null)
+            {
+                var dictFormUrlEncoded = new FormUrlEncodedContent(query);
+                var queryString = await dictFormUrlEncoded.ReadAsStringAsync();
+                if (!string.IsNullOrWhiteSpace(queryString))
+                    requestQueryString = $"?{queryString}";
+            }
+
+            if (headers is not null)
+            {
+                foreach (var kvp in headers)
+                    httpClient.DefaultRequestHeaders.Add(kvp.Key, kvp.Value);
+            }
+
+            HttpContent requestContent = new ByteArrayContent(body);
+
+            // Step 2: Send the request
+            var responseMessage = await httpClient.PutAsync($"{url}{requestQueryString}", requestContent);
+            responseMessage.EnsureSuccessStatusCode();
+
+            var content = await responseMessage.Content.ReadAsStringAsync();
+            var data = JsonSerializer.Deserialize<T>(content);
+
+            return data;
+        }
+        catch (Exception e)
+        {
+            Debug.WriteLine(e);
+            return default;
+        }
     }
 
     public async Task<T> PostAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body)
     {
-        throw new System.NotImplementedException();
+        var httpClient = _httpClientFactory.CreateClient();
+
+        var requestQueryString = "";
+
+        try
+        {
+            // Step 1: Buiild the request
+            if (query is not null)
+            {
+                var dictFormUrlEncoded = new FormUrlEncodedContent(query);
+                var queryString = await dictFormUrlEncoded.ReadAsStringAsync();
+                if (!string.IsNullOrWhiteSpace(queryString))
+                    requestQueryString = $"?{queryString}";
+            }
+
+            if (headers is not null)
+            {
+                foreach (var kvp in headers)
+                    httpClient.DefaultRequestHeaders.Add(kvp.Key, kvp.Value);
+            }
+
+            HttpContent requestContent = new ByteArrayContent(body);
+
+            // Step 2: Send the request
+            var responseMessage = await httpClient.PostAsync($"{url}{requestQueryString}", requestContent);
+            responseMessage.EnsureSuccessStatusCode();
+
+            var content = await responseMessage.Content.ReadAsStringAsync();
+            var data = JsonSerializer.Deserialize<T>(content);
+
+            return data;
+        }
+        catch (Exception e)
+        {
+            Debug.WriteLine(e);
+            return default;
+        }
     }
 
     #region IDisposable
 
     public void Dispose()
     {
-        throw new System.NotImplementedException();
-    }    
+
+    }   
 
     #endregion
 }
