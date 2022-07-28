@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace ABSmartly;
+namespace ABSmartly.Interfaces;
 
 public interface IVariableParser
 {

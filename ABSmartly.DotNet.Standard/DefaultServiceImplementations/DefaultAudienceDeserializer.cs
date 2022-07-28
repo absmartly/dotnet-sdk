@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using ABSmartly.Interfaces;
 using Microsoft.Extensions.Logging;
 
-namespace ABSmartly;
+namespace ABSmartly.DefaultServiceImplementations;
 
 public class DefaultAudienceDeserializer : IAudienceDeserializer
 {

@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using ABSmartly.Interfaces;
 using Microsoft.Extensions.Logging;
 
-namespace ABSmartly;
+namespace ABSmartly.DefaultServiceImplementations;
 
 public class DefaultVariableParser : IVariableParser
 {

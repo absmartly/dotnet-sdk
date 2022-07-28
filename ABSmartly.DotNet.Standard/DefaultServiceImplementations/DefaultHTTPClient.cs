@@ -1,7 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using ABSmartly.Interfaces;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace ABSmartly;
+namespace ABSmartly.DefaultServiceImplementations;
 
 public class DefaultHTTPClient : IHTTPClient
 {

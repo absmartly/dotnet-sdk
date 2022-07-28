@@ -1,4 +1,7 @@
-﻿namespace ABSmartly;
+﻿using ABSmartly.Definitions;
+using ABSmartly.Interfaces;
+
+namespace ABSmartly.DefaultServiceImplementations;
 
 public class DefaultContextEventLogger : IContextEventLogger
 {

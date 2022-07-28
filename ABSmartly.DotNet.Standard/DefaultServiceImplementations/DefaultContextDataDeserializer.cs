@@ -1,6 +1,7 @@
-﻿using ABSmartly.Json;
+﻿using ABSmartly.Interfaces;
+using ABSmartly.Json;
 
-namespace ABSmartly;
+namespace ABSmartly.DefaultServiceImplementations;
 
 public class DefaultContextDataDeserializer : IContextDataDeserializer
 {

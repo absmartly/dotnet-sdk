@@ -1,6 +1,6 @@
 ﻿using ABSmartly.Temp;
 
-namespace ABSmartly;
+namespace ABSmartly.DefaultServiceImplementations;
 
 public class DefaultHTTPClientConfig
 {
@@ -25,67 +25,67 @@ public class DefaultHTTPClientConfig
         return new DefaultHTTPClientConfig();
     }
 
-    public Provider GetSecurityProvider() 
+    public Provider GetSecurityProvider()
     {
         return _securityProvider;
     }
 
-    public DefaultHTTPClientConfig SetSecurityProvider(Provider securityProvider) 
+    public DefaultHTTPClientConfig SetSecurityProvider(Provider securityProvider)
     {
         _securityProvider = securityProvider;
         return this;
     }
 
-    public long GetConnectTimeout() 
+    public long GetConnectTimeout()
     {
         return _connectTimeout;
     }
 
-    public DefaultHTTPClientConfig SetConnectTimeout(long connectTimeoutMs) 
+    public DefaultHTTPClientConfig SetConnectTimeout(long connectTimeoutMs)
     {
         _connectTimeout = connectTimeoutMs;
         return this;
     }
 
-    public long GetConnectionKeepAlive() 
+    public long GetConnectionKeepAlive()
     {
         return _connectionKeepAlive;
     }
 
-    public DefaultHTTPClientConfig SetConnectionKeepAlive(long connectionKeepAliveMs) 
+    public DefaultHTTPClientConfig SetConnectionKeepAlive(long connectionKeepAliveMs)
     {
         _connectionKeepAlive = connectionKeepAliveMs;
         return this;
     }
 
-    public long GetConnectionRequestTimeout() 
+    public long GetConnectionRequestTimeout()
     {
         return _connectionRequestTimeout;
     }
 
-    public DefaultHTTPClientConfig SetConnectionRequestTimeout(long connectionRequestTimeoutMs) 
+    public DefaultHTTPClientConfig SetConnectionRequestTimeout(long connectionRequestTimeoutMs)
     {
         _connectionRequestTimeout = connectionRequestTimeoutMs;
         return this;
     }
 
-    public int GetMaxRetries() 
+    public int GetMaxRetries()
     {
         return _maxRetries;
     }
 
-    public DefaultHTTPClientConfig SetMaxRetries(int maxRetries) 
+    public DefaultHTTPClientConfig SetMaxRetries(int maxRetries)
     {
         _maxRetries = maxRetries;
         return this;
     }
 
-    public long GetRetryInterval() 
+    public long GetRetryInterval()
     {
         return _retryInterval;
     }
 
-    public DefaultHTTPClientConfig SetRetryInterval(long retryIntervalMs) 
+    public DefaultHTTPClientConfig SetRetryInterval(long retryIntervalMs)
     {
         _retryInterval = retryIntervalMs;
         return this;

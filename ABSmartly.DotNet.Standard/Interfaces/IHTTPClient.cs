@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace ABSmartly;
+namespace ABSmartly.Interfaces;
 
 public interface IHTTPClient : IDisposable
 {

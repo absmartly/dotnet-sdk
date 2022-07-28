@@ -1,7 +1,8 @@
 ﻿using System.Threading.Tasks;
+using ABSmartly.Interfaces;
 using ABSmartly.Json;
 
-namespace ABSmartly;
+namespace ABSmartly.DefaultServiceImplementations;
 
 public class DefaultContextEventHandler : IContextEventHandler
 {

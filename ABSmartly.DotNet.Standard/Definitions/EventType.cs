@@ -1,4 +1,4 @@
-﻿namespace ABSmartly;
+﻿namespace ABSmartly.Definitions;
 
 public enum EventType
 {

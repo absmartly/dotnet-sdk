@@ -1,4 +1,4 @@
-﻿namespace ABSmartly;
+﻿namespace ABSmartly.Interfaces;
 
 public interface IResponse
 {
