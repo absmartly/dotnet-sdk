@@ -992,16 +992,7 @@ public class Context : IDisposable
 
     private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash) 
     {
-        return Concurrency.ComputeIfAbsentRW(_contextLock, _assigners, unitType,
-            null
-            // Todo: () =>
-        //    new Function<String, VariantAssigner>() {
-        //        @Override
-        //        public VariantAssigner apply(String key) {
-        //        return new VariantAssigner(unitHash);
-        //    }
-        //}
-            );
+        return Concurrency.ComputeIfAbsentRW(_contextLock, _assigners, unitType, (_ => new VariantAssigner(unitHash)));
     }
 
     #region Timeout
@@ -1010,7 +1001,6 @@ public class Context : IDisposable
     {
         if (!IsReady()) 
             return;
-
 
         if (_timeout != null) 
             return;
@@ -1022,6 +1012,7 @@ public class Context : IDisposable
               
             if (_timeout == null) 
             {
+                //_scheduler
                 //_timeout = _scheduler.Schedule(new Runnable() 
                 //{
                 //    @Override
@@ -1098,9 +1089,11 @@ public class Context : IDisposable
 
         foreach (var experiment in data.Experiments)
         {
-            var experimentVariables = new ExperimentVariables();
-            experimentVariables.Data = experiment;
-            experimentVariables.Variables = new List<Dictionary<string, object>>(experiment.Variants.Length);
+            var experimentVariables = new ExperimentVariables
+            {
+                Data = experiment,
+                Variables = new List<Dictionary<string, object>>(experiment.Variants.Length)
+            };
 
             foreach (var variant in experiment.Variants)
             {
@@ -1168,7 +1161,7 @@ public class Context : IDisposable
         }
     }
 
-    private void logError(Exception error) 
+    private void LogError(Exception error) 
     {
         if (_eventLogger != null) 
         {
@@ -1176,7 +1169,6 @@ public class Context : IDisposable
             //{
             //    error = error.getCause();
             //}
-            //eventLogger_.handleEvent(this, ContextEventLogger.EventType.Error, error);
             _eventLogger.HandleEvent(this, EventType.Error, error.Message);
         }
     }
@@ -1200,34 +1192,4 @@ public class Context : IDisposable
     }
 
     #endregion
-}
-
-
-internal class Assignment 
-{
-    public int Id { get; set; }
-    public int Iteration { get; set; }
-    public int FullOnVariant { get; set; }
-    public string Name { get; set; }
-    public string UnitType { get; set; }
-    public double[] TrafficSplit { get; set; }
-    public int Variant { get; set; }
-    public bool Assigned { get; set; }
-    public bool Overridden { get; set; }
-    public bool Eligible { get; set; }
-    public bool FullOn { get; set; }
-    public bool Custom { get; set; }
-
-    public bool AudienceMismatch { get; set; }
-
-    public Dictionary<string, object> Variables = new Dictionary<string, object>();
-
-    public bool Exposed { get; set; }
-    //final AtomicBoolean exposed = new AtomicBoolean(false);
-}
-
-internal class ExperimentVariables 
-{
-    public Experiment Data { get; set; }
-    public List<Dictionary<string, object>> Variables { get; set; }
 }
