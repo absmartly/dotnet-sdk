@@ -1,38 +1,49 @@
 ﻿using ABSmartly.Interfaces;
 using System.Collections.Generic;
+using ABSmartly.DefaultServiceImplementations;
 
 namespace ABSmartly;
 
 public class ContextConfig
 {
-    private Dictionary<string, string> _units;
-    private Dictionary<string, object> _attributes;
-    private Dictionary<string, int> _overrides;
-    private Dictionary<string, int> _cassigmnents;
-
-    private IContextEventLogger _eventLogger;
+    private readonly Dictionary<string, string> _units;
+    private readonly Dictionary<string, object> _attributes;
+    private readonly Dictionary<string, int> _overrides;
+    private readonly Dictionary<string, int> _customAssigmnents;
 
     private long _publishDelay;
     private long _refreshInterval;
 
-    public ContextConfig()
+    public IContextEventLogger EventLogger { get; }
+
+    #region Lifecycle
+
+    public ContextConfig(IContextEventLogger contextEventLogger = null)
     {
+        _units = new Dictionary<string, string>();
+        _attributes = new Dictionary<string, object>();
+        _overrides = new Dictionary<string, int>();
+        _customAssigmnents = new Dictionary<string, int>();
+
         _publishDelay = 100;
         _refreshInterval = 0;
+
+        EventLogger = contextEventLogger ?? new DefaultContextEventLogger();
     }
 
-    public static ContextConfig Create()
+    public static ContextConfig Create(IContextEventLogger contextEventLogger = null)
     {
-        return new ContextConfig();
+        return new ContextConfig(contextEventLogger);
     }
 
+    #endregion
 
+
+    #region Units
 
     public ContextConfig SetUnit(string unitType, string uid) 
     {
-		_units ??= new Dictionary<string, string>();
-
-		_units.Add(unitType, uid);
+        _units.Add(unitType, uid);
 		return this;
 	}
 
@@ -46,68 +57,61 @@ public class ContextConfig
 		return this;
 	}
 
-	public string GetUnit(string unitType) 
+	public string GetUnit(string unitType)
     {
-		if (_units.ContainsKey(unitType))
-			return _units[unitType];
-
-        return string.Empty;
-    }
+        return _units.ContainsKey(unitType) ? _units[unitType] : string.Empty;
+    }    
 
 	public Dictionary<string, string> GetUnits() 
     {
 		return _units;
 	}
 
+    #endregion
+
+    #region Attributes
+
 	public ContextConfig SetAttribute(string name, object value) 
     {
-		_attributes ??= new Dictionary<string, object>();
-		_attributes.Add(name, value);
+        _attributes.Add(name, value);
 		return this;
 	}
 
 	public ContextConfig SetAttributes(Dictionary<string, object> attributes) 
     {
-		_attributes ??= new Dictionary<string, object>( /*attributes.Count()*/);
-
         foreach (var kvp in attributes)
-        {
             _attributes.Add(kvp.Key, kvp.Value);
-        }
+        
 
 		return this;
 	}
 
-	public object GetAttribute(string name) 
+	public object GetAttribute(string name)
     {
-		if (_attributes.ContainsKey(name))
-			return _attributes[name];
-
-        return null;
+        return _attributes.ContainsKey(name) ? _attributes[name] : null;
     }
 
 	public Dictionary<string, object> GetAttributes() 
     {
 		return _attributes;
-	}
+	}    
+
+    #endregion
+
+    #region Overrides
 
 	public ContextConfig SetOverride(string experimentName, int variant) 
     {
-		_overrides ??= new Dictionary<string, int>();
-		_overrides.Add(experimentName, variant);
+        _overrides.Add(experimentName, variant);
 		return this;
 	}
 
 	public ContextConfig SetOverrides(Dictionary<string, int> overrides) 
     {
-		_overrides ??= new Dictionary<string, int>( /*overrides.size()*/);
-
         foreach (var kvp in overrides)
-        {
             _overrides.Add(kvp.Key, kvp.Value);
-        }
 
-		return this;
+        return this;
 	}
 
 	public object GetOverride(string experimentName)
@@ -121,54 +125,43 @@ public class ContextConfig
 	public Dictionary<string, int> GetOverrides() 
     {
 		return _overrides;
-	}
+	}    
+
+    #endregion
+
+    #region CustomAssignments
 
 	public ContextConfig SetCustomAssignment(string experimentName, int variant) 
     {
-		_cassigmnents ??= new Dictionary<string, int>();
-		_cassigmnents.Add(experimentName, variant);
+        _customAssigmnents.Add(experimentName, variant);
 		return this;
 	}
 
 	public ContextConfig SetCustomAssignments(Dictionary<string, int> customAssignments) 
     {
-		_cassigmnents ??= new Dictionary<string, int>( /*customAssignments.size()*/);
-
         foreach (var kvp in customAssignments)
-        {
-            _cassigmnents.Add(kvp.Key, kvp.Value);
-        }
+            _customAssigmnents.Add(kvp.Key, kvp.Value);
 
-		return this;
+        return this;
 	}
 
 	public object GetCustomAssignment(string experimentName)
     {
-        if (_cassigmnents.ContainsKey(experimentName))
-            return _cassigmnents[experimentName];
-
-        return null;
+        return _customAssigmnents.ContainsKey(experimentName) ? _customAssigmnents[experimentName] : null;
     }
 
 	public Dictionary<string, int> GetCustomAssignments() 
     {
-		return _cassigmnents;
-	}
+		return _customAssigmnents;
+	}    
 
-	public IContextEventLogger GetEventLogger() 
-    {
-		return _eventLogger;
-	}
+    #endregion
 
-	public ContextConfig SetEventLogger(IContextEventLogger eventLogger) 
-    {
-		_eventLogger = eventLogger;
-		return this;
-	}
+    #region PublishDelay
 
-	public ContextConfig SetPublishDelay(long delayMs) 
+	public ContextConfig SetPublishDelay(long delay) 
     {
-		_publishDelay = delayMs;
+		_publishDelay = delay;
 		return this;
 	}
 
@@ -177,14 +170,20 @@ public class ContextConfig
 		return _publishDelay;
 	}
 
-	public ContextConfig SetRefreshInterval(long intervalMs) 
+    #endregion
+
+    #region RefreshInterval
+
+	public ContextConfig SetRefreshInterval(long interval) 
     {
-		_refreshInterval = intervalMs;
+		_refreshInterval = interval;
 		return this;
 	}
 
 	public long GetRefreshInterval() 
     {
 		return _refreshInterval;
-	}
+	}    
+
+    #endregion
 }
