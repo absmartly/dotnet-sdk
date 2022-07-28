@@ -4,19 +4,23 @@ using System.Threading.Tasks;
 
 namespace ABSmartly.DefaultServiceImplementations;
 
-public class DefaultHTTPClient : IHTTPClient
+internal class DefaultHttpClient : IHttpClient
 {
-    public static DefaultHTTPClient Create(DefaultHTTPClientConfig config)
+    #region Lifecycle
+
+    
+
+    #endregion
+
+    public DefaultHttpClient(DefaultHttpClientConfig config)
     {
-        return new DefaultHTTPClient(config);
+
     }
 
-    public DefaultHTTPClient(DefaultHTTPClientConfig config)
+    public static DefaultHttpClient Create(DefaultHttpClientConfig config)
     {
-
+        return new DefaultHttpClient(config);
     }
-
-
 
 
     public async Task<IResponse> GetAsync(string url, Dictionary<string, string> query, Dictionary<string, string> headers)

@@ -2,92 +2,98 @@
 
 namespace ABSmartly.DefaultServiceImplementations;
 
-public class DefaultHTTPClientConfig
+internal class DefaultHttpClientConfig
 {
-    private Provider _securityProvider;
-    private long _connectTimeout;
-    private long _connectionKeepAlive;
-    private long _connectionRequestTimeout;
-    private long _retryInterval;
-    private int _maxRetries;
+    #region Lifecycle
 
-    public DefaultHTTPClientConfig()
+    public DefaultHttpClientConfig()
     {
-        _connectTimeout = 3000;
-        _connectionKeepAlive = 30000;
-        _connectionRequestTimeout = 1000;
-        _retryInterval = 333;
-        _maxRetries = 5;
+        // Default values
+        ConnectTimeout = 3000;
+        ConnectionKeepAlive = 30000;
+        ConnectionRequestTimeout = 1000;
+        RetryInterval = 333;
+        MaxRetries = 5;
     }
 
-    public static DefaultHTTPClientConfig Create()
+    public static DefaultHttpClientConfig Create()
     {
-        return new DefaultHTTPClientConfig();
-    }
+        return new DefaultHttpClientConfig();
+    }    
 
-    public Provider GetSecurityProvider()
-    {
-        return _securityProvider;
-    }
+    #endregion
 
-    public DefaultHTTPClientConfig SetSecurityProvider(Provider securityProvider)
-    {
-        _securityProvider = securityProvider;
-        return this;
-    }
+    internal Provider SecurityProvider { get; set; }
+    internal long ConnectTimeout { get; set; }
+    internal long ConnectionKeepAlive { get; set; }
+    internal long ConnectionRequestTimeout { get; set; }
+    internal long RetryInterval { get; set; }
+    internal int MaxRetries { get; set; }
 
-    public long GetConnectTimeout()
-    {
-        return _connectTimeout;
-    }
 
-    public DefaultHTTPClientConfig SetConnectTimeout(long connectTimeoutMs)
-    {
-        _connectTimeout = connectTimeoutMs;
-        return this;
-    }
+    //public Provider GetSecurityProvider()
+    //{
+    //    return _securityProvider;
+    //}
 
-    public long GetConnectionKeepAlive()
-    {
-        return _connectionKeepAlive;
-    }
+    //public DefaultHttpClientConfig SetSecurityProvider(Provider securityProvider)
+    //{
+    //    _securityProvider = securityProvider;
+    //    return this;
+    //}
 
-    public DefaultHTTPClientConfig SetConnectionKeepAlive(long connectionKeepAliveMs)
-    {
-        _connectionKeepAlive = connectionKeepAliveMs;
-        return this;
-    }
+    //public long GetConnectTimeout()
+    //{
+    //    return _connectTimeout;
+    //}
 
-    public long GetConnectionRequestTimeout()
-    {
-        return _connectionRequestTimeout;
-    }
+    //public DefaultHttpClientConfig SetConnectTimeout(long connectTimeoutMs)
+    //{
+    //    _connectTimeout = connectTimeoutMs;
+    //    return this;
+    //}
 
-    public DefaultHTTPClientConfig SetConnectionRequestTimeout(long connectionRequestTimeoutMs)
-    {
-        _connectionRequestTimeout = connectionRequestTimeoutMs;
-        return this;
-    }
+    //public long GetConnectionKeepAlive()
+    //{
+    //    return _connectionKeepAlive;
+    //}
 
-    public int GetMaxRetries()
-    {
-        return _maxRetries;
-    }
+    //public DefaultHttpClientConfig SetConnectionKeepAlive(long connectionKeepAliveMs)
+    //{
+    //    _connectionKeepAlive = connectionKeepAliveMs;
+    //    return this;
+    //}
 
-    public DefaultHTTPClientConfig SetMaxRetries(int maxRetries)
-    {
-        _maxRetries = maxRetries;
-        return this;
-    }
+    //public long GetConnectionRequestTimeout()
+    //{
+    //    return _connectionRequestTimeout;
+    //}
 
-    public long GetRetryInterval()
-    {
-        return _retryInterval;
-    }
+    //public DefaultHttpClientConfig SetConnectionRequestTimeout(long connectionRequestTimeoutMs)
+    //{
+    //    _connectionRequestTimeout = connectionRequestTimeoutMs;
+    //    return this;
+    //}
 
-    public DefaultHTTPClientConfig SetRetryInterval(long retryIntervalMs)
-    {
-        _retryInterval = retryIntervalMs;
-        return this;
-    }
+    //public int GetMaxRetries()
+    //{
+    //    return _maxRetries;
+    //}
+
+    //public DefaultHttpClientConfig SetMaxRetries(int maxRetries)
+    //{
+    //    _maxRetries = maxRetries;
+    //    return this;
+    //}
+
+    //public long GetRetryInterval()
+    //{
+    //    return _retryInterval;
+    //}
+
+    //public DefaultHttpClientConfig SetRetryInterval(long retryIntervalMs)
+    //{
+    //    _retryInterval = retryIntervalMs;
+    //    return this;
+    //}
 }
