@@ -166,7 +166,7 @@ public class Context : IDisposable
                                  Task<ContextData> dataFuture, 
                                  IContextDataProvider dataProvider,
                                  IContextEventHandler eventHandler, 
-                                 IContextEventLogger? eventLogger,
+                                 IContextEventLogger eventLogger,
                                  IVariableParser variableParser, 
                                  AudienceMatcher audienceMatcher) 
     {

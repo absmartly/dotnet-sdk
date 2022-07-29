@@ -74,7 +74,7 @@ public class ABSmartly : IDisposable
 
     #region IDisposable
 
-    public void Dispose()
+    public void Close()
     {
         if (_client is not null)
         {
@@ -95,6 +95,11 @@ public class ABSmartly : IDisposable
 
             _scheduler = null;
         }
+    }
+
+    public void Dispose()
+    {
+        Close();
     }
 
     #endregion

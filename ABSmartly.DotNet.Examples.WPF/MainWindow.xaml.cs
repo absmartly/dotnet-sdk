@@ -15,6 +15,8 @@ namespace WPF
         public MainWindow()
         {
             InitializeComponent();
+
+            InitializeABSmartly();
         }
 
         private ABSmartly.ABSmartly sdk;
