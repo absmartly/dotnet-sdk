@@ -5,7 +5,9 @@ VisualStudioVersion = 17.2.32630.192
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ABSmartly.DotNet.Standard", "ABSmartly.DotNet.Standard\ABSmartly.DotNet.Standard.csproj", "{6F864363-8E21-4DC1-92E6-B77BFDA38BC7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ABSmartly.DotNet.Standard.UnitTests", "ABSmartly.DotNet.Standard.UnitTests\ABSmartly.DotNet.Standard.UnitTests.csproj", "{66416968-0301-4511-8DE1-7CCC299E853D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ABSmartly.DotNet.Standard.UnitTests", "ABSmartly.DotNet.Standard.UnitTests\ABSmartly.DotNet.Standard.UnitTests.csproj", "{66416968-0301-4511-8DE1-7CCC299E853D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ABSmartly.DotNet.Examples.WPF", "ABSmartly.DotNet.Examples.WPF\ABSmartly.DotNet.Examples.WPF.csproj", "{830D5EF2-9D4D-4387-A937-D6CC5712EAAD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{66416968-0301-4511-8DE1-7CCC299E853D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{66416968-0301-4511-8DE1-7CCC299E853D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{66416968-0301-4511-8DE1-7CCC299E853D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{830D5EF2-9D4D-4387-A937-D6CC5712EAAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{830D5EF2-9D4D-4387-A937-D6CC5712EAAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{830D5EF2-9D4D-4387-A937-D6CC5712EAAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{830D5EF2-9D4D-4387-A937-D6CC5712EAAD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
