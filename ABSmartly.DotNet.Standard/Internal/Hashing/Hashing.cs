@@ -1,17 +1,11 @@
-﻿using System;
-using System.Threading;
+﻿using System.Threading;
+using ABSmartly.Utils.Extensions;
 
 namespace ABSmartly.Internal.Hashing;
 
-public abstract class Hashing
+public class Hashing
 {
-    protected Hashing()
-    {
-        
-    }
-    // Todo: ???
-    private static readonly Func<byte[]> valueFactory = () => new byte[512];
-    private static ThreadLocal<byte[]> threadBuffer = new(() => valueFactory());
+    private static readonly ThreadLocal<byte[]> threadBuffer = new(() => new byte[512]);
 
     public static byte[] HashUnit(char[] unit)
     {
@@ -21,10 +15,9 @@ public abstract class Hashing
         var buffer = threadBuffer.Value;
         if (buffer.Length < bufferLength)
         {
-            //var bit = 32 - Integer.numberOfLeadingZeros(bufferLen - 1);
-            //buffer = new byte[1 << bit];
-            ////threadBuffer.set(buffer);
-            //threadBuffer.Value = buffer;
+            var bit = 32 - (bufferLength - 1).GetNumberOfLeadingZeros();
+            buffer = new byte[1 << bit];
+            threadBuffer.Value = buffer;
         }
 
         var encoded = Buffers.EncodeUTF8(buffer, 0, unit);
