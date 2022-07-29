@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Internal\Hashing\" />
+    <Folder Include="Internal\HashingTests\" />
   </ItemGroup>
 
 </Project>

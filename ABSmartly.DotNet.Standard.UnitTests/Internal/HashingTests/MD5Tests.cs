@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace ABSmartly.DotNet.Standard.UnitTests.Internal.Hashing;
+namespace ABSmartly.DotNet.Standard.UnitTests.Internal.HashingTests;
 
 [TestFixture]
 public class MD5Tests
