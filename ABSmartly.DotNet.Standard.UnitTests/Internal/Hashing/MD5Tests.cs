@@ -1,5 +1,4 @@
 ﻿using System.Text;
-using ABSmartly.Internal.Hashing;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.Internal.Hashing;
 
@@ -28,10 +27,6 @@ public class MD5Tests
         var actualBytes = Encoding.UTF8.GetBytes(actualString);
         var resultBytes = MD5.DigestBase64UrlNoPadding(actualBytes, 0, actualBytes.Length);
         Assert.That(resultBytes, Is.EqualTo(expectedBytes));
-
-        var offsetBytes = Encoding.UTF8.GetBytes("123" + actualString + "321");
-        var offsetResultBytes = MD5.DigestBase64UrlNoPadding(offsetBytes, "123".Length, offsetBytes.Length - "123321".Length);
-        Assert.That(expectedBytes, Is.EqualTo(offsetResultBytes));
     }
 
     [TestCase("", "1B2M2Y8AsgTpgAmY7PhCfg")]
