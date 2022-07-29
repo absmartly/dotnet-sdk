@@ -20,4 +20,8 @@
     <ProjectReference Include="..\ABSmartly.DotNet.Standard\ABSmartly.DotNet.Standard.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Internal\Hashing\" />
+  </ItemGroup>
+
 </Project>

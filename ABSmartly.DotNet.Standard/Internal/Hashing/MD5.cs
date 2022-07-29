@@ -6,79 +6,86 @@ namespace ABSmartly.Internal.Hashing;
 
 public class MD5
 {
-    public static byte[] DigestBase64UrlNoPadding(byte[] key, int offset, int len) {
-        int[] state = md5state(key, offset, len);
+    public static byte[] DigestBase64UrlNoPadding(byte[] key, int offset, int len) 
+    {
+        var state = md5state(key, offset, len);
 
-        int a = state[0];
-        int b = state[1];
-        int c = state[2];
-        int d = state[3];
+        var a = state[0];
+        var b = state[1];
+        var c = state[2];
+        var d = state[3];
 
-        byte[] result = new byte[22];
+        var result = new byte[22];
 
-        int t = a;
-        result[0] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
-        result[1] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
-        result[2] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
-        result[3] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
+        var t = a;
+        result[0] = Base64URLNoPaddingChars[(int)((uint)t >> 2) & 63];
+        result[1] = Base64URLNoPaddingChars[((t & 3) << 4) | ((int)((uint)t >> 12) & 15)];
+        result[2] = Base64URLNoPaddingChars[(((int)((uint)t >> 8) & 15) << 2) | ((int)((uint)t >> 22) & 3)];
+        result[3] = Base64URLNoPaddingChars[(int)((uint)t >> 16) & 63];
 
-        t = ((int)((uint)a >> 24)) | (b << 8);
-        result[4] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
-        result[5] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
-        result[6] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
-        result[7] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
+        t = (int)((uint)a >> 24) | (b << 8);
+        result[4] = Base64URLNoPaddingChars[(int)((uint)t >> 2) & 63];
+        result[5] = Base64URLNoPaddingChars[((t & 3) << 4) | ((int)((uint)t >> 12) & 15)];
+        result[6] = Base64URLNoPaddingChars[(((int)((uint)t >> 8) & 15) << 2) | ((int)((uint)t >> 22) & 3)];
+        result[7] = Base64URLNoPaddingChars[(int)((uint)t >> 16) & 63];
 
-        t = ((int)((uint)b >> 16)) | (c << 16);
-        result[8] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
-        result[9] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
-        result[10] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
-        result[11] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
+        t = (int)((uint)b >> 16) | (c << 16);
+        result[8] = Base64URLNoPaddingChars[(int)((uint)t >> 2) & 63];
+        result[9] = Base64URLNoPaddingChars[((t & 3) << 4) | ((int)((uint)t >> 12) & 15)];
+        result[10] = Base64URLNoPaddingChars[(((int)((uint)t >> 8) & 15) << 2) | ((int)((uint)t >> 22) & 3)];
+        result[11] = Base64URLNoPaddingChars[(int)((uint)t >> 16) & 63];
 
         t = (int)((uint)c >> 8);
-        result[12] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
-        result[13] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
-        result[14] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
-        result[15] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
+        result[12] = Base64URLNoPaddingChars[(int)((uint)t >> 2) & 63];
+        result[13] = Base64URLNoPaddingChars[((t & 3) << 4) | ((int)((uint)t >> 12) & 15)];
+        result[14] = Base64URLNoPaddingChars[(((int)((uint)t >> 8) & 15) << 2) | ((int)((uint)t >> 22) & 3)];
+        result[15] = Base64URLNoPaddingChars[(int)((uint)t >> 16) & 63];
 
         t = d;
-        result[16] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
-        result[17] = Base64URLNoPaddingChars[((t & 3) << 4) | ((((int)((uint)t >> 12))) & 15)];
-        result[18] = Base64URLNoPaddingChars[((((int)((uint)t >> 8)) & 15) << 2) | (((int)((uint)t >> 22)) & 3)];
-        result[19] = Base64URLNoPaddingChars[((int)((uint)t >> 16)) & 63];
+        result[16] = Base64URLNoPaddingChars[(int)((uint)t >> 2) & 63];
+        result[17] = Base64URLNoPaddingChars[((t & 3) << 4) | ((int)((uint)t >> 12) & 15)];
+        result[18] = Base64URLNoPaddingChars[(((int)((uint)t >> 8) & 15) << 2) | ((int)((uint)t >> 22) & 3)];
+        result[19] = Base64URLNoPaddingChars[(int)((uint)t >> 16) & 63];
 
         t = (int)((uint)d >> 24);
-        result[20] = Base64URLNoPaddingChars[((int)((uint)t >> 2)) & 63];
+        result[20] = Base64URLNoPaddingChars[(int)((uint)t >> 2) & 63];
         result[21] = Base64URLNoPaddingChars[(t & 3) << 4];
 
         return result;
     }
 
-    	private static int cmn(int q, int a, int b, int x, int s, int t) {
+    private static int cmn(int q, int a, int b, int x, int s, int t) 
+    {
 		a = a + q + x + t;
         return Integer.RotateLeft(a, s) + b;
 	}
 
-	private static int ff(int a, int b, int c, int d, int x, int s, int t) {
+	private static int ff(int a, int b, int c, int d, int x, int s, int t) 
+    {
 		return cmn((b & c) | (~b & d), a, b, x, s, t);
 	}
 
-	private static int gg(int a, int b, int c, int d, int x, int s, int t) {
+	private static int gg(int a, int b, int c, int d, int x, int s, int t) 
+    {
 		return cmn((b & d) | (c & ~d), a, b, x, s, t);
 	}
 
-	private static int hh(int a, int b, int c, int d, int x, int s, int t) {
+	private static int hh(int a, int b, int c, int d, int x, int s, int t) 
+    {
 		return cmn(b ^ c ^ d, a, b, x, s, t);
 	}
 
-	private static int ii(int a, int b, int c, int d, int x, int s, int t) {
+	private static int ii(int a, int b, int c, int d, int x, int s, int t) 
+    {
 		return cmn(c ^ (b | ~d), a, b, x, s, t);
 	}
 
-	private static void md5cycle(int[] x, int[] k) {
-		int a = x[0];
-		int b = x[1];
-		int c = x[2];
-		int d = x[3];
+	private static void md5cycle(int[] x, int[] k) 
+    {
+		var a = x[0];
+		var b = x[1];
+		var c = x[2];
+		var d = x[3];
 
 		a = ff(a, b, c, d, k[0], 7, -680876936);
 		d = ff(d, a, b, c, k[1], 12, -389564586);
@@ -154,46 +161,45 @@ public class MD5
 		x[3] += d;
 	}
 
-    private /*static*/ class BufferState {
-        internal int[] block = new int[16];
-        internal int[] state = new int[4];
+    private class BufferState 
+    {
+        internal readonly int[] block = new int[16];
+        internal readonly int[] state = new int[4];
     }
 
-    private static ThreadLocal<BufferState> threadState = new ThreadLocal<BufferState>() {
-        //@Override
-        //public BufferState initialValue() {
-        //    return new BufferState();
-        //}
-    };
-
+    private static readonly ThreadLocal<BufferState> threadState = new(() => new BufferState());
 
     private static int[] md5state(byte[] key, int offset, int len) {
-        int n = offset + (len & ~63);
-        BufferState bufferState = threadState.Value;
-        int[] block = bufferState.block;
-        int[] state = bufferState.state;
+        var n = offset + (len & ~63);
+        var bufferState = threadState.Value;
+        var block = bufferState.block;
+        var state = bufferState.state;
 
         state[0] = 1732584193;
         state[1] = -271733879;
         state[2] = -1732584194;
         state[3] = 271733878;
 
-        int i = offset;
-        for (; i < n; i += 64) {
-            for (int w = 0; w < 16; ++w) {
+        var i = offset;
+        for (; i < n; i += 64) 
+        {
+            for (var w = 0; w < 16; ++w) 
+            {
                 block[w] = Buffers.GetUInt32(key, i + (w << 2));
             }
 
             md5cycle(state, block);
         }
 
-        int m = len & ~3;
-        int w2 = 0;
-        for (; i < m; i += 4) {
+        var m = len & ~3;
+        var w2 = 0;
+        for (; i < m; i += 4) 
+        {
             block[w2++] = Buffers.GetUInt32(key, i);
         }
 
-        switch (len & 3) {
+        switch (len & 3) 
+        {
             case 3:
                 block[w2++] = (int)(Buffers.GetUInt24(key, i) | 0x80000000);
                 break;
@@ -208,8 +214,10 @@ public class MD5
                 break;
         }
 
-        if (w2 > 14) {
-            if (w2 < 16) {
+        if (w2 > 14) 
+        {
+            if (w2 < 16) 
+            {
                 block[w2] = 0;
             }
 
@@ -217,7 +225,8 @@ public class MD5
             w2 = 0;
         }
 
-        for (; w2 < 16; ++w2) {
+        for (; w2 < 16; ++w2) 
+        {
             block[w2] = 0;
         }
 
@@ -226,10 +235,7 @@ public class MD5
         return state;
     }
 
-
-
-
-    private static byte[] Base64URLNoPaddingChars = 
+    private static readonly byte[] Base64URLNoPaddingChars = 
     {
         Convert.ToByte('A'), Convert.ToByte('B'), Convert.ToByte('C'), Convert.ToByte('D'), Convert.ToByte('E'), 
         Convert.ToByte('F'), Convert.ToByte('G'), Convert.ToByte('H'), Convert.ToByte('I'), Convert.ToByte('J'), 
@@ -245,10 +251,4 @@ public class MD5
         Convert.ToByte('5'), Convert.ToByte('6'), Convert.ToByte('7'), Convert.ToByte('8'), Convert.ToByte('9'), 
         Convert.ToByte('-'), Convert.ToByte('_')
     };
-
-
-    //private static byte[] Base64URLNoPaddingChars = new byte[]{'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
-    //    'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
-    //    'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1',
-    //    '2', '3', '4', '5', '6', '7', '8', '9', '-', '_'};
 }
