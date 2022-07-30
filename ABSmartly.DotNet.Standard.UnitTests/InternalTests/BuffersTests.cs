@@ -78,4 +78,56 @@ public class BuffersTests
             Assert.That(Buffers.GetUInt8(bytes, i), Is.EqualTo(bytes[i] & 0xff));
         }
     }
+
+    [TestCase("", new byte[] { } )]
+    [TestCase(" ", new byte[] { 32 } )]
+    public void EncodeUTF8(string value, byte[] expectedBytes)
+    {
+        var actual = new byte[expectedBytes.Length];
+        var encodeLength = Buffers.EncodeUTF8(actual, 0, value.ToCharArray());
+
+        Assert.That(actual, Is.EqualTo(expectedBytes));
+        Assert.That(encodeLength, Is.EqualTo(expectedBytes.Length));
+    }
+
+    [TestCase("", new byte[] { } )]
+    [TestCase(" ", new byte[] { 32 } )]
+    public void EncodeUTF8_WithOffset(string value, byte[] expectedBytes)
+    {
+        var actualOffset = new byte[3 + expectedBytes.Length];
+        var encodeLengthOffset = Buffers.EncodeUTF8(actualOffset, 3, value.ToCharArray());
+
+        //assertArrayEquals(expected, Arrays.copyOfRange(actualOffset, 3, 3 + encodeLengthOffset));
+
+        //Array ar;
+        //actualOffset.CopyTo(ar, );
+
+        //Assert.That(actualOffset, Is.EqualTo(expectedBytes));
+        //Assert.That(actualOffset, Is.EqualTo(copyOfRange(expectedBytes, actualOffset, 3 + encodeLengthOffset)));
+        //Assert.That(actualOffset, Is.EqualTo(expectedBytes.Skip(3).Take(3 + encodeLengthOffset).ToArray()));
+        //Assert.That(actualOffset, Is.EqualTo(expectedBytes[actualOffset..3]));
+
+        //var expectedOffsetBytes = CopyOfRange(actualOffset, 3, 3 + encodeLengthOffset);
+        var expectedOffsetBytes = actualOffset[3..(3 + encodeLengthOffset)]; //CopyOfRange(actualOffset, 3, 3 + encodeLengthOffset);
+        //var expectedOffsetBytes = actualOffset.Skip(3).Take(3 + encodeLengthOffset).ToArray();
+
+        Assert.AreEqual(expectedOffsetBytes, CopyOfRange(actualOffset, 3, 3 + encodeLengthOffset));
+
+        //Assert.That(actualOffset, Is.EqualTo(expectedOffsetBytes));
+
+
+        Assert.That(encodeLengthOffset, Is.EqualTo(expectedBytes.Length));
+    }
+
+
+    private byte[] CopyOfRange (byte[] src, int start, int end) {
+        var len = end - start;
+        var dest = new byte[len];
+        // note i is always from 0
+        for (var i = 0; i < len; i++)
+        {
+            dest[i] = src[start + i]; // so 0..n = 0+x..n+x
+        }
+        return dest;
+    }
 }
