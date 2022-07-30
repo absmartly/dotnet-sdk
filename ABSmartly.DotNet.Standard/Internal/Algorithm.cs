@@ -9,23 +9,15 @@ public class Algorithm
     {
         var size = set.Count;
 
-        if (array.Length < size) 
-        {
-            //array = (R[]) java.lang.reflect.Array.newInstance(array.getClass().getComponentType(), size);
+        if (array.Length < size)
             array = new R[size];
-        }
-
-        if (array.Length > size) 
-        {
-            //array[size] = null;
+        
+        if (array.Length > size)
             array[size] = default(R);
-        }
 
-        int index = 0;
-        foreach (var value in set) 
-        {
+        var index = 0;
+        foreach (var value in set)
             array[index++] = mapper.Invoke(value);
-        }
 
         return array;
     }
