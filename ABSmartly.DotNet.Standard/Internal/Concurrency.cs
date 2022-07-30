@@ -12,11 +12,9 @@ public class Concurrency
         try 
         {
             rwlock.EnterReadLock();
-            V value = map[key];
-            if (value != null) 
-            {
-                return value;
-            }
+
+            if (map.ContainsKey(key))
+                return map[key];
         } 
         catch (Exception e)
         {
@@ -30,11 +28,10 @@ public class Concurrency
         try 
         {
             rwlock.EnterWriteLock();
-            V value = map[key]; // double check
-            if (value != null) 
-            {
-                return value;
-            }
+
+            // double check
+            if (map.ContainsKey(key))
+                return map[key];
 
             V newValue = computer.Invoke(key);
             map.Add(key, newValue);
