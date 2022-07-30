@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace ABSmartly.DotNet.Standard.UnitTests.Internal.HashingTests;
+namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests.HashingTests;
 
 [TestFixture]
 public class Murmur3_32Tests
