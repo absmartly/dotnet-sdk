@@ -2,20 +2,14 @@
 
 namespace ABSmartly.Internal.Hashing;
 
-public /*abstract*/ class Murmur3_32
+public class Murmur3_32
 {
-    public Murmur3_32()
-    {
-        
-    }
-
-
     public static int Digest(byte[] key, int seed) {
         return Digest(key, 0, key.Length, seed);
     }
 
-    public static int Digest(byte[] key, int offset, int len, int seed) {
-        int n = offset + (len & ~3);
+    public static int Digest(byte[] key, int offset, int length, int seed) {
+        int n = offset + (length & ~3);
 
         int hash = seed;
         int i = offset;
@@ -26,7 +20,7 @@ public /*abstract*/ class Murmur3_32
             hash = (int)((hash * 5) + 0xe6546b64);
         }
 
-        switch (len & 3) {
+        switch (length & 3) {
             case 3:
                 hash ^= scramble32(Buffers.GetUInt24(key, i));
                 break;
@@ -41,7 +35,7 @@ public /*abstract*/ class Murmur3_32
                 break;
         }
 
-        hash ^= len;
+        hash ^= length;
         hash = fmix32(hash);
         return hash;
     }
