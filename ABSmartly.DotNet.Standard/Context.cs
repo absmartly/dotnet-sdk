@@ -900,7 +900,7 @@ public class Context : IDisposable
 							var unitHash = GetUnitHash(unitType, uid);
 
 							var assigner = GetVariantAssigner(unitType, unitHash);
-							var eligible = assigner.assign(experiment.Data.TrafficSplit, experiment.Data.TrafficSeedHi, experiment.Data.TrafficSeedLo) == 1;
+							var eligible = assigner.Assign(experiment.Data.TrafficSplit, experiment.Data.TrafficSeedHi, experiment.Data.TrafficSeedLo) == 1;
 							if (eligible) 
                             {
 								if (custom != null) 
@@ -910,7 +910,7 @@ public class Context : IDisposable
 								} 
                                 else 
                                 {
-									assignment.Variant = assigner.assign(experiment.Data.Split,
+									assignment.Variant = assigner.Assign(experiment.Data.Split,
 											experiment.Data.SeedHi,
 											experiment.Data.SeedLo);
 								}
