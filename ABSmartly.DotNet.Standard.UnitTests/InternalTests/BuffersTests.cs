@@ -81,6 +81,21 @@ public class BuffersTests
 
     [TestCase("", new byte[] { } )]
     [TestCase(" ", new byte[] { 32 } )]
+    [TestCase("a", new byte[] { 97 })]
+    [TestCase("ab", new byte[] { 97, 98 } )]
+    [TestCase("abc", new byte[] { 97, 98, 99 } )]
+    [TestCase("abcd", new byte[] {97, 98, 99, 100 } )]
+    [TestCase("ç", new byte[] { 195, 167 } )]
+    [TestCase("aç", new byte[] { 97, 195, 167 } )]
+    [TestCase("çb", new byte[] { 195, 167, 98 } )]
+    [TestCase("açb", new byte[] { 97, 195, 167, 98 } )]
+    [TestCase("↓", new byte[] { 226, 134, 147 } )]
+    [TestCase("a↓", new byte[] { 97, 226, 134, 147 } )]
+    [TestCase("↓b", new byte[] { 226, 134, 147, 98 } )]
+    [TestCase("a↓b", new byte[] { 97, 226, 134, 147, 98 } )]
+    [TestCase("aç↓", new byte[] { 97, 195, 167, 226, 134, 147 } )]
+    [TestCase("aç↓b", new byte[] { 97, 195, 167, 226, 134, 147, 98 } )]
+    [TestCase("açb↓c", new byte[] { 97, 195, 167, 98, 226, 134, 147, 99 } )]
     public void EncodeUTF8(string value, byte[] expectedBytes)
     {
         var actual = new byte[expectedBytes.Length];
@@ -92,6 +107,21 @@ public class BuffersTests
 
     [TestCase("", new byte[] { } )]
     [TestCase(" ", new byte[] { 32 } )]
+    [TestCase("a", new byte[] { 97 })]
+    [TestCase("ab", new byte[] { 97, 98 } )]
+    [TestCase("abc", new byte[] { 97, 98, 99 } )]
+    [TestCase("abcd", new byte[] {97, 98, 99, 100 } )]
+    [TestCase("ç", new byte[] { 195, 167 } )]
+    [TestCase("aç", new byte[] { 97, 195, 167 } )]
+    [TestCase("çb", new byte[] { 195, 167, 98 } )]
+    [TestCase("açb", new byte[] { 97, 195, 167, 98 } )]
+    [TestCase("↓", new byte[] { 226, 134, 147 } )]
+    [TestCase("a↓", new byte[] { 97, 226, 134, 147 } )]
+    [TestCase("↓b", new byte[] { 226, 134, 147, 98 } )]
+    [TestCase("a↓b", new byte[] { 97, 226, 134, 147, 98 } )]
+    [TestCase("aç↓", new byte[] { 97, 195, 167, 226, 134, 147 } )]
+    [TestCase("aç↓b", new byte[] { 97, 195, 167, 226, 134, 147, 98 } )]
+    [TestCase("açb↓c", new byte[] { 97, 195, 167, 98, 226, 134, 147, 99 } )]
     public void EncodeUTF8_WithOffset(string value, byte[] expectedBytes)
     {
         var actualOffset = new byte[3 + expectedBytes.Length];
