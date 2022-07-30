@@ -9,6 +9,7 @@ using ABSmartly.Internal;
 using ABSmartly.Internal.Hashing;
 using ABSmartly.Json;
 using ABSmartly.Temp;
+using ABSmartly.Utils;
 using Attribute = ABSmartly.Json.Attribute;
 
 namespace ABSmartly;
@@ -27,12 +28,12 @@ public class Context : IDisposable
 	private readonly Dictionary<string, string> _units;
 	private bool _failed;
 
-	private readonly ReaderWriterLockSlim _dataLock = new();
+	private readonly ABLock _dataLock = new();
 	private ContextData _data;
 	private Dictionary<string, ExperimentVariables> _index;
 	private Dictionary<string, ExperimentVariables> _indexVariables;
 
-    private readonly ReaderWriterLockSlim _contextLock = new();
+    private readonly ABLock _contextLock = new();
 
 	private readonly Dictionary<string, byte[]> _hashedUnits;
 	private readonly Dictionary<string, VariantAssigner> _assigners;

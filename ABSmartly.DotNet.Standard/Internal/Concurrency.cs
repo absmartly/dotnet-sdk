@@ -2,12 +2,13 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using ABSmartly.Utils;
 
 namespace ABSmartly.Internal;
 
 public class Concurrency
 {
-    static public V ComputeIfAbsentRW<K, V>(ReaderWriterLockSlim rwlock, Dictionary<K, V> map, K key, Func<K, V> computer) 
+    static public V ComputeIfAbsentRW<K, V>(ABLock rwlock, Dictionary<K, V> map, K key, Func<K, V> computer) 
     {
         try 
         {
@@ -15,10 +16,6 @@ public class Concurrency
 
             if (map.ContainsKey(key))
                 return map[key];
-        } 
-        catch (Exception e)
-        {
-            Debug.WriteLine(e);
         }
         finally 
         {
@@ -37,20 +34,13 @@ public class Concurrency
             map.Add(key, newValue);
             return newValue;
         }
-        catch (Exception e)
-        {
-            Debug.WriteLine(e);
-        }
         finally 
         {
             rwlock.ExitWriteLock();
         }
-
-        // Todo: ???
-        return default;
     }
 
-    static public V GetRW<K, V>(ReaderWriterLockSlim rwlock, Dictionary<K, V> map, K key) {
+    static public V GetRW<K, V>(ABLock rwlock, Dictionary<K, V> map, K key) {
 
         try
         {
@@ -70,7 +60,7 @@ public class Concurrency
         return default;
     }
 
-    static public V PutRW<K, V>(ReaderWriterLockSlim rwlock, Dictionary<K, V> map, K key, V value) 
+    static public V PutRW<K, V>(ABLock rwlock, Dictionary<K, V> map, K key, V value) 
     {
         try 
         {
@@ -95,7 +85,7 @@ public class Concurrency
         return default;
     }
 
-    static public void AddRW<V>(ReaderWriterLockSlim rwlock, List<V> list, V value) {
+    static public void AddRW<V>(ABLock rwlock, List<V> list, V value) {
   
         try 
         {
