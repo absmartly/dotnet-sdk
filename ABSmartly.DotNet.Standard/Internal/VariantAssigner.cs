@@ -17,17 +17,17 @@ public class VariantAssigner
 
     public int Assign(double[] split, int seedHi, int seedLo) 
     {
-        var prob = Probability(seedHi, seedLo);
-        return ChooseVariant(split, prob);
+        var probability = Probability(seedHi, seedLo);
+        return ChooseVariant(split, probability);
     }
 
-    public static int ChooseVariant(double[] split, double prob) 
+    public static int ChooseVariant(double[] split, double probability) 
     {
         var cumSum = 0.0;
         for (var i = 0; i < split.Length; ++i) 
         {
             cumSum += split[i];
-            if (prob < cumSum) 
+            if (probability < cumSum) 
             {
                 return i;
             }
