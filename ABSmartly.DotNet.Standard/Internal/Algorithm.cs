@@ -22,11 +22,11 @@ public class Algorithm
         }
 
         int index = 0;
-
-
-        foreach (var value in set) {
+        foreach (var value in set) 
+        {
             array[index++] = mapper.Invoke(value);
         }
+
         return array;
     }
 }
