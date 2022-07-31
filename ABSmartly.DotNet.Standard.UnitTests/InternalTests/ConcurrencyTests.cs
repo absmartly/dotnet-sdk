@@ -10,9 +10,9 @@ public class ConcurrencyTests
     public void ComputeIfAbsentRW()
     {
         // Arrange
-        var map = new Mock<Dictionary<int, int>>();
-        var computer = new Mock<Func<int, int>>();
         var rwlock = new Mock<ABLock>();
+        var map = new Mock<IDictionary<int, int>>();
+        var computer = new Mock<Func<int, int>>();
 
         computer.Setup(p => p.Invoke(1)).Returns(5);
 
@@ -22,9 +22,45 @@ public class ConcurrencyTests
         // Assert
         Assert.That(result, Is.EqualTo(5));
 
-        rwlock.Verify(slim => slim.EnterReadLock(), Times.Exactly(1));
-        rwlock.Verify(slim => slim.EnterWriteLock(), Times.Exactly(1));
+        rwlock.Verify(ablock => ablock.EnterReadLock(), Times.Exactly(1));
+        rwlock.Verify(ablock => ablock.ExitReadLock(), Times.Exactly(1));
 
+        rwlock.Verify(ablock => ablock.EnterWriteLock(), Times.Exactly(1));
+        rwlock.Verify(ablock => ablock.ExitWriteLock(), Times.Exactly(1));
+
+        map.Verify(m => m.ContainsKey(It.IsAny<int>()), Times.Exactly(2));
+        map.Verify(m => m.ContainsKey(1), Times.Exactly(2));
+
+        computer.Verify(c => c.Invoke(It.IsAny<int>()) , Times.Exactly(1));
         computer.Verify(c => c.Invoke(1), Times.Exactly(1));
+    }
+
+    [Test]
+    public void ComputeIfAbsentRWPresent()
+    {
+        // Arrange
+        var rwlock = new Mock<ABLock>();
+        var map = new Mock<IDictionary<int, int>>();
+        var computer = new Mock<Func<int, int>>();
+
+        map.Setup(p => p.ContainsKey(1)).Returns(true);
+        map.Setup(p => p[1]).Returns(5);
+
+        // Act
+        var result = Concurrency.ComputeIfAbsentRW(rwlock.Object, map.Object, 1, computer.Object);
+
+        // Assert
+        Assert.That(result, Is.EqualTo(5));
+
+        rwlock.Verify(ablock => ablock.EnterReadLock(), Times.Exactly(1));
+        rwlock.Verify(ablock => ablock.ExitReadLock(), Times.Exactly(1));
+
+        rwlock.Verify(ablock => ablock.EnterWriteLock(), Times.Exactly(0));
+        rwlock.Verify(ablock => ablock.ExitWriteLock(), Times.Exactly(0));
+
+        map.Verify(m => m.ContainsKey(It.IsAny<int>()), Times.Exactly(1));
+        map.Verify(m => m.ContainsKey(1), Times.Exactly(1));
+
+        computer.Verify(func => func.Invoke(It.IsAny<int>()) , Times.Exactly(0));
     }
 }

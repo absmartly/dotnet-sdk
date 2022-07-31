@@ -8,7 +8,7 @@ namespace ABSmartly.Internal;
 
 public class Concurrency
 {
-    static public V ComputeIfAbsentRW<K, V>(ABLock rwlock, Dictionary<K, V> map, K key, Func<K, V> computer) 
+    static public V ComputeIfAbsentRW<K, V>(ABLock rwlock, IDictionary<K, V> map, K key, Func<K, V> computer) 
     {
         try 
         {
