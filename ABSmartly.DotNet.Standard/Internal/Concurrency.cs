@@ -7,7 +7,7 @@ namespace ABSmartly.Internal;
 
 public class Concurrency
 {
-    static public V ComputeIfAbsentRW<K, V>(ABLock rwlock, IDictionary<K, V> map, K key, Func<K, V> computer) 
+    public static V ComputeIfAbsentRW<K, V>(ABLock rwlock, IDictionary<K, V> map, K key, Func<K, V> computer) 
     {
         try 
         {
@@ -39,27 +39,22 @@ public class Concurrency
         }
     }
 
-    static public V GetRW<K, V>(ABLock rwlock, Dictionary<K, V> map, K key) {
+    public static V GetRW<K, V>(ABLock rwlock, IDictionary<K, V> map, K key) 
+    {
 
         try
         {
             rwlock.EnterReadLock();
-            return map[key];
-        }
-        catch (Exception e)
-        {
-            Debug.WriteLine(e);
+
+            return map.ContainsKey(key) ? map[key] : default(V);
         }
         finally 
         {
             rwlock.ExitReadLock();
         }
-
-        // Todo: ???
-        return default;
     }
 
-    static public V PutRW<K, V>(ABLock rwlock, Dictionary<K, V> map, K key, V value) 
+    public static V PutRW<K, V>(ABLock rwlock, IDictionary<K, V> map, K key, V value) 
     {
         try 
         {
@@ -84,7 +79,7 @@ public class Concurrency
         return default;
     }
 
-    static public void AddRW<V>(ABLock rwlock, List<V> list, V value) {
+    public static void AddRW<V>(ABLock rwlock, List<V> list, V value) {
   
         try 
         {

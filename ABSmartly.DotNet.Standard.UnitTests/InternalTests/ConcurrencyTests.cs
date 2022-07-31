@@ -95,4 +95,32 @@ public class ConcurrencyTests
 
         computer.Verify(func => func.Invoke(It.IsAny<int>()) , Times.Exactly(0));
     }
+
+    [Test]
+    public void GetRW()
+    {
+        // Arrange
+        var rwlock = new Mock<ABLock>();
+        //var map = new Mock<IDictionary<int, int>>();
+        var map = new Mock<IDictionary<int, int?>>();
+
+        // Act
+        var result = Concurrency.GetRW(rwlock.Object, map.Object, 1);
+
+        // Assert
+        Assert.IsNull(result);
+
+        rwlock.Verify(ablock => ablock.EnterReadLock(), Times.Exactly(1));
+        rwlock.Verify(ablock => ablock.ExitReadLock(), Times.Exactly(1));
+
+        rwlock.Verify(ablock => ablock.EnterWriteLock(), Times.Exactly(0));
+        rwlock.Verify(ablock => ablock.ExitWriteLock(), Times.Exactly(0));
+
+        map.Verify(m => m.ContainsKey(It.IsAny<int>()), Times.Exactly(1));
+        map.Verify(m => m.ContainsKey(1), Times.Exactly(1));
+        map.Verify(m => m[It.IsAny<int>()], Times.Exactly(0));
+        map.Verify(m => m[1], Times.Exactly(0));
+
+        
+    }
 }
