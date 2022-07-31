@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using ABSmartly.Utils;
 
 namespace ABSmartly.Internal;
@@ -22,7 +21,7 @@ public class Concurrency
             rwlock.ExitReadLock();
         }
 
-        try 
+        try
         {
             rwlock.EnterWriteLock();
 

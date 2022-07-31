@@ -63,4 +63,36 @@ public class ConcurrencyTests
 
         computer.Verify(func => func.Invoke(It.IsAny<int>()) , Times.Exactly(0));
     }
+
+    [Test]
+    public void ComputeIfAbsentRWPresentAfterLock()
+    {
+        // Arrange
+        var rwlock = new Mock<ABLock>();
+        var map = new Mock<IDictionary<int, int>>();
+        var computer = new Mock<Func<int, int>>();
+
+        rwlock.Setup(ablock => ablock.EnterWriteLock()).Callback(() =>
+        {
+            map.Setup(p => p.ContainsKey(1)).Returns(true);
+            map.Setup(p => p[1]).Returns(5);
+        });
+
+        // Act
+        var result = Concurrency.ComputeIfAbsentRW(rwlock.Object, map.Object, 1, computer.Object);
+
+        // Assert
+        Assert.That(result, Is.EqualTo(5));
+
+        rwlock.Verify(ablock => ablock.EnterReadLock(), Times.Exactly(1));
+        rwlock.Verify(ablock => ablock.ExitReadLock(), Times.Exactly(1));
+
+        rwlock.Verify(ablock => ablock.EnterWriteLock(), Times.Exactly(1));
+        rwlock.Verify(ablock => ablock.ExitWriteLock(), Times.Exactly(1));
+
+        map.Verify(m => m.ContainsKey(It.IsAny<int>()), Times.Exactly(2));
+        map.Verify(m => m.ContainsKey(1), Times.Exactly(2));
+
+        computer.Verify(func => func.Invoke(It.IsAny<int>()) , Times.Exactly(0));
+    }
 }
