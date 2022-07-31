@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using ABSmartly.Utils;
 
 namespace ABSmartly.Internal;
@@ -72,7 +71,7 @@ public class Concurrency
         }
     }
 
-    public static void AddRW<V>(ABLock rwlock, List<V> list, V value) {
+    public static void AddRW<V>(ABLock rwlock, IList<V> list, V value) {
   
         try 
         {

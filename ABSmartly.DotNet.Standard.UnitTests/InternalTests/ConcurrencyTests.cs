@@ -145,4 +145,24 @@ public class ConcurrencyTests
         map.Verify(m => m.Add(It.IsAny<int>(), It.IsAny<int?>()), Times.Exactly(1));
         map.Verify(m => m.Add(1, 5), Times.Exactly(1));
     }
+
+    [Test]
+    public void AddRW()
+    {
+        // Arrange
+        var rwlock = new Mock<ABLock>();
+        var list = new List<int>();
+
+        // Act
+        Concurrency.AddRW(rwlock.Object, list, 3);
+
+        // Assert
+        Assert.IsTrue(list.Contains(3));
+
+        rwlock.Verify(ablock => ablock.EnterReadLock(), Times.Exactly(0));
+        rwlock.Verify(ablock => ablock.ExitReadLock(), Times.Exactly(0));
+
+        rwlock.Verify(ablock => ablock.EnterWriteLock(), Times.Exactly(1));
+        rwlock.Verify(ablock => ablock.ExitWriteLock(), Times.Exactly(1));
+    }
 }
