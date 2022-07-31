@@ -97,7 +97,7 @@ public class ConcurrencyTests
     }
 
     [Test]
-    public void GetRW()
+    public void GetRW_EmptyMap()
     {
         // Arrange
         var rwlock = new Mock<ABLock>();
@@ -120,7 +120,29 @@ public class ConcurrencyTests
         map.Verify(m => m.ContainsKey(1), Times.Exactly(1));
         map.Verify(m => m[It.IsAny<int>()], Times.Exactly(0));
         map.Verify(m => m[1], Times.Exactly(0));
+    }
 
-        
+    [Test]
+    public void PutRW()
+    {
+        // Arrange
+        var rwlock = new Mock<ABLock>();
+        //var map = new Mock<IDictionary<int, int>>();
+        var map = new Mock<IDictionary<int, int?>>();
+
+        // Act
+        var result = Concurrency.PutRW(rwlock.Object, map.Object, 1, 5);
+
+        // Assert
+        Assert.IsNull(result);
+
+        rwlock.Verify(ablock => ablock.EnterReadLock(), Times.Exactly(0));
+        rwlock.Verify(ablock => ablock.ExitReadLock(), Times.Exactly(0));
+
+        rwlock.Verify(ablock => ablock.EnterWriteLock(), Times.Exactly(1));
+        rwlock.Verify(ablock => ablock.ExitWriteLock(), Times.Exactly(1));
+
+        map.Verify(m => m.Add(It.IsAny<int>(), It.IsAny<int?>()), Times.Exactly(1));
+        map.Verify(m => m.Add(1, 5), Times.Exactly(1));
     }
 }

@@ -46,7 +46,10 @@ public class Concurrency
         {
             rwlock.EnterReadLock();
 
-            return map.ContainsKey(key) ? map[key] : default(V);
+            if (!map.ContainsKey(key))
+                return default;
+
+            return map[key];
         }
         finally 
         {
@@ -61,22 +64,12 @@ public class Concurrency
             rwlock.EnterWriteLock();
 
             map.Add(key, value);
-            // Todo: ???
             return map[key];
-
-            //return map.add(key, value);
-        }
-        catch (Exception e)
-        {
-            Debug.WriteLine(e);
         }
         finally 
         {
             rwlock.ExitWriteLock();
         }
-
-        // Todo: ???
-        return default;
     }
 
     public static void AddRW<V>(ABLock rwlock, List<V> list, V value) {
@@ -85,10 +78,6 @@ public class Concurrency
         {
             rwlock.EnterWriteLock();
             list.Add(value);
-        }
-        catch (Exception e)
-        {
-            Debug.WriteLine(e);
         }
         finally 
         {
