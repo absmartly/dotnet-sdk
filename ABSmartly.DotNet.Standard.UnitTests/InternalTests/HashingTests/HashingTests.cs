@@ -11,8 +11,13 @@ public class HashingTests
     [TestCase("123456778999", "K4uy4bTeCy34W97lmceVRg")]
     public void TestHashUnit(string actualText, string expectedHash)
     {
-        var hash = Hashing.HashUnit(actualText.ToCharArray());
-        Assert.That(hash, Is.EqualTo(expectedHash));
+        var hashBytes = Hashing.HashUnit(actualText.ToCharArray());
+        var hashString = Encoding.ASCII.GetString(hashBytes);
+        //Assert.That(hashString, Is.EqualTo(expectedHash));
+
+        Assert.That(hashString, Is.EqualTo(Encoding.UTF8.GetBytes(expectedHash)));
+
+        // assertEquals("LxcqH5VC15rXfWfA_smreg", new String(Hashing.hashUnit("açb↓c"), StandardCharsets.US_ASCII));
     }
 
     [Test]

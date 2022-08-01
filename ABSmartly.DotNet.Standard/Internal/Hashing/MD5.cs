@@ -6,9 +6,14 @@ namespace ABSmartly.Internal.Hashing;
 
 public class MD5
 {
+    public static byte[] DigestBase64UrlNoPadding(byte[] key)
+    {
+        return DigestBase64UrlNoPadding(key, 0, (uint)key.Length);
+    }
+
     public static byte[] DigestBase64UrlNoPadding(byte[] key, int offset, uint len) 
     {
-        var state = md5state(key, offset, len);
+        var state = md5state(key, offset, (uint)len);
 
         var a = state[0];
         var b = state[1];
@@ -54,33 +59,33 @@ public class MD5
         return result;
     }
 
-    private static int cmn(int q, int a, int b, int x, uint s, int t) 
+    private static int cmn(int q, int a, int b, int x, int s, int t) 
     {
 		a = a + q + x + t;
         return Integer.RotateLeft(a, (int)s) + b;
 	}
 
-	private static int ff(int a, int b, int c, int d, uint x, int s, int t) 
+	private static int ff(int a, int b, int c, int d, int x, int s, int t) 
     {
-		return cmn((b & c) | (~b & d), a, b, (int)x, (uint)s, t);
+		return cmn((b & c) | (~b & d), a, b, x, s, t);
 	}
 
-	private static int gg(int a, int b, int c, int d, uint x, int s, int t) 
+	private static int gg(int a, int b, int c, int d, int x, int s, int t) 
     {
-		return cmn((b & d) | (c & ~d), a, b, (int)x, (uint)s, t);
+		return cmn((b & d) | (c & ~d), a, b, x, s, t);
 	}
 
-	private static int hh(int a, int b, int c, int d, uint x, int s, int t) 
+	private static int hh(int a, int b, int c, int d, int x, int s, int t) 
     {
-		return cmn(b ^ c ^ d, a, b, (int)x, (uint)s, t);
+		return cmn(b ^ c ^ d, a, b, (int)x, s, t);
 	}
 
-	private static int ii(int a, int b, int c, int d, uint x, int s, int t) 
+	private static int ii(int a, int b, int c, int d, int x, int s, int t) 
     {
-		return cmn(c ^ (b | ~d), a, b, (int)x, (uint)s, t);
+		return cmn(c ^ (b | ~d), a, b, (int)x, s, t);
 	}
 
-	private static void md5cycle(int[] x, uint[] k) 
+	private static void md5cycle(int[] x, int[] k) 
     {
 		var a = x[0];
 		var b = x[1];
@@ -164,7 +169,7 @@ public class MD5
     private class BufferState 
     {
         internal readonly uint[] block = new uint[16];
-        internal readonly int[] state = new int[4];
+        internal readonly uint[] state = new int[4];
     }
 
     private static readonly ThreadLocal<BufferState> threadState = new(() => new BufferState());
