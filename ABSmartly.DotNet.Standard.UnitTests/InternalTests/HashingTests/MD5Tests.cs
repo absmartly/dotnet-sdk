@@ -25,7 +25,7 @@ public class MD5Tests
         var expectedBytes = Encoding.ASCII.GetBytes(expectedString);
 
         var actualBytes = Encoding.UTF8.GetBytes(actualString);
-        var resultBytes = MD5.DigestBase64UrlNoPadding(actualBytes, 0, actualBytes.Length);
+        var resultBytes = MD5.DigestBase64UrlNoPadding(actualBytes, 0, (uint)actualBytes.Length);
         Assert.That(resultBytes, Is.EqualTo(expectedBytes));
     }
 
@@ -49,7 +49,7 @@ public class MD5Tests
         var expectedBytes = Encoding.ASCII.GetBytes(expectedString);
 
         var offsetBytes = Encoding.UTF8.GetBytes("123" + actualString + "321");
-        var offsetResultBytes = MD5.DigestBase64UrlNoPadding(offsetBytes, "123".Length, offsetBytes.Length - "123321".Length);
+        var offsetResultBytes = MD5.DigestBase64UrlNoPadding(offsetBytes, "123".Length, (uint)(offsetBytes.Length - "123321".Length));
         Assert.That(expectedBytes, Is.EqualTo(offsetResultBytes));
     }
 }

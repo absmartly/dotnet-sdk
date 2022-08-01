@@ -15,7 +15,7 @@ public class HashingTests
         Assert.That(hash, Is.EqualTo(expectedHash));
     }
 
-    [TestCase]
+    [Test]
     public void TestHashUnit_Large()
     {
         var actual = "4a42766ca6313d26f49985e799ff4f3790fb86efa0fce46edb3ea8fbf1ea3408";

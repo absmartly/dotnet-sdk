@@ -5,7 +5,7 @@ namespace ABSmartly.Internal;
 
 public class VariantAssigner
 {
-    private readonly int _unitHash;
+    private readonly uint _unitHash;
 
     private static readonly double normalizer = 1.0 / 0xffffffffL;
     private static readonly ThreadLocal<byte[]> threadBuffer = new(() => new byte[12]);
@@ -15,7 +15,7 @@ public class VariantAssigner
         _unitHash = Murmur3_32.Digest(unitHash, 0);
     }
 
-    public int Assign(double[] split, int seedHi, int seedLo) 
+    public int Assign(double[] split, uint seedHi, uint seedLo) 
     {
         var probability = Probability(seedHi, seedLo);
         return ChooseVariant(split, probability);
@@ -36,7 +36,7 @@ public class VariantAssigner
         return split.Length - 1;
     }
 
-    private double Probability(int seedHi, int seedLo) 
+    private double Probability(uint seedHi, uint seedLo) 
     {
         var buffer = threadBuffer.Value;
 

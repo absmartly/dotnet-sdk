@@ -7,12 +7,12 @@ public class BuffersTests
     public void PutUInt32()
     {
         const int bytesLen = 9;
-        for (var i = 0; i < bytesLen - 3; ++i) 
+        for (int i = 0; i < bytesLen - 3; ++i) 
         {
             var bytes = new byte[bytesLen];
 
-            var expected = (int)((i + 1) * 0xe6546b64);
-            Buffers.PutUInt32(bytes, i, expected);
+            uint expected = (uint)((i + 1) * 0xe6546b64);
+            Buffers.PutUInt32(bytes, i, (uint)expected);
             var actual = Buffers.GetUInt32(bytes, i);
 
             Assert.That(actual, Is.EqualTo(expected));
@@ -32,13 +32,14 @@ public class BuffersTests
     {
         var bytes = new byte[]{97, 226, 134, 147, 98, 196, 0};
 
-        for (var i = 0; i < bytes.Length - 3; ++i) 
+        for (var i = 0; i < bytes.Length - 3; ++i)
         {
-            Assert.That(Buffers.GetUInt32(bytes, i), 
-                Is.EqualTo((bytes[i] & 0xff) | 
-                           ((bytes[i + 1] & 0xff) << 8) | 
-                           ((bytes[i + 2] & 0xff) << 16) | 
-                           ((bytes[i + 3] & 0xff) << 24)));
+            var actual = Buffers.GetUInt32(bytes, i);
+            Assert.That(actual, 
+                Is.EqualTo((uint)(bytes[i] & 0xff) | 
+                           ((uint)(bytes[i + 1] & 0xff) << 8) | 
+                           ((uint)(bytes[i + 2] & 0xff) << 16) | 
+                           ((uint)(bytes[i + 3] & 0xff) << 24)));
         }
     }
 
@@ -127,7 +128,7 @@ public class BuffersTests
         var actualOffset = new byte[3 + expectedBytes.Length];
         var encodeLengthOffset = Buffers.EncodeUTF8(actualOffset, 3, value.ToCharArray());
 
-        Assert.That(CopyOfRange(actualOffset, 3, 3 + encodeLengthOffset), Is.EqualTo(expectedBytes));
+        Assert.That(CopyOfRange(actualOffset, 3, (int)(3 + encodeLengthOffset)), Is.EqualTo(expectedBytes));
         Assert.That(encodeLengthOffset, Is.EqualTo(expectedBytes.Length));
     }
 

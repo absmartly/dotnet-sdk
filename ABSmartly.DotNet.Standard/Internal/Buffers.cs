@@ -1,10 +1,11 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 
 namespace ABSmartly.Internal;
 
 public abstract class Buffers
 {
-    public static void PutUInt32(byte[] buf, int offset, int x) 
+    public static void PutUInt32(byte[] buf, int offset, uint x) 
     {
         buf[offset] = (byte) (x & 0xff);
         buf[offset + 1] = (byte) ((x >> 8) & 0xff);
@@ -12,28 +13,38 @@ public abstract class Buffers
         buf[offset + 3] = (byte) ((x >> 24) & 0xff);
     }
 
-    public static int GetUInt32(byte[] buf, int offset) 
+    public static uint GetUInt32(byte[] buf, int offset) 
     {
-        return (buf[offset] & 0xff) | ((buf[offset + 1] & 0xff) << 8) | ((buf[offset + 2] & 0xff) << 16)
-               | ((buf[offset + 3] & 0xff) << 24);
+        try
+        {
+            return (uint)(buf[offset] & 0xff) | 
+                   ((uint)(buf[offset + 1] & 0xff) << 8) | 
+                   ((uint)(buf[offset + 2] & 0xff) << 16) | 
+                   ((uint)(buf[offset + 3] & 0xff) << 24);
+        }
+        catch (Exception e)
+        {
+            return 0;
+        }
+
     }
 
-    public static int GetUInt24(byte[] buf, int offset) 
+    public static uint GetUInt24(byte[] buf, int offset) 
     {
-        return (buf[offset] & 0xff) | ((buf[offset + 1] & 0xff) << 8) | ((buf[offset + 2] & 0xff) << 16);
+        return (uint)((buf[offset] & 0xff) | ((buf[offset + 1] & 0xff) << 8) | ((buf[offset + 2] & 0xff) << 16));
     }
 
-    public static int GetUInt16(byte[] buf, int offset) 
+    public static uint GetUInt16(byte[] buf, int offset) 
     {
-        return (buf[offset] & 0xff) | ((buf[offset + 1] & 0xff) << 8);
+        return (uint)((buf[offset] & 0xff) | ((buf[offset + 1] & 0xff) << 8));
     }
 
-    public static int GetUInt8(byte[] buf, int offset) 
+    public static uint GetUInt8(byte[] buf, int offset) 
     {
-        return (buf[offset] & 0xff);
+        return (uint)(buf[offset] & 0xff);
     }
 
-    public static int EncodeUTF8(byte[] buf, int offset, char[] value) 
+    public static uint EncodeUTF8(byte[] buf, int offset, char[] value) 
     {
         var n = value.Length;
 
@@ -52,6 +63,6 @@ public abstract class Buffers
                 buf[out2++] = (byte) ((c & 63) | 128);
             }
         }
-        return out2 - offset;
+        return (uint)(out2 - offset);
     }
 }

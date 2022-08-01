@@ -895,35 +895,35 @@ public class Context : IDisposable
 					} 
                     else if (experiment.Data.FullOnVariant == 0) 
                     {
-						var uid = _units[experiment.Data.UnitType];
-						if (uid != null) 
-                        {
-							var unitHash = GetUnitHash(unitType, uid);
+						//var uid = _units[experiment.Data.UnitType];
+						//if (uid != null) 
+      //                  {
+						//	var unitHash = GetUnitHash(unitType, uid);
 
-							var assigner = GetVariantAssigner(unitType, unitHash);
-							var eligible = assigner.Assign(experiment.Data.TrafficSplit, experiment.Data.TrafficSeedHi, experiment.Data.TrafficSeedLo) == 1;
-							if (eligible) 
-                            {
-								if (custom != null) 
-                                {
-									assignment.Variant = custom;
-									assignment.Custom = true;
-								} 
-                                else 
-                                {
-									assignment.Variant = assigner.Assign(experiment.Data.Split,
-											experiment.Data.SeedHi,
-											experiment.Data.SeedLo);
-								}
-							} 
-                            else
-                            {
-								assignment.Eligible = false;
-								assignment.Variant = 0;
-							}
+						//	var assigner = GetVariantAssigner(unitType, unitHash);
+						//	var eligible = assigner.Assign(experiment.Data.TrafficSplit, experiment.Data.TrafficSeedHi, experiment.Data.TrafficSeedLo) == 1;
+						//	if (eligible) 
+      //                      {
+						//		if (custom != null) 
+      //                          {
+						//			assignment.Variant = custom;
+						//			assignment.Custom = true;
+						//		} 
+      //                          else 
+      //                          {
+						//			assignment.Variant = assigner.Assign(experiment.Data.Split,
+						//					experiment.Data.SeedHi,
+						//					experiment.Data.SeedLo);
+						//		}
+						//	} 
+      //                      else
+      //                      {
+						//		assignment.Eligible = false;
+						//		assignment.Variant = 0;
+						//	}
 
-							assignment.Assigned = true;
-						}
+						//	assignment.Assigned = true;
+						//}
 					} 
                     else 
                     {
