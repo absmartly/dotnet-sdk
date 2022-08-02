@@ -1,2 +1,2 @@
 # dotnet-sdk
-AB Smartly DotNet SDK
+A/B Smartly DotNet SDK
