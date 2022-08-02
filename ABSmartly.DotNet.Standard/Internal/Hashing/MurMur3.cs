@@ -1,8 +1,13 @@
-﻿using System.Security.Cryptography;
+﻿using System;
+using System.Security.Cryptography;
 using Murmur;
 
 namespace ABSmartly.Internal.Hashing;
 
+/// <summary>
+/// Wrapper around the MurMur package
+/// https://github.com/darrenkopp/murmurhash-net
+/// </summary>
 public static class MurMur3
 {
     // Use a static instance when the seed is not used 
@@ -33,5 +38,34 @@ public static class MurMur3
     {
         var murmurHash = MurmurHash.Create32(managed: false, seed: seed);
         return murmurHash.ComputeHash(buffer, offset, count);
+    }
+
+
+    public static uint HashToUInt32(byte[] buffer)
+    {
+        var hashedBytes = Hash(buffer);
+        var hashedValue = BitConverter.ToUInt32(hashedBytes, 0);
+        return hashedValue;
+    }
+
+    public static uint HashToUInt32(byte[] buffer, int offset, int count)
+    {
+        var hashedBytes = Hash(buffer, offset, count);
+        var hashedValue = BitConverter.ToUInt32(hashedBytes, 0);
+        return hashedValue;
+    }
+
+    public static uint HashToUInt32(byte[] buffer, uint seed)
+    {
+        var hashedBytes = Hash(buffer, seed);
+        var hashedValue = BitConverter.ToUInt32(hashedBytes, 0);
+        return hashedValue;
+    }
+
+    public static uint HashToUInt32(byte[] buffer, int offset, int count, uint seed)
+    {
+        var hashedBytes = Hash(buffer, offset, count, seed);
+        var hashedValue = BitConverter.ToUInt32(hashedBytes, 0);
+        return hashedValue;
     }
 }

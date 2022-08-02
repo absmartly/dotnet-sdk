@@ -19,7 +19,8 @@ public class MD5
     public static byte[] HashToByte(string unit)
     {
         var hashedString = Hash(unit);
-        var hashedBytes = Convert.FromBase64String(hashedString);
+        //var hashedBytes = Convert.FromBase64String(hashedString);
+        var hashedBytes = Encoding.UTF8.GetBytes(hashedString);
         return hashedBytes;
     }
 }

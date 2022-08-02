@@ -15,18 +15,10 @@ public abstract class Buffers
 
     public static uint GetUInt32(byte[] buf, int offset) 
     {
-        try
-        {
-            return (uint)(buf[offset] & 0xff) | 
-                   ((uint)(buf[offset + 1] & 0xff) << 8) | 
-                   ((uint)(buf[offset + 2] & 0xff) << 16) | 
-                   ((uint)(buf[offset + 3] & 0xff) << 24);
-        }
-        catch (Exception e)
-        {
-            return 0;
-        }
-
+        return (uint)(buf[offset] & 0xff) | 
+               ((uint)(buf[offset + 1] & 0xff) << 8) | 
+               ((uint)(buf[offset + 2] & 0xff) << 16) | 
+               ((uint)(buf[offset + 3] & 0xff) << 24);
     }
 
     public static uint GetUInt24(byte[] buf, int offset) 
