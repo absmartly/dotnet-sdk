@@ -10,7 +10,6 @@
     <Folder Include="DotNet\Nio\Charset\" />
     <Folder Include="DotNet\Time\Internal\" />
     <Folder Include="DotNet\Util\" />
-    <Folder Include="Internal\Hashing\" />
     <Folder Include="JsonExpressions\Operators\" />
     <Folder Include="Json\" />
     <Folder Include="Utils\Extensions\" />

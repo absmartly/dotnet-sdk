@@ -2,7 +2,7 @@
 
 namespace ABSmartly.Internal.Hashing;
 
-public class Murmur3_32
+public class Murmur3_32_Hash
 {
     public static uint Digest(byte[] key, uint seed) 
     {

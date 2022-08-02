@@ -45,7 +45,7 @@ public class Murmur3_32Tests
     {
         var key = Encoding.UTF8.GetBytes(actualString);
 
-        var actual = Murmur3_32.Digest(key, seedHex);
+        var actual = Murmur3_32_Hash.Digest(key, seedHex);
         Assert.That(actual, Is.EqualTo(expectedHex));
     }
 
@@ -89,7 +89,7 @@ public class Murmur3_32Tests
     {
         var keyoffset = Encoding.UTF8.GetBytes("123" + actualString + "321");
 
-        var actual = Murmur3_32.Digest(keyoffset, "123".Length, keyoffset.Length - "123321".Length, seedHex);
+        var actual = Murmur3_32_Hash.Digest(keyoffset, "123".Length, keyoffset.Length - "123321".Length, seedHex);
         Assert.That(actual, Is.EqualTo(expectedHex));
     }
 }

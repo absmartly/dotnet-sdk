@@ -1,4 +1,6 @@
-﻿namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;
+﻿using System.Text;
+
+namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;
 
 [TestFixture]
 public class VariantAssignerTests
@@ -73,8 +75,8 @@ public class VariantAssignerTests
             new() { 0x27d1dc86, 0x845461b9 },
         };
 
-        var unitHash = Hashing.HashUnit(unitUID.ToString()?.ToCharArray());
-        var assigner = new VariantAssigner(unitHash);
+        var unitHashBytes = MD5Hash.HashToByte(unitUID.ToString());
+        var assigner = new VariantAssigner(unitHashBytes);
 
         for (var i = 0; i < seeds.Count; i++)
         {

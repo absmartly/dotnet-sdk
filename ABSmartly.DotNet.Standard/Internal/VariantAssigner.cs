@@ -12,7 +12,7 @@ public class VariantAssigner
 
     public VariantAssigner(byte[] unitHash) 
     {
-        _unitHash = Murmur3_32.Digest(unitHash, 0);
+        _unitHash = Murmur3_32_Hash.Digest(unitHash, 0);
     }
 
     public int Assign(double[] split, uint seedHi, uint seedLo) 
@@ -44,7 +44,7 @@ public class VariantAssigner
         Buffers.PutUInt32(buffer, 4, seedHi);
         Buffers.PutUInt32(buffer, 8, _unitHash);
 
-        var hash = Murmur3_32.Digest(buffer, 0);
+        var hash = Murmur3_32_Hash.Digest(buffer, 0);
         return (hash & 0xffffffffL) * normalizer;
     }
 }

@@ -990,7 +990,8 @@ public class Context : IDisposable
 
     private byte[] GetUnitHash(string unitType, string unitUID)
     {
-        return Concurrency.ComputeIfAbsentRW(_contextLock, _hashedUnits, unitType, (_ => Hashing.HashUnit(unitUID.ToCharArray())));
+        //throw new NotImplementedException();
+        return Concurrency.ComputeIfAbsentRW(_contextLock, _hashedUnits, unitType, _ => MD5Hash.HashToByte(unitUID));
     }
 
     private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash) 
