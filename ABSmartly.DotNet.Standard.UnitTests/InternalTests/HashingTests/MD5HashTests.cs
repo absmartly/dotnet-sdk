@@ -27,7 +27,7 @@ public class MD5HashTests
     [TestCase("123456778999", "K4uy4bTeCy34W97lmceVRg")]
     public void Hash_InputString_Returns_ExpectedHashedString(string actualString, string expectedHash)
     {
-        var actualStringHash = MD5Hash.Hash(actualString);
+        var actualStringHash = MD5.Hash(actualString);
 
         Assert.That(actualStringHash, Is.EqualTo(expectedHash));
     }
@@ -44,7 +44,7 @@ public class MD5HashTests
             sb.Append(actualString);
         }
 
-        var actualStringHash = MD5Hash.Hash(sb.ToString());
+        var actualStringHash = MD5.Hash(sb.ToString());
 
         Assert.That(actualStringHash, Is.EqualTo("Rxnq-eM9eE1SEoMnkEMOIw"));
     }

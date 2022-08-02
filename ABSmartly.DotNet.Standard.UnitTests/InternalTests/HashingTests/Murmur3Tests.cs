@@ -3,8 +3,10 @@
 namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests.HashingTests;
 
 [TestFixture]
-public class Murmur3_32Tests
+public class Murmur3Tests
 {
+    #region [TestCases]
+
     [TestCase("", (uint)0x00000000, (uint)0x00000000)]
     [TestCase(" ", (uint)0x00000000, (uint)0x7ef49b98)]
     [TestCase("t", (uint)0x00000000, (uint)0xca87df4d)]
@@ -40,14 +42,20 @@ public class Murmur3_32Tests
     [TestCase("testy12", (uint)0x00000001, 0xd92c9f23)]
     [TestCase("testy123", (uint)0x00000001, (uint)0x3bc1712d)]
     [TestCase("special characters açb↓c", (uint)0x00000001, (uint)0x293327b5)]
-    [TestCase("The quick brown fox jumps over the lazy dog", (uint)0x00000001, (uint)0x78e69e27)]
+    [TestCase("The quick brown fox jumps over the lazy dog", (uint)0x00000001, (uint)0x78e69e27)]    
+
+    #endregion
     public void Digest_WithSeed_Returns_ExpectedValue(string actualString, uint seedHex, uint expectedHex)
     {
-        var key = Encoding.UTF8.GetBytes(actualString);
+        var actualBytes = Encoding.UTF8.GetBytes(actualString);
 
-        var actual = Murmur3_32_Hash.Digest(key, seedHex);
-        Assert.That(actual, Is.EqualTo(expectedHex));
+        var actualHashedBytes = MurMur3.Hash(actualBytes, seedHex);
+        var actualHex = BitConverter.ToUInt32(actualHashedBytes);
+
+        Assert.That(actualHex, Is.EqualTo(expectedHex));
     }
+
+    #region [TestCases]
 
     [TestCase("", (uint)0x00000000, (uint)0x00000000)]
     [TestCase(" ", (uint)0x00000000, (uint)0x7ef49b98)]
@@ -84,12 +92,16 @@ public class Murmur3_32Tests
     [TestCase("testy12", (uint)0x00000001, 0xd92c9f23)]
     [TestCase("testy123", (uint)0x00000001, (uint)0x3bc1712d)]
     [TestCase("special characters açb↓c", (uint)0x00000001, (uint)0x293327b5)]
-    [TestCase("The quick brown fox jumps over the lazy dog", (uint)0x00000001, (uint)0x78e69e27)]
+    [TestCase("The quick brown fox jumps over the lazy dog", (uint)0x00000001, (uint)0x78e69e27)]    
+
+    #endregion
     public void Digest_WithSeedAndOffset_Returns_ExpectedValue(string actualString, uint seedHex, uint expectedHex)
     {
-        var keyoffset = Encoding.UTF8.GetBytes("123" + actualString + "321");
+        var actualBytesOffset = Encoding.UTF8.GetBytes("123" + actualString + "321");
 
-        var actual = Murmur3_32_Hash.Digest(keyoffset, "123".Length, keyoffset.Length - "123321".Length, seedHex);
-        Assert.That(actual, Is.EqualTo(expectedHex));
+        var actualHashedBytes = MurMur3.Hash(actualBytesOffset, "123".Length, actualBytesOffset.Length - "123321".Length, seedHex);
+        var actualHex = BitConverter.ToUInt32(actualHashedBytes);
+
+        Assert.That(actualHex, Is.EqualTo(expectedHex));
     }
 }

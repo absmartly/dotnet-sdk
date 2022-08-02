@@ -75,7 +75,7 @@ public class VariantAssignerTests
             new() { 0x27d1dc86, 0x845461b9 },
         };
 
-        var unitHashBytes = MD5Hash.HashToByte(unitUID.ToString());
+        var unitHashBytes = MD5.HashToByte(unitUID.ToString());
         var assigner = new VariantAssigner(unitHashBytes);
 
         for (var i = 0; i < seeds.Count; i++)

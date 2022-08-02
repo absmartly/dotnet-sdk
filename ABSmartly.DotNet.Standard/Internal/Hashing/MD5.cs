@@ -5,7 +5,7 @@ namespace ABSmartly.Internal.Hashing;
 
 // Todo: completely refactored, simplified
 // private static readonly ThreadLocal<byte[]> threadBuffer = new(() => new byte[512]); => removed
-public class MD5Hash
+public class MD5
 {
     public static string Hash(string unit)
     {
