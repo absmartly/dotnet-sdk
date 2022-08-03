@@ -20,9 +20,13 @@ public class AndCombinatorTests : TestCases
 
         evaluator.Setup(x => x.Evaluate(It.IsAny<bool>()))
             .Returns(Evaluate);
+        //evaluator.Setup(x => x.Evaluate(It.IsAny<int>()))
+        //    .Returns(Evaluate);
 
         evaluator.Setup(x => x.BooleanConvert(It.IsAny<bool>()))
             .Returns(BoolConvert);
+        //evaluator.Setup(x => x.BooleanConvert(It.IsAny<int?>()))
+        //    .Returns(BoolConvertInt);
 
         combinator = new AndCombinator();
     }
@@ -164,9 +168,6 @@ public class AndCombinatorTests : TestCases
     }
 
 
-
-
-
     #region Helper
 
     private static object Evaluate(object ob)
@@ -177,6 +178,12 @@ public class AndCombinatorTests : TestCases
     {
         return bools;
     }    
+    //private static bool BoolConvertInt(int? param)
+    //{
+    //    if (param == 1)
+    //        return true;
+    //    return false;
+    //}   
 
     #endregion
 }
