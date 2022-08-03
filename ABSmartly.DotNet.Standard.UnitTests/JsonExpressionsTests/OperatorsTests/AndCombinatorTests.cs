@@ -28,12 +28,80 @@ public class AndCombinatorTests : TestCases
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Returns_True_IfAllElementsEqualsTrue_OtherwiseFalse(object[] parameters)
+    public void Combine_Returns_True_IfAllElementsEqualsTrue_OtherwiseFalse(object?[] parameters)
     {
         var result = combinator.Combine(evaluator.Object, parameters.ToList());
 
         Assert.That(result, Is.EqualTo(parameters.All(x => (bool?)x == true)));
     }
+
+    [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
+    public void Combine_Verify_EvaluateOfTrueCalledNumberOfFirstTruesInSequence(object?[] parameters)
+    {
+        combinator.Combine(evaluator.Object, parameters.ToList());
+
+        var count = 0;
+        foreach (var parameter in parameters)
+        {
+            if ((bool?)parameter != true)
+                break;
+
+            count++;
+        }
+
+        evaluator.Verify(ev => ev.Evaluate(true), Times.Exactly(count));
+    }
+
+    [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
+    public void Combine_Verify_EvaluateOfFalseCalledNumberOfFirstFalseOrNull(object?[] parameters)
+    {
+        combinator.Combine(evaluator.Object, parameters.ToList());
+
+        var count = 0;
+        foreach (var parameter in parameters)
+        {
+            if ((bool?)parameter is null)
+            {
+                break;
+            }
+            if ((bool?)parameter is false)
+            {
+                count++;
+                break;
+            }
+        }
+
+        Assert.Less(count, 2);
+        evaluator.Verify(ev => ev.Evaluate(false), Times.Exactly(count));
+    }
+
+    [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
+    public void Combine_Verify_EvaluateOfNullCalledNumberOfFirstFalseOrNull(object?[] parameters)
+    {
+        combinator.Combine(evaluator.Object, parameters.ToList());
+
+        var count = 0;
+        foreach (var parameter in parameters)
+        {
+            if ((bool?)parameter is null)
+            {
+                count++;
+                break;
+            }
+            if ((bool?)parameter is false)
+            {
+                break;
+            }
+        }
+
+        Assert.Less(count, 2);
+        evaluator.Verify(ev => ev.Evaluate(null), Times.Exactly(count));
+    }
+
+
+
+
+
 
 
     //[Test]
