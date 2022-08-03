@@ -40,7 +40,7 @@ public class AndCombinatorTests
     }
 
     [Test]
-    public void Combine_True_Verify_EvaluateTrue_CalledOnce()
+    public void Combine_True_Verify_EvaluateTrue_Called1x()
     {
         var parameters = new List<object>
         {
@@ -53,7 +53,7 @@ public class AndCombinatorTests
     }
 
     [Test]
-    public void Combine_True_Verify_BooleanConvertTrue_CalledOnce()
+    public void Combine_True_Verify_BooleanConvertTrue_Called1x()
     {
         var parameters = new List<object>
         {
@@ -63,6 +63,46 @@ public class AndCombinatorTests
         combinator.Combine(evaluator.Object, parameters);
 
         evaluator.Verify(ev => ev.BooleanConvert(true), Times.Exactly(1));
+    }
+
+
+    [Test]
+    public void Combine_False_Returns_False()
+    {
+        var parameters = new List<object>
+        {
+            false
+        };
+
+        var result = combinator.Combine(evaluator.Object, parameters);
+
+        Assert.That(result, Is.EqualTo(false));
+    }
+
+    [Test]
+    public void Combine_False_Verify_EvaluateFalse_Called1x()
+    {
+        var parameters = new List<object>
+        {
+            false
+        };
+
+        combinator.Combine(evaluator.Object, parameters);
+
+        evaluator.Verify(ev => ev.BooleanConvert(false), Times.Exactly(1));
+    }
+
+    [Test]
+    public void Combine_False_Verify_BooleanConvertFalse_Called1x()
+    {
+        var parameters = new List<object>
+        {
+            false
+        };
+
+        combinator.Combine(evaluator.Object, parameters);
+
+        evaluator.Verify(ev => ev.BooleanConvert(false), Times.Exactly(1));
     }
 
 
