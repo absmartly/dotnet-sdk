@@ -26,6 +26,7 @@ public class AndCombinatorTests
         combinator = new AndCombinator();
     }
 
+
     [Test]
     public void Combine_True_Returns_True()
     {
@@ -49,7 +50,7 @@ public class AndCombinatorTests
 
         combinator.Combine(evaluator.Object, parameters);
 
-        evaluator.Verify(ev => ev.BooleanConvert(true), Times.Exactly(1));
+        evaluator.Verify(ev => ev.Evaluate(true), Times.Exactly(1));
     }
 
     [Test]
@@ -89,7 +90,7 @@ public class AndCombinatorTests
 
         combinator.Combine(evaluator.Object, parameters);
 
-        evaluator.Verify(ev => ev.BooleanConvert(false), Times.Exactly(1));
+        evaluator.Verify(ev => ev.Evaluate(false), Times.Exactly(1));
     }
 
     [Test]
@@ -105,6 +106,87 @@ public class AndCombinatorTests
         evaluator.Verify(ev => ev.BooleanConvert(false), Times.Exactly(1));
     }
 
+
+    [Test]
+    public void Combine_Null_Returns_False()
+    {
+        var parameters = new List<object?>
+        {
+            null
+        };
+
+        var result = combinator.Combine(evaluator.Object, parameters);
+
+        Assert.That(result, Is.EqualTo(false));
+    }
+
+    [Test]
+    public void Combine_Null_Verify_EvaluateNull_Called1x()
+    {
+        var parameters = new List<object?>
+        {
+            null
+        };
+
+        combinator.Combine(evaluator.Object, parameters);
+
+        evaluator.Verify(ev => ev.Evaluate(null), Times.Exactly(1));
+    }
+
+    [Test]
+    public void Combine_Null_Verify_BooleanConvertNull_Called1x()
+    {
+        var parameters = new List<object?>
+        {
+            null
+        };
+
+        combinator.Combine(evaluator.Object, parameters);
+
+        evaluator.Verify(ev => ev.BooleanConvert(null), Times.Exactly(1));
+    }
+
+
+    [Test]
+    public void Combine_TrueFalseTrue_Returns_False()
+    {
+        var parameters = new List<object>
+        {
+            true, false, true
+        };
+
+        var result = combinator.Combine(evaluator.Object, parameters);
+
+        Assert.That(result, Is.EqualTo(false));
+    }
+
+    [Test]
+    public void Combine_TrueFalseTrue_Verify_EvaluateTrue2x_EvaluateFalse1x()
+    {
+        var parameters = new List<object>
+        {
+            true, false, true
+        };
+
+        combinator.Combine(evaluator.Object, parameters);
+
+        evaluator.Verify(ev => ev.Evaluate(true), Times.Exactly(1));
+        evaluator.Verify(ev => ev.Evaluate(false), Times.Exactly(1));
+    }
+
+    [Test]
+    public void Combine_TrueFalseTrue_Verify_BooleanConvertNull_Called1x()
+    {
+        var parameters = new List<object>
+        {
+            true, false, true
+        };
+
+        combinator.Combine(evaluator.Object, parameters);
+
+        evaluator.Verify(ev => ev.BooleanConvert(true), Times.Exactly(1));
+        evaluator.Verify(ev => ev.BooleanConvert(false), Times.Exactly(1));
+    }
 
 
     #region Helper
