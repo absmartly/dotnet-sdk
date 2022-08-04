@@ -62,4 +62,6 @@ public class TestCases
         yield return new List<int>() { 2, 2 };
         yield return new Collection<bool>() { false, true, false };
     }
+
+    //public static IEnumerable<object> 
 }
