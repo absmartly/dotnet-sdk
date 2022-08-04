@@ -1,4 +1,5 @@
 ﻿using ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests.TestImplementations;
+using ABSmartly.DotNet.Standard.UnitTests.TestUtils;
 using ABSmartly.JsonExpressions;
 using ABSmartly.JsonExpressions.Operators;
 using Moq;
@@ -6,11 +7,11 @@ using Moq;
 namespace ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests;
 
 [TestFixture]
-public class BinaryOperatorTests
+public class BinaryOperatorTests : TestCases
 {
 #pragma warning disable CS8618
     private Mock<IEvaluator> evaluator;
-    private BinaryOperator op;
+    private BinaryOperator binaryOperator;
 #pragma warning restore CS8618
 
     [SetUp]
@@ -18,22 +19,42 @@ public class BinaryOperatorTests
     {
         evaluator = new Mock<IEvaluator>();
 
-        evaluator.Setup(x => x.Evaluate(It.IsAny<bool>()))
+        evaluator.Setup(x => x.Evaluate(It.IsAny<object>()))
             .Returns(Evaluate);
 
-        //evaluator.Setup(x => x.Compare(It.IsAny<bool>(), It.IsAny<bool>()))
-        //    .Returns(Compare);
-
-        op = new BinaryOperatorTestImplementation();
+        binaryOperator = new BinaryOperatorTestImplementation();
     }
 
-    [Test]
-    public void Evaluate_RandomParameterWhichIsNotIList_ReturnsNull()
+    [TestCaseSource(nameof(RandomNotIListValues))]
+    public void Evaluate_RandomParameterWhichIsNotIList_ReturnsNull(object parameters)
     {
-        var result = op.Evaluate(evaluator.Object, new bool[]{});
+        var result = binaryOperator.Evaluate(evaluator.Object, parameters);
 
-        Assert.IsNull(result);
+        Assert.That(result, Is.Null);
+    }
 
+    [TestCaseSource(nameof(RandomEmptyIListValues))]
+    public void Evaluate_RandomParameter_EmptyIList_ReturnsNull(object parameters)
+    {
+        var result = binaryOperator.Evaluate(evaluator.Object, parameters);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [TestCaseSource(nameof(RandomOneElementIListValues))]
+    public void Evaluate_RandomParameter_OneElementIList_ReturnsNull(object parameters)
+    {
+        var result = binaryOperator.Evaluate(evaluator.Object, parameters);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [TestCaseSource(nameof(RandomTwoOrMoreElementIListValues))]
+    public void Evaluate_RandomParameter_TwoOrMoreElementIList_Returns_ValidResult(object parameters)
+    {
+        var result = binaryOperator.Evaluate(evaluator.Object, parameters);
+
+        Assert.That(result, Is.EqualTo(BinaryOperatorTestImplementation.ValidResult));
     }
 
     #region Helper
@@ -42,13 +63,6 @@ public class BinaryOperatorTests
     {
         return ob;
     }
-    //private static int? Compare(object lhs, object rhs)
-    //{
-    //    if (lhs == rhs)
-    //        return 1;
-
-    //    return 0;
-    //}
 
     #endregion
 }
