@@ -6,11 +6,11 @@ using Moq;
 namespace ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests;
 
 [TestFixture]
-public class AndCombinatorTests : TestCases
+public class OrCombinatorTests : TestCases
 {
 #pragma warning disable CS8618
     private Mock<IEvaluator> evaluator;
-    private AndCombinator combinator;
+    private OrCombinator combinator;
 #pragma warning restore CS8618
 
     [SetUp]
@@ -24,60 +24,57 @@ public class AndCombinatorTests : TestCases
         evaluator.Setup(x => x.BooleanConvert(It.IsAny<bool>()))
             .Returns(BoolConvert);
 
-        combinator = new AndCombinator();
+        combinator = new OrCombinator();
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Returns_True_IfAllElementEqualsTrue_OtherwiseFalse(object?[] parameters)
+    public void Combine_Returns_True_IfAnyElementEqualsTrue_OtherwiseFalse(object?[] parameters)
     {
         var result = combinator.Combine(evaluator.Object, parameters.ToList());
 
-        Assert.That(result, Is.EqualTo(parameters.All(x => (bool?)x == true)));
+        Assert.That(result, Is.EqualTo(parameters.Any(x => (bool?)x == true)));
     }
 
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_EvaluateOfTrueCalledNumberOfFirstTruesInSequence(object?[] parameters)
+    public void Combine_Verify_EvaluateOfTrueCalledNumberOfFirstTrue(object?[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
         var count = 0;
         foreach (var parameter in parameters)
         {
-            if ((bool?)parameter != true)
+            if ((bool?)parameter is true)
+            {
+                count++;
                 break;
-
-            count++;
+            }
         }
 
+        Assert.That(count, Is.LessThan(2));
         evaluator.Verify(ev => ev.Evaluate(true), Times.Exactly(count));
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_EvaluateOfFalseCalledNumberOfFirstFalseOrNull(object?[] parameters)
+    public void Combine_Verify_EvaluateOfFalseCalledNumberOfFirstFalsesInSequence(object?[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
         var count = 0;
         foreach (var parameter in parameters)
         {
-            if ((bool?)parameter is null)
-            {
+            if ((bool?) parameter == true)
                 break;
-            }
-            if ((bool?)parameter is false)
-            {
+
+            if ((bool?)parameter == false)
                 count++;
-                break;
-            }
         }
 
-        Assert.Less(count, 2);
         evaluator.Verify(ev => ev.Evaluate(false), Times.Exactly(count));
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_EvaluateOfNullCalledNumberOfFirstFalseOrNull(object?[] parameters)
+    public void Combine_Verify_EvaluateOfNullCalledNumberOfFirstTrueOrNull(object?[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
@@ -89,7 +86,7 @@ public class AndCombinatorTests : TestCases
                 count++;
                 break;
             }
-            if ((bool?)parameter is false)
+            if ((bool?)parameter is true)
             {
                 break;
             }
@@ -101,47 +98,44 @@ public class AndCombinatorTests : TestCases
 
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_BooleanConvertOfTrueCalledNumberOfFirstTruesInSequence(object?[] parameters)
+    public void Combine_Verify_BooleanConvertOfTrueCalledNumberOfFirstTrue(object?[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
         var count = 0;
         foreach (var parameter in parameters)
         {
-            if ((bool?)parameter != true)
+            if ((bool?)parameter is true)
+            {
+                count++;
                 break;
-
-            count++;
+            }
         }
 
+        Assert.That(count, Is.LessThan(2));
         evaluator.Verify(ev => ev.BooleanConvert(true), Times.Exactly(count));
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_BooleanConvertOfFalseCalledNumberOfFirstFalseOrNull(object?[] parameters)
+    public void Combine_Verify_BooleanConvertOfFalseCalledNumberOfFirstFalsesInSequence(object?[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
         var count = 0;
         foreach (var parameter in parameters)
         {
-            if ((bool?)parameter is null)
-            {
+            if ((bool?) parameter == true)
                 break;
-            }
-            if ((bool?)parameter is false)
-            {
+
+            if ((bool?)parameter == false)
                 count++;
-                break;
-            }
         }
 
-        Assert.Less(count, 2);
         evaluator.Verify(ev => ev.BooleanConvert(false), Times.Exactly(count));
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_BooleanConvertOfNullCalledNumberOfFirstFalseOrNull(object?[] parameters)
+    public void Combine_Verify_BooleanConvertOfNullCalledNumberOfFirstTrueOrNull(object?[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
@@ -153,7 +147,7 @@ public class AndCombinatorTests : TestCases
                 count++;
                 break;
             }
-            if ((bool?)parameter is false)
+            if ((bool?)parameter is true)
             {
                 break;
             }
@@ -162,6 +156,7 @@ public class AndCombinatorTests : TestCases
         Assert.Less(count, 2);
         evaluator.Verify(ev => ev.BooleanConvert(null), Times.Exactly(count));
     }
+
 
 
     #region Helper
