@@ -5,11 +5,11 @@ using Moq;
 namespace ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests;
 
 [TestFixture]
-public class EqualsOperatorTests
+public class GreaterThanOperatorTests
 {
 #pragma warning disable CS8618
     private Mock<IEvaluator> evaluator;
-    private EqualsOperator equalsOperator;
+    private GreaterThanOperator greaterThanOperator;
 #pragma warning restore CS8618
 
     [SetUp]
@@ -23,7 +23,7 @@ public class EqualsOperatorTests
         evaluator.Setup(x => x.Compare(It.IsAny<object>(), It.IsAny<object>()))
             .Returns(Compare);
 
-        equalsOperator = new EqualsOperator();
+        greaterThanOperator = new GreaterThanOperator();
     }
 
     [Test]
@@ -32,7 +32,7 @@ public class EqualsOperatorTests
         var parameters = new List<object?> 
             { "null", "unused" };
 
-        var result = equalsOperator.Evaluate(evaluator.Object, parameters);
+        var result = greaterThanOperator.Evaluate(evaluator.Object, parameters);
 
         Assert.That(result, Is.EqualTo(null));
     }
@@ -42,30 +42,31 @@ public class EqualsOperatorTests
     {
         var parameters = new List<object> { -1, "unused" };
 
-        var result = equalsOperator.Evaluate(evaluator.Object, parameters);
+        var result = greaterThanOperator.Evaluate(evaluator.Object, parameters);
 
         Assert.That(result, Is.EqualTo(false));
     }
 
     [Test]
-    public void Evaluate_CompareResultZero_ReturnsTrue()
+    public void Evaluate_CompareResultZero_ReturnsFalse()
     {
         var parameters = new List<object> { 0, "unused" };
 
-        var result = equalsOperator.Evaluate(evaluator.Object, parameters);
+        var result = greaterThanOperator.Evaluate(evaluator.Object, parameters);
+
+        Assert.That(result, Is.EqualTo(false));
+    }
+
+    [Test]
+    public void Evaluate_CompareResultOne_ReturnsTrue()
+    {
+        var parameters = new List<object> { 1, "unused" };
+
+        var result = greaterThanOperator.Evaluate(evaluator.Object, parameters);
 
         Assert.That(result, Is.EqualTo(true));
     }
 
-    [Test]
-    public void Evaluate_CompareResultOne_ReturnsFalse()
-    {
-        var parameters = new List<object> { 1, "unused" };
-
-        var result = equalsOperator.Evaluate(evaluator.Object, parameters);
-
-        Assert.That(result, Is.EqualTo(false));
-    }
 
 
     #region Helper
