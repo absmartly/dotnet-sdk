@@ -9,12 +9,17 @@ public abstract class BinaryOperator : IOperator
         if (args is not List<object> objectList)
             return null;
 
-        var lhs = objectList.Count > 0 ? evaluator.Evaluate(objectList[0]) : null;
+        object lhs = null;
+        if (objectList.Count > 0)
+            lhs = evaluator.Evaluate(objectList[0]);
+
         if (lhs is null)
             return null;
 
-        // Todo: Tegu: review!?
-        var rhs = objectList.Count > 1 ? evaluator.Evaluate(objectList[1]) : null;
+        object rhs = null;
+        if (objectList.Count > 1)
+            rhs = evaluator.Evaluate(objectList[1]);
+
         if (rhs is null)
             return null;
 

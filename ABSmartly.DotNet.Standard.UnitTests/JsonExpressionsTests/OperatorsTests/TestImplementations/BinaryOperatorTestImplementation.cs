@@ -5,8 +5,10 @@ namespace ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTest
 
 public class BinaryOperatorTestImplementation : BinaryOperator
 {
+    public static object ValidResult => "Binary Pass";
+
     public override object Binary(IEvaluator evaluator, object lhs, object rhs)
     {
-        return "Binary Pass";
+        return ValidResult;
     }
 }
