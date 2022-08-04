@@ -5,6 +5,9 @@ public class EqualsOperator : BinaryOperator
     public override object Binary(IEvaluator evaluator, object lhs, object rhs)
     {
         var result = evaluator.Compare(lhs, rhs);
-        return (result is not null) ? (result == 0) : null;
+        if (result is null)
+            return null;
+
+        return result == 0;
     }
 }
