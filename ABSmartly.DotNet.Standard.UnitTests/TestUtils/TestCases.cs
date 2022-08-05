@@ -90,7 +90,7 @@ public class TestCases
         yield return "test";
     }
 
-    public static IEnumerable<object[]> StringObject()
+    public static IEnumerable<object[]> String_Object()
     {
         yield return new object[] { "test123", "t" };
         yield return new object[] { "test123", "st" };
@@ -101,6 +101,68 @@ public class TestCases
         yield return new object[] { "test123", "bla" };
         yield return new object[] { "test123", "56" };
         yield return new object[] { "test123", 56 };
-
+        yield return new object[] { "testTrue", true };
+        yield return new object[] { "testfalse", false };
     }
+
+
+    public static IEnumerable<Dictionary<string, object>> DictionaryStringKeysWithNullValues()
+    {
+        yield return new Dictionary<string, object>
+        {
+            { "first", null },
+            { "2", null },
+            { "true", null },
+            { "'b'", null }
+        };
+    }
+
+    public static IEnumerable<object[]> DictionaryStringWithNullValues_Object()
+    {
+        yield return new object[]
+        {
+            new Dictionary<string, object>
+            {
+                { "test123", null },
+                { "True", null },
+                { "testfalse", null },
+            },
+            "test123"
+        };
+
+        yield return new object[]
+        {
+            new Dictionary<string, object>
+            {
+                { "test123", null },
+                { "True", null },
+                { "testfalse", null },
+            },
+            true
+        };
+
+        yield return new object[]
+        {
+            new Dictionary<string, object>
+            {
+                { "123", null },
+                { "True", null },
+                { "testfalse", null },
+            },
+            123
+        };
+
+        yield return new object[]
+        {
+            new Dictionary<string, object>
+            {
+                { "123", null },
+                { "True", null },
+                { "testfalse", null },
+            },
+            "random - false"
+        };
+    }
+
+
 }

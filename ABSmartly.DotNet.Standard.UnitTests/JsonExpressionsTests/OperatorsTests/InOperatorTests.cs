@@ -56,7 +56,7 @@ public class InOperatorTests : TestCases
         Assert.That((bool)result, Is.False);
     }
 
-    [TestCaseSource(nameof(StringObject))]
+    [TestCaseSource(nameof(String_Object))]
     public void Binary_String_Returns_HayStackContainsStringifiedNeedle(object haystack, object needle)
     {
         var result = inOperator.Binary(evaluator.Object, haystack, needle);
@@ -67,6 +67,35 @@ public class InOperatorTests : TestCases
     }
 
 
+
+    [TestCaseSource(nameof(DictionaryStringKeysWithNullValues))]
+    public void Binary_DictionaryWithNullNeedle_Returns_False(object haystack)
+    {
+        string needle = null;
+        var result = inOperator.Binary(evaluator.Object, haystack, needle);
+
+        Assert.That((bool)result, Is.False);
+    }
+
+    [TestCaseSource(nameof(DictionaryStringKeysWithNullValues))]
+    public void Binary_DictionaryWithEmptyNeedle_Returns_False(object haystack)
+    {
+        string needle = "";
+        var result = inOperator.Binary(evaluator.Object, haystack, needle);
+
+        Assert.That((bool)result, Is.False);
+    }
+
+    [TestCaseSource(nameof(DictionaryStringWithNullValues_Object))]
+    public void Binary_Dictionary_Returns_ContainsKeyOfStringifiedNeedle(object haystack, object needle)
+    {
+        var result = inOperator.Binary(evaluator.Object, haystack, needle);
+
+        var dict = (IDictionary<string, object>)haystack;
+        var expectedResult = dict.ContainsKey(needle.ToString()!);
+
+        Assert.That(result, Is.EqualTo(expectedResult));
+    }
 
 
 

@@ -75,9 +75,14 @@ public class InOperator : BinaryOperator
     {
         //var needleString = evaluator.StringConvert(needle);
         //return needleString != null && ((Dictionary<string, object>) haystack).ContainsKey(needleString);
+        
+        if (needle is null)
+            return false;
+        
         var needleString = evaluator.StringConvert(needle);
         if (string.IsNullOrWhiteSpace(needleString)) 
             return false;
+
         return hsDictionary.ContainsKey(needleString);
     }
 }
