@@ -2,6 +2,7 @@
 using ABSmartly.JsonExpressions;
 using ABSmartly.JsonExpressions.Operators;
 using Moq;
+// ReSharper disable ExpressionIsAlwaysNull
 
 namespace ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests;
 
@@ -28,12 +29,41 @@ public class InOperatorTests : TestCases
     }
 
     [TestCaseSource(nameof(NonStringOrIListOrIDictionary))]
-    public void Binary_NonStringOrIListOrIDictionary_ReturnsNull(object haystack)
+    public void Binary_NonStringOrIListOrIDictionary_Returns_Null(object haystack)
     {
         var needle = "unused";
         var result = inOperator.Binary(evaluator.Object, haystack, needle);
 
-        Assert.IsNull(result);
+        Assert.That(result, Is.Null);
+    }
+
+
+    [TestCaseSource(nameof(StringsWithEmpty))]
+    public void Binary_StringWithNullNeedle_Returns_False(object haystack)
+    {
+        string needle = null;
+        var result = inOperator.Binary(evaluator.Object, haystack, needle);
+
+        Assert.That((bool)result, Is.False);
+    }
+
+    [TestCaseSource(nameof(StringsWithEmpty))]
+    public void Binary_StringWithEmptyNeedle_Returns_False(object haystack)
+    {
+        var needle = "";
+        var result = inOperator.Binary(evaluator.Object, haystack, needle);
+
+        Assert.That((bool)result, Is.False);
+    }
+
+    [TestCaseSource(nameof(StringObject))]
+    public void Binary_String_Returns_HayStackContainsStringifiedNeedle(object haystack, object needle)
+    {
+        var result = inOperator.Binary(evaluator.Object, haystack, needle);
+
+        var expectedResult = haystack.ToString()!.Contains(needle.ToString()!);
+
+        Assert.That(result, Is.EqualTo(expectedResult));
     }
 
 

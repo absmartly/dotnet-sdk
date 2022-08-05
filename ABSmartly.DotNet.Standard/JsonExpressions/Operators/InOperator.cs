@@ -50,8 +50,10 @@ public class InOperator : BinaryOperator
 
     private static object HandleString(IEvaluator evaluator, string hsString, object needle)
     {
-        var needleString = evaluator.StringConvert(needle);
+        if (needle is null)
+            return false;
 
+        var needleString = evaluator.StringConvert(needle);
         if (string.IsNullOrWhiteSpace(needleString))
             return false;
 
