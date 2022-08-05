@@ -3,48 +3,19 @@ using System.Collections.Generic;
 
 namespace ABSmartly.JsonExpressions.Operators;
 
-// Todo: Tegu: cleanup
 public class InOperator : BinaryOperator
 {
     public override object Binary(IEvaluator evaluator, object haystack, object needle)
     {
         if (haystack is string hsString)
-        {
             return HandleString(evaluator, hsString, needle);
-            //var needleString = evaluator.StringConvert(needle);
-            ////return needleString != null && hsString.Contains(needleString);
-
-            ////if (needleString == null) 
-            //if (string.IsNullOrWhiteSpace(needleString))
-            //    return false;
-
-            //return hsString.Contains(needleString);
-        }
-
+        
         if (haystack is IList hsList)
-        {
             return HandleIList(evaluator, hsList, needle);
-            //foreach (var listitem in list)
-            //{
-            //    if (evaluator.Compare(listitem, needle) == 0)
-            //        return true;
-            //}
-
-            //return false;
-        }
-
-
-
+        
         if (haystack is IDictionary<string, object> hsDictionary)
-        {
             return HandleIDictionary(evaluator, hsDictionary, needle);
-
-            //var needleString = evaluator.StringConvert(needle);
-            //if (needleString == null) 
-            //    return false;
-            //return hsDictionary.ContainsKey(needleString);
-        }
-
+        
         return null;
     }
 
@@ -73,9 +44,6 @@ public class InOperator : BinaryOperator
 
     private static object HandleIDictionary(IEvaluator evaluator, IDictionary<string, object> hsDictionary, object needle)
     {
-        //var needleString = evaluator.StringConvert(needle);
-        //return needleString != null && ((Dictionary<string, object>) haystack).ContainsKey(needleString);
-        
         if (needle is null)
             return false;
         
