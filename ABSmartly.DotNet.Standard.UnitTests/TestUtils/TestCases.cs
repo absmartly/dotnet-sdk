@@ -164,5 +164,39 @@ public class TestCases
         };
     }
 
+    public static IEnumerable<object> ListOfObjectEmpty()
+    {
+        yield return new List<object>();
+    }
+
+    public static IEnumerable<object[]> ListOfObject_Object()
+    {
+        yield return new object[]
+        {
+            new List<object>
+            {
+                0, "2", true, 'a', "test"
+            },
+            "random"
+        };
+
+        yield return new object[]
+        {
+            new List<object>
+            {
+                0, "2", true, 'a', "test"
+            },
+            0
+        };
+
+        yield return new object[]
+        {
+            new List<object>
+            {
+                0, "2", true, 'a', "test"
+            },
+            true
+        };
+    }
 
 }

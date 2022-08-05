@@ -23,7 +23,7 @@ public class InOperatorTests : TestCases
             .Returns(StringConvert);
 
         evaluator.Setup(x => x.Compare(It.IsAny<object>(), It.IsAny<object>()))
-            .Returns(Compare);
+            .Returns(CompareAsString);
 
         inOperator = new InOperator();
     }
@@ -98,6 +98,30 @@ public class InOperatorTests : TestCases
     }
 
 
+    [TestCaseSource(nameof(ListOfObjectEmpty))]
+    public void Binary_ListEmpty_Returns_False(object haystack)
+    {
+        var needle = "unused";
+        var result = inOperator.Binary(evaluator.Object, haystack, needle);
+
+        Assert.That((bool)result, Is.False);
+    }
+
+    [TestCaseSource(nameof(ListOfObject_Object))]
+    public void Binary_List_Returns_ListItem_Needle_CompareResult(object haystack, object needle)
+    {
+        var result = inOperator.Binary(evaluator.Object, haystack, needle);
+
+        var expectedResult = false;
+        foreach (var item in (List<object>)haystack)
+        {
+           if (CompareAsString(item, needle) == 0)
+               expectedResult = true;
+        }
+
+        Assert.That(result, Is.EqualTo(expectedResult));
+    }
+
 
     #region Helper
 
@@ -106,19 +130,22 @@ public class InOperatorTests : TestCases
         return ob.ToString();
     }
 
-    private static int? Compare(object lhs, object rhs)
+    private static int? CompareAsString(object lhs, object rhs)
     {
-        if (lhs.ToString() == "null")
-            return null;
-
-        if (lhs.ToString() == "-1")
-            return -1;
-
-        if (lhs.ToString() == "0")
+        if (lhs.ToString() == rhs.ToString())
             return 0;
 
-        if (lhs.ToString() == "1")
-            return 1;
+        //if (lhs.ToString() == "null")
+        //    return null;
+
+        //if (lhs.ToString() == "-1")
+        //    return -1;
+
+        //if (lhs.ToString() == "0")
+        //    return 0;
+
+        //if (lhs.ToString() == "1")
+        //    return 1;
 
         return null;
     }
