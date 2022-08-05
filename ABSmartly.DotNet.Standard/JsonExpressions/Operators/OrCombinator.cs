@@ -4,7 +4,7 @@ namespace ABSmartly.JsonExpressions.Operators;
 
 public class OrCombinator : BooleanCombinator
 {
-    public override object Combine(IEvaluator evaluator, List<object> exprs)
+    public override object Combine(IEvaluator evaluator, IList<object> exprs)
     {
         foreach (var expr in exprs)
         {

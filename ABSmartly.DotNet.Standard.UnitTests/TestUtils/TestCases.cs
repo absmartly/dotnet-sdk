@@ -38,6 +38,25 @@ public class TestCases
         yield return (decimal)5;
     }
 
+    //public static IEnumerable<object> RandomIListValues()
+    //{
+    //    yield return new bool[] { };
+    //    yield return new string[] { };
+    //    yield return new List<int>();
+    //    yield return new Collection<bool>();
+
+    //    yield return new bool[] { true };
+    //    yield return new string[] { "test" };
+    //    yield return new List<int>() { 2 };
+    //    yield return new Collection<bool>() { false };
+
+    //    yield return new object?[] { 1, false, "random" };
+    //    yield return new bool[] { true, false };
+    //    yield return new string[] { "test 1", "test 2" };
+    //    yield return new List<int>() { 2, 2 };
+    //    yield return new Collection<bool>() { false, true, false };
+    //}
+
     public static IEnumerable<object> RandomEmptyIListValues()
     {
         yield return new bool[] { };
@@ -50,6 +69,13 @@ public class TestCases
     {
         yield return new bool[] { true };
         yield return new string[] { "test" };
+        yield return new List<int>() { 2 };
+        yield return new Collection<bool>() { false };
+    }
+
+    public static IEnumerable<object> RandomOneElementIListWithoutArrayValues()
+    {
+        yield return new List<string>() { "test" };
         yield return new List<int>() { 2 };
         yield return new Collection<bool>() { false };
     }
