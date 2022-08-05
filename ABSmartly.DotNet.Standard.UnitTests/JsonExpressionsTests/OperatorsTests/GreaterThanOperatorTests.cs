@@ -29,7 +29,7 @@ public class GreaterThanOperatorTests
     [Test]
     public void Evaluate_CompareResultNull_ReturnsNull()
     {
-        var parameters = new List<object?> 
+        var parameters = new List<object> 
             { "null", "unused" };
 
         var result = greaterThanOperator.Evaluate(evaluator.Object, parameters);
