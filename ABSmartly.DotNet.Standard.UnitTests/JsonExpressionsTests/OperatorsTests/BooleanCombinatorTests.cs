@@ -43,9 +43,6 @@ public class BooleanCombinatorTests : TestCases
         Assert.That(result, Is.EqualTo(BooleanCombinatorTestImplementation.ValidResult));
     }
 
-
-
-
     #region Helper
 
     private static object Evaluate(object ob)
