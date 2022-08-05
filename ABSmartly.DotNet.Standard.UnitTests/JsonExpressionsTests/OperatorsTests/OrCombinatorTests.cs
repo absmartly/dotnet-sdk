@@ -28,7 +28,7 @@ public class OrCombinatorTests : TestCases
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Returns_True_IfAnyElementEqualsTrue_OtherwiseFalse(object?[] parameters)
+    public void Combine_Returns_True_IfAnyElementEqualsTrue_OtherwiseFalse(object[] parameters)
     {
         var result = combinator.Combine(evaluator.Object, parameters.ToList());
 
@@ -37,7 +37,7 @@ public class OrCombinatorTests : TestCases
 
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_EvaluateOfTrueCalledNumberOfFirstTrue(object?[] parameters)
+    public void Combine_Verify_EvaluateOfTrueCalledNumberOfFirstTrue(object[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
@@ -56,7 +56,7 @@ public class OrCombinatorTests : TestCases
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_EvaluateOfFalseCalledNumberOfFirstFalsesInSequence(object?[] parameters)
+    public void Combine_Verify_EvaluateOfFalseCalledNumberOfFirstFalsesInSequence(object[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
@@ -74,7 +74,7 @@ public class OrCombinatorTests : TestCases
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_EvaluateOfNullCalledNumberOfFirstTrueOrNull(object?[] parameters)
+    public void Combine_Verify_EvaluateOfNullCalledNumberOfFirstTrueOrNull(object[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
@@ -98,7 +98,7 @@ public class OrCombinatorTests : TestCases
 
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_BooleanConvertOfTrueCalledNumberOfFirstTrue(object?[] parameters)
+    public void Combine_Verify_BooleanConvertOfTrueCalledNumberOfFirstTrue(object[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
@@ -117,7 +117,7 @@ public class OrCombinatorTests : TestCases
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_BooleanConvertOfFalseCalledNumberOfFirstFalsesInSequence(object?[] parameters)
+    public void Combine_Verify_BooleanConvertOfFalseCalledNumberOfFirstFalsesInSequence(object[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
@@ -135,7 +135,7 @@ public class OrCombinatorTests : TestCases
     }
 
     [TestCaseSource(nameof(ObjectArrayOfBoolWithNull))]
-    public void Combine_Verify_BooleanConvertOfNullCalledNumberOfFirstTrueOrNull(object?[] parameters)
+    public void Combine_Verify_BooleanConvertOfNullCalledNumberOfFirstTrueOrNull(object[] parameters)
     {
         combinator.Combine(evaluator.Object, parameters.ToList());
 
