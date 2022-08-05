@@ -1,5 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 using Microsoft.VisualBasic;
+// ReSharper disable RedundantExplicitArrayCreation
 
 namespace ABSmartly.DotNet.Standard.UnitTests.TestUtils;
 
@@ -23,7 +24,7 @@ public class TestCases
         new object?[] { false, null, false },
     };
 
-    public static IEnumerable<object?> RandomNotIListValues()
+    public static IEnumerable<object> RandomNotIListValues()
     {
         yield return null;
         yield return "";
@@ -70,5 +71,11 @@ public class TestCases
         yield return new Collection<bool>() { false, true, false };
     }
 
-    //public static IEnumerable<object> 
+    public static IEnumerable<object> NonStringOrIListOrIDictionary()
+    {
+        yield return 1;
+        yield return false;
+        yield return 'c';
+
+    }
 }
