@@ -23,6 +23,13 @@ public class TestCases
         new object[] { false, null, false },
     };
 
+    public static IEnumerable<object> BoolsWithNull()
+    {
+        yield return true;
+        yield return false;
+        yield return null;
+    }
+
     public static IEnumerable<object> RandomNotIListValues()
     {
         yield return null;
