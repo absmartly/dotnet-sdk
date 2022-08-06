@@ -1,34 +1,30 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace ABSmartly.JsonExpressions.Operators;
 
 public class MatchOperator : BinaryOperator
 {
-    // Todo: Tegu: cleanup
     public override object Binary(IEvaluator evaluator, object lhs, object rhs)
     {
         var text = evaluator.StringConvert(lhs);
-        if (text == null) 
+        if (string.IsNullOrWhiteSpace(text)) 
             return null;
         
         var pattern = evaluator.StringConvert(rhs);
-        if (pattern == null) 
+        if (string.IsNullOrWhiteSpace(pattern)) 
             return null;
             
         try
         {
             var match = Regex.Match(text, pattern);
-            // Todo: finish the regex..
-
-            //var compiled = Pattern.Compile(pattern);
-            //var matcher = compiled.matcher(text);
-            //return matcher.find();
+            return match.Value;
         }
         catch (Exception e)
         {
+            Debug.WriteLine(e);
+            return null;
         }
-
-        return null;
     }
 }
