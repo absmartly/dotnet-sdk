@@ -31,7 +31,7 @@ public class NotOperatorTests : TestCases
 
         var expectedResult = (bool?)parameter == null || (bool?)parameter == false;
 
-        Assert.That(result, Is.EqualTo(expectedResult));
+        Assert.That(result, Is.EqualTo(expectedResult)); 
     }
 
     #region Helper
