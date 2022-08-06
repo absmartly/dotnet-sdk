@@ -10,12 +10,15 @@ public class VarOperator : IOperator
 
         if (path is Dictionary<string, object> dict)
         {
-            dict.TryGetValue("path", out dictPath);
+            var res = dict.TryGetValue("path", out dictPath);
+            if (res != true)
+                return null;
         }
 
-        // Todo: Tegu: cleanup
-        if (dictPath is string)
-            return evaluator.ExtractVariable(dictPath as string);
-        return null;
+        if (dictPath is not string dictPathString)
+            return null;
+
+        var extractedVariable = evaluator.ExtractVariable(dictPathString);
+        return extractedVariable;
     }
 }
