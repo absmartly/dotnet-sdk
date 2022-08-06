@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace ABSmartly.JsonExpressions;
@@ -14,36 +15,49 @@ public class ExprEvaluator : IEvaluator
         this.operators = operators;
     }
 
-    // Todo: finish
     public object Evaluate(object expression)
     {
-        throw new System.NotImplementedException();
-    }
+        if (expression is IList)
+            return operators["and"].Evaluate(this, expression);
 
-    public bool BooleanConvert(object x)
-    {
-        if (x is bool) 
+        if (expression is IDictionary<string, object> exprDict)
         {
-            return (bool) x;
+            foreach (var kvp in exprDict)
+            {
+                if(!operators.TryGetValue(kvp.Key, out var op))
+                    break;
+
+                return op.Evaluate(this, kvp.Value);
+            }
         }
 
-        if (x is string) 
+        return null;
+    }
+
+    public bool BooleanConvert(object p)
+    {
+        if (p is bool) 
         {
-            return !x.Equals("false") && !x.Equals("0") && !x.Equals("");
+            return (bool) p;
+        }
+
+        if (p is string) 
+        {
+            return !p.Equals("false") && !p.Equals("0") && !p.Equals("");
             // Todo: Number
         }
 
-        if (x is int) 
+        if (p is int) 
         {
-            return ((int) x) != 0;
+            return ((int) p) != 0;
             //return ((int) x).longValue() != 0;
         }
 
-        return x != null;
+        return p != null;
     }
 
     // Todo: review, Number..
-    public int? NumberConvert(object x)
+    public int? IntConvert(object x)
     {
         if (x is int) 
         {
