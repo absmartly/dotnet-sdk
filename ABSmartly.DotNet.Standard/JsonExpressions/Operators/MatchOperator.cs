@@ -13,13 +13,13 @@ public class MatchOperator : BinaryOperator
             return null;
         
         var pattern = evaluator.StringConvert(rhs);
-        if (string.IsNullOrWhiteSpace(pattern)) 
+        if (pattern is null) 
             return null;
             
         try
         {
             var match = Regex.Match(text, pattern);
-            return match.Value;
+            return match.Success;
         }
         catch (Exception e)
         {
