@@ -36,24 +36,21 @@ public class ExprEvaluator : IEvaluator
 
     public bool BooleanConvert(object p)
     {
-        if (p is bool) 
-        {
-            return (bool) p;
-        }
+        if (p is null)
+            return false;
 
-        if (p is string) 
-        {
-            return !p.Equals("false") && !p.Equals("0") && !p.Equals("");
-            // Todo: Number
-        }
+        if (p is bool boolParam)
+            return boolParam;
+        
 
-        if (p is int) 
-        {
-            return ((int) p) != 0;
-            //return ((int) x).longValue() != 0;
-        }
+        if (p is string stringParam)
+            return !stringParam.ToLower().Equals("false") && !stringParam.Equals("0") && !stringParam.Equals("");
 
-        return p != null;
+
+        if (p is int intParam)
+            return intParam != 0;
+
+        return true;
     }
 
     // Todo: review, Number..
