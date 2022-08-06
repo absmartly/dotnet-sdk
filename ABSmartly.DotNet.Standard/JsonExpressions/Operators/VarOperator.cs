@@ -6,14 +6,20 @@ public class VarOperator : IOperator
 {
     public object Evaluate(IEvaluator evaluator, object path)
     {
-        object dictPath = null;
+        if (path is Dictionary<string, object> pathDictionary)
+            return ParseDictionary(evaluator, pathDictionary);
 
-        if (path is Dictionary<string, object> dict)
-        {
-            var res = dict.TryGetValue("path", out dictPath);
-            if (res != true)
-                return null;
-        }
+        if (path is string pathString)
+            return evaluator.ExtractVariable(pathString);
+
+        return null;
+    }
+
+    private static object ParseDictionary(IEvaluator evaluator, IReadOnlyDictionary<string, object> pathDictionary)
+    {
+        var dictResult = pathDictionary.TryGetValue("path", out var dictPath);
+        if (dictResult != true)
+            return null;
 
         if (dictPath is not string dictPathString)
             return null;
