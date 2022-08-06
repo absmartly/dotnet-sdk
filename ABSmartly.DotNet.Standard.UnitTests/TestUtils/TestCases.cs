@@ -23,6 +23,15 @@ public class TestCases
         new object[] { false, null, false },
     };
 
+    public static IEnumerable<object> NotStringOrDictionaryOfObjectString()
+    {
+        yield return null;
+        yield return true;
+        yield return 2;
+        yield return new List<string> { "test" };
+        yield return new Exception("test");
+    }
+
     public static IEnumerable<object> BoolsWithNull()
     {
         yield return true;
@@ -169,6 +178,21 @@ public class TestCases
             },
             "random - false"
         };
+    }
+
+
+    public static IEnumerable<object> DictionaryOfStringNotString()
+    {
+        yield return new Dictionary<string, int> { { "01", 1 } };
+    }
+    public static IEnumerable<object> DictionaryOfStringString()
+    {
+        yield return new Dictionary<string, string> { { "01", "01" } };
+        yield return new Dictionary<string, string> { { "testKey", "testValue" } };
+    }
+    public static IEnumerable<object> DictionaryOfStringString_WithKeyOfPath()
+    {
+        yield return new Dictionary<string, string> { { "path", "testValue" } };
     }
 
     public static IEnumerable<object> ListOfObjectEmpty()

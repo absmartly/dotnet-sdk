@@ -4,9 +4,11 @@ namespace ABSmartly.JsonExpressions.Operators;
 
 public class VarOperator : IOperator
 {
+    public const string DictionaryKey = "path";
+
     public object Evaluate(IEvaluator evaluator, object path)
     {
-        if (path is Dictionary<string, object> pathDictionary)
+        if (path is Dictionary<string, string> pathDictionary)
             return ParseDictionary(evaluator, pathDictionary);
 
         if (path is string pathString)
@@ -15,16 +17,13 @@ public class VarOperator : IOperator
         return null;
     }
 
-    private static object ParseDictionary(IEvaluator evaluator, IReadOnlyDictionary<string, object> pathDictionary)
+    private static object ParseDictionary(IEvaluator evaluator, IReadOnlyDictionary<string, string> pathDictionary)
     {
-        var dictResult = pathDictionary.TryGetValue("path", out var dictPath);
+        var dictResult = pathDictionary.TryGetValue(DictionaryKey, out var dictPath);
         if (dictResult != true)
             return null;
 
-        if (dictPath is not string dictPathString)
-            return null;
-
-        var extractedVariable = evaluator.ExtractVariable(dictPathString);
+        var extractedVariable = evaluator.ExtractVariable(dictPath);
         return extractedVariable;
     }
 }
