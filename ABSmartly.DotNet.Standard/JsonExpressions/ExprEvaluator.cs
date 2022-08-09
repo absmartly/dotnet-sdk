@@ -27,11 +27,9 @@ public class ExprEvaluator : IEvaluator
             return andOperatorResult;
         }
 
-        //if (expression is IDictionary<string, object> exprDict)
-        if (expression is IDictionary exprDict)
+        if (expression is Dictionary<string, object> exprDict)
         {
-            var dict = exprDict as Dictionary<string, object>;
-            foreach (var kvp in dict)
+            foreach (var kvp in exprDict)
             {
                 if(!operators.TryGetValue(kvp.Key, out var op))
                     break;
@@ -40,7 +38,7 @@ public class ExprEvaluator : IEvaluator
                 return operatorEvaluateResult;
             }
         }
-
+        
         if (expression is KeyValuePair<string, object> exprKVP)
         {
             if (!operators.TryGetValue(exprKVP.Key, out var op))
@@ -50,7 +48,7 @@ public class ExprEvaluator : IEvaluator
             return operatorEvaluateResult;
         }
 
-        var type = expression.GetType();
+        //var type = expression.GetType();
 
         return null;
     }
@@ -74,7 +72,6 @@ public class ExprEvaluator : IEvaluator
         return true;
     }
 
-    // Todo: review, Number..
     public int? IntConvert(object p)
     {
         if (p is int pInt)
@@ -91,19 +88,6 @@ public class ExprEvaluator : IEvaluator
         
         return null;
     }
-    //public Double numberConvert(Object x) {
-    //    if (x instanceof Number) {
-    //        return (x instanceof Double) ? (Double) x : ((Number) x).doubleValue();
-    //    } else if (x instanceof Boolean) {
-    //        return (Boolean) x ? 1.0 : 0.0;
-    //    } else if (x instanceof String) {
-    //        try {
-    //            return Double.parseDouble((String) x); // use javascript semantics: numbers are doubles
-    //        } catch (Throwable ignored) {}
-    //    }
-
-    //    return null;
-    //}
 
     public string StringConvert(object param)
     {
@@ -127,7 +111,6 @@ public class ExprEvaluator : IEvaluator
         return null;
     }
 
-    // Todo: finish
     public object ExtractVariable(string path)
     {
         var frags = path.Split('/');
@@ -136,24 +119,25 @@ public class ExprEvaluator : IEvaluator
 
         foreach (var frag in frags)
         {
-            // Todo: target is list??
-
             object value = null;
 
-            if (target is IList)
+            if (target is IList targetIList)
             {
-                var targetList = target as List<object>;
-                value = targetList[int.Parse(frag)];
+                var targetList = target as List<object> ?? targetIList.Cast<object>().ToList();
+                if (int.TryParse(frag, out var index))
+                {
+                    if (targetList.Count > index)
+                        value = targetList[int.Parse(frag)];
+                }
             }
             else if (target is IDictionary<string, object> targetDictionary)
             {
-                //var map = (Dictionary<string, object>)target;
                 value = targetDictionary[frag];
             }
-            else
-            {
-                var type = target.GetType();
-            }
+            //else
+            //{
+            //    var type = target.GetType();
+            //}
 
             if (value is not null)
             {
@@ -168,7 +152,6 @@ public class ExprEvaluator : IEvaluator
         return target;
     }
 
-    // Todo: finish
     public int? Compare(object lhs, object rhs)
     {
         if (lhs is null)
@@ -200,7 +183,7 @@ public class ExprEvaluator : IEvaluator
         if (lhs is string lhsString)
         {
             var rhsString = StringConvert(rhs);
-            return lhsString.CompareTo(rhsString);
+            return string.Compare(lhsString, rhsString, StringComparison.Ordinal);
         }
 
         if (lhs is bool lhsBool)
@@ -213,20 +196,6 @@ public class ExprEvaluator : IEvaluator
         {
             return 0;
         }
-
-        //} else if (lhs instanceof String) {
-        //    final String rvalue = stringConvert(rhs);
-        //    if (rvalue != null) {
-        //        return ((String) lhs).compareTo(rvalue);
-        //    }
-        //} else if (lhs instanceof Boolean) {
-        //    final Boolean rvalue = booleanConvert(rhs);
-        //    if (rvalue != null) {
-        //        return ((Boolean) lhs).compareTo(rvalue);
-        //    }
-        //} else if ((lhs.getClass() == rhs.getClass()) && (lhs.equals(rhs))) {
-        //    return 0;
-        //}
 
         return null;
     }

@@ -1,17 +1,15 @@
-﻿using System.Numerics;
-
-namespace ABSmartly.JsonExpressions;
+﻿namespace ABSmartly.JsonExpressions;
 
 public interface IEvaluator
 {
     object Evaluate(object expression);
 
-    bool BooleanConvert(object x);
+    bool BooleanConvert(object p);
 
     // Todo: Tegu: Number is not exist in C#!!!! int, float, double, decimal, etc... It's a pain in the .. but needs to handle somehow
-    int? IntConvert(object x);
+    int? IntConvert(object p);
 
-    string StringConvert(object x);
+    string StringConvert(object p);
 
     object ExtractVariable(string path);
 
