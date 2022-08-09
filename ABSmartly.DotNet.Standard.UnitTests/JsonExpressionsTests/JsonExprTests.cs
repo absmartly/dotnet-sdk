@@ -115,150 +115,150 @@ public class JsonExprTests
 
 
     [Test]
-    public void EvaluateBooleanExpr_AgeTwentyAsUSEnglish_John()
+    public void EvaluateBooleanExpr_AgeTwentyAsUSEnglish_John_Returns_True()
     {
         var johnResult = jsonExpr.EvaluateBooleanExpr(ageTwentyAndUS, john);
         Assert.That(johnResult, Is.True);
     }
     [Test]
-    public void EvaluateBooleanExpr_AgeTwentyAsUSEnglish_Terry()
+    public void EvaluateBooleanExpr_AgeTwentyAsUSEnglish_Terry_Returns_False()
     {
         var terryResult = jsonExpr.EvaluateBooleanExpr(ageTwentyAndUS, terry);
         Assert.That(terryResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_AgeTwentyAsUSEnglish_Kate()
+    public void EvaluateBooleanExpr_AgeTwentyAsUSEnglish_Kate_Returns_False()
     {
         var kateResult = jsonExpr.EvaluateBooleanExpr(ageTwentyAndUS, kate);
         Assert.That(kateResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_AgeTwentyAsUSEnglish_Maria()
+    public void EvaluateBooleanExpr_AgeTwentyAsUSEnglish_Maria_Returns_False()
     {
         var mariaResult = jsonExpr.EvaluateBooleanExpr(ageTwentyAndUS, maria);
         Assert.That(mariaResult, Is.False);
     }
 
     [Test]
-    public void EvaluateBooleanExpr_AgeOverFifty_John()
+    public void EvaluateBooleanExpr_AgeOverFifty_John_Returns_False()
     {
         var johnResult = jsonExpr.EvaluateBooleanExpr(ageOverFifty, john);
         Assert.That(johnResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_AgeOverFifty_Terry()
+    public void EvaluateBooleanExpr_AgeOverFifty_Terry_Returns_False()
     {
         var terryResult = jsonExpr.EvaluateBooleanExpr(ageOverFifty, terry);
         Assert.That(terryResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_AgeOverFifty_Kate()
+    public void EvaluateBooleanExpr_AgeOverFifty_Kate_Returns_True()
     {
         var kateResult = jsonExpr.EvaluateBooleanExpr(ageOverFifty, kate);
         Assert.That(kateResult, Is.True);
     }
     [Test]
-    public void EvaluateBooleanExpr_AgeOverFifty_Maria()
+    public void EvaluateBooleanExpr_AgeOverFifty_Maria_Returns_True()
     {
         var mariaResult = jsonExpr.EvaluateBooleanExpr(ageOverFifty, maria);
         Assert.That(mariaResult, Is.True);
     }
 
     [Test]
-    public void EvaluateBooleanExpr_AgeTwentyAndUS_Or_AgeOverFifty_John()
+    public void EvaluateBooleanExpr_AgeTwentyAndUS_Or_AgeOverFifty_John_Returns_True()
     {
         var johnResult = jsonExpr.EvaluateBooleanExpr(ageTwentyAndUS_Or_AgeOverFifty, john);
         Assert.That(johnResult, Is.True);
     }
     [Test]
-    public void EvaluateBooleanExpr_AgeTwentyAndUS_Or_AgeOverFifty_Terry()
+    public void EvaluateBooleanExpr_AgeTwentyAndUS_Or_AgeOverFifty_Terry_Returns_False()
     {
         var terryResult = jsonExpr.EvaluateBooleanExpr(ageTwentyAndUS_Or_AgeOverFifty, terry);
         Assert.That(terryResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_AgeTwentyAndUS_Or_AgeOverFifty_Kate()
+    public void EvaluateBooleanExpr_AgeTwentyAndUS_Or_AgeOverFifty_Kate_Returns_True()
     {
         var kateResult = jsonExpr.EvaluateBooleanExpr(ageTwentyAndUS_Or_AgeOverFifty, kate);
         Assert.That(kateResult, Is.True);
     }
     [Test]
-    public void EvaluateBooleanExpr_AgeTwentyAndUS_Or_AgeOverFifty_Maria()
+    public void EvaluateBooleanExpr_AgeTwentyAndUS_Or_AgeOverFifty_Maria_Returns_True()
     {
         var mariaResult = jsonExpr.EvaluateBooleanExpr(ageTwentyAndUS_Or_AgeOverFifty, maria);
         Assert.That(mariaResult, Is.True);
     }
 
     [Test]
-    public void EvaluateBooleanExpr_Returning_John()
+    public void EvaluateBooleanExpr_Returning_John_Returns_False()
     {
         var johnResult = jsonExpr.EvaluateBooleanExpr(returning, john);
         Assert.That(johnResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_Returning_Terry()
+    public void EvaluateBooleanExpr_Returning_Terry_Returns_True()
     {
         var terryResult = jsonExpr.EvaluateBooleanExpr(returning, terry);
         Assert.That(terryResult, Is.True);
     }
     [Test]
-    public void EvaluateBooleanExpr_Returning_Kate()
+    public void EvaluateBooleanExpr_Returning_Kate_Returns_False()
     {
         var kateResult = jsonExpr.EvaluateBooleanExpr(returning, kate);
         Assert.That(kateResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_Returning_Maria()
+    public void EvaluateBooleanExpr_Returning_Maria_Returns_True()
     {
         var mariaResult = jsonExpr.EvaluateBooleanExpr(returning, maria);
         Assert.That(mariaResult, Is.True);
     }
 
     [Test]
-    public void EvaluateBooleanExpr_Returning_And_AgeTwentyAndUS_Or_AgeOverFifty_John()
+    public void EvaluateBooleanExpr_Returning_And_AgeTwentyAndUS_Or_AgeOverFifty_John_Returns_False()
     {
         var johnResult = jsonExpr.EvaluateBooleanExpr(returning_And_AgeTwentyAndUS_Or_AgeOverFifty, john);
         Assert.That(johnResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_Returning_And_AgeTwentyAndUS_Or_AgeOverFifty_Terry()
+    public void EvaluateBooleanExpr_Returning_And_AgeTwentyAndUS_Or_AgeOverFifty_Terry_Returns_False()
     {
         var terryResult = jsonExpr.EvaluateBooleanExpr(returning_And_AgeTwentyAndUS_Or_AgeOverFifty, terry);
         Assert.That(terryResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_Returning_And_AgeTwentyAndUS_Or_AgeOverFifty_Kate()
+    public void EvaluateBooleanExpr_Returning_And_AgeTwentyAndUS_Or_AgeOverFifty_Kate_Returns_False()
     {
         var kateResult = jsonExpr.EvaluateBooleanExpr(returning_And_AgeTwentyAndUS_Or_AgeOverFifty, kate);
         Assert.That(kateResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_Returning_And_AgeTwentyAndUS_Or_AgeOverFifty_Maria()
+    public void EvaluateBooleanExpr_Returning_And_AgeTwentyAndUS_Or_AgeOverFifty_Maria_Returns_True()
     {
         var mariaResult = jsonExpr.EvaluateBooleanExpr(returning_And_AgeTwentyAndUS_Or_AgeOverFifty, maria);
         Assert.That(mariaResult, Is.True);
     }
 
     [Test]
-    public void EvaluateBooleanExpr_NotReturning_And_Spanish_John()
+    public void EvaluateBooleanExpr_NotReturning_And_Spanish_John_Returns_False()
     {
         var johnResult = jsonExpr.EvaluateBooleanExpr(notReturning_And_Spanish, john);
         Assert.That(johnResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_NotReturning_And_Spanish_Terry()
+    public void EvaluateBooleanExpr_NotReturning_And_Spanish_Terry_Returns_False()
     {
         var terryResult = jsonExpr.EvaluateBooleanExpr(notReturning_And_Spanish, terry);
         Assert.That(terryResult, Is.False);
     }
     [Test]
-    public void EvaluateBooleanExpr_NotReturning_And_Spanish_Kate()
+    public void EvaluateBooleanExpr_NotReturning_And_Spanish_Kate_Returns_True()
     {
         var kateResult = jsonExpr.EvaluateBooleanExpr(notReturning_And_Spanish, kate);
         Assert.That(kateResult, Is.True);
     }
     [Test]
-    public void EvaluateBooleanExpr_NotReturning_And_Spanish_Maria()
+    public void EvaluateBooleanExpr_NotReturning_And_Spanish_Maria_Returns_False()
     {
         var mariaResult = jsonExpr.EvaluateBooleanExpr(notReturning_And_Spanish, maria);
         Assert.That(mariaResult, Is.False);
