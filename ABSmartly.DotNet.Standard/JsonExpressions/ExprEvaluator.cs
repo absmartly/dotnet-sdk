@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ABSmartly.JsonExpressions;
 
@@ -99,16 +100,18 @@ public class ExprEvaluator : IEvaluator
         return null;
     }
 
-    public string StringConvert(object x)
+    public string StringConvert(object param)
     {
-        if (x is string) 
-        {
-            return (string) x;
-        }
+        if (param is string pString)
+            return pString;
 
-        if (x is bool) 
+        if (param is bool pBool)
+            return pBool.ToString();
+
+        if (param is int pInt)
         {
-            return x.ToString();
+            // Todo: add formatter
+            return pInt.ToString();
         }
 
         //else if (x is Number) 
@@ -122,7 +125,42 @@ public class ExprEvaluator : IEvaluator
     // Todo: finish
     public object ExtractVariable(string path)
     {
-        throw new System.NotImplementedException();
+        var frags = path.Split('/');
+
+        object target = vars ?? new Dictionary<string, object>();
+
+        foreach (var frag in frags)
+        {
+            // Todo: target is list??
+
+            object value = null;
+
+            if (target is IList)
+            {
+                var targetList = target as List<object>;
+                value = targetList[int.Parse(frag)];
+            }
+            else if (target is IDictionary<string, object> targetDictionary)
+            {
+                //var map = (Dictionary<string, object>)target;
+                value = targetDictionary[frag];
+            }
+            else
+            {
+                var type = target.GetType();
+            }
+
+            if (value is not null)
+            {
+                target = value;
+                continue;
+            }
+
+            return null;
+        }
+
+
+        return target;
     }
 
     // Todo: finish
