@@ -186,7 +186,7 @@ public class ExprEvaluator : IEvaluator
         if (lhs is int lhsInt)
         {
             var rhsInt = IntConvert(rhs);
-            if (lhsInt != rhsInt)
+            if (rhsInt is null)
                 return null;
 
             if (lhsInt < rhsInt)
