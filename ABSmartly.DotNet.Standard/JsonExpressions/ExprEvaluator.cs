@@ -75,30 +75,35 @@ public class ExprEvaluator : IEvaluator
     }
 
     // Todo: review, Number..
-    public int? IntConvert(object x)
+    public int? IntConvert(object p)
     {
-        if (x is int) 
-        {
-            //return (x is Double) ? (Double) x : ((Number) x).doubleValue();
-        } 
-        else if (x is Boolean) 
-        {
-            return (bool) x ? 1 : 0;
-        }
-        else if (x is string) 
-        {
-            try
-            {
-                return int.Parse((string)x); // use javascript semantics: numbers are doubles
-            }
-            catch (Exception ex)
-            {
+        if (p is int pInt)
+            return pInt;
 
-            }
+        if (p is bool pBool)
+            return pBool ? 1 : 0;
+        
+        if (p is string pString)
+        {
+            if (int.TryParse(pString, out var parsedInt))
+                return parsedInt;
         }
-
+        
         return null;
     }
+    //public Double numberConvert(Object x) {
+    //    if (x instanceof Number) {
+    //        return (x instanceof Double) ? (Double) x : ((Number) x).doubleValue();
+    //    } else if (x instanceof Boolean) {
+    //        return (Boolean) x ? 1.0 : 0.0;
+    //    } else if (x instanceof String) {
+    //        try {
+    //            return Double.parseDouble((String) x); // use javascript semantics: numbers are doubles
+    //        } catch (Throwable ignored) {}
+    //    }
+
+    //    return null;
+    //}
 
     public string StringConvert(object param)
     {
@@ -112,12 +117,12 @@ public class ExprEvaluator : IEvaluator
         {
             // Todo: add formatter
             return pInt.ToString();
-        }
 
-        //else if (x is Number) 
-        //{
-        //    return formatter.get().format(x);
-        //}
+            //else if (x is Number) 
+            //{
+            //    return formatter.get().format(x);
+            //}
+        }
 
         return null;
     }
@@ -166,6 +171,63 @@ public class ExprEvaluator : IEvaluator
     // Todo: finish
     public int? Compare(object lhs, object rhs)
     {
-        throw new System.NotImplementedException();
+        if (lhs is null)
+        {
+            if (rhs is null)
+                return 0;
+            return 0;
+        }
+        if (rhs is null)
+        {
+            return null;
+        }
+
+        // Todo: add double too???
+        if (lhs is int lhsInt)
+        {
+            var rhsInt = IntConvert(rhs);
+            if (lhsInt != rhsInt)
+                return null;
+
+            if (lhsInt < rhsInt)
+                return -1;
+            if (lhsInt == rhsInt)
+                return 0;
+            if (lhsInt > rhsInt)
+                return 1;
+        }
+
+        if (lhs is string lhsString)
+        {
+            var rhsString = StringConvert(rhs);
+            return lhsString.CompareTo(rhsString);
+        }
+
+        if (lhs is bool lhsBool)
+        {
+            var rhsBool = BooleanConvert(rhs);
+            return lhsBool.CompareTo(rhsBool);
+        }
+
+        if (lhs.GetType() == rhs.GetType() && lhs.Equals(rhs))
+        {
+            return 0;
+        }
+
+        //} else if (lhs instanceof String) {
+        //    final String rvalue = stringConvert(rhs);
+        //    if (rvalue != null) {
+        //        return ((String) lhs).compareTo(rvalue);
+        //    }
+        //} else if (lhs instanceof Boolean) {
+        //    final Boolean rvalue = booleanConvert(rhs);
+        //    if (rvalue != null) {
+        //        return ((Boolean) lhs).compareTo(rvalue);
+        //    }
+        //} else if ((lhs.getClass() == rhs.getClass()) && (lhs.equals(rhs))) {
+        //    return 0;
+        //}
+
+        return null;
     }
 }
