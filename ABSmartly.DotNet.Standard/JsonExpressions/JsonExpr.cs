@@ -15,6 +15,7 @@ public class JsonExpr
         {
             { "and", new AndCombinator() },
             { "or", new OrCombinator() },
+            { "value", new ValueOperator() },
             { "var", new VarOperator() },
             { "null", new NullOperator() },
             { "not", new NotOperator() },

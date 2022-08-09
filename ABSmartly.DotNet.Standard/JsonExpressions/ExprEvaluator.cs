@@ -50,7 +50,7 @@ public class ExprEvaluator : IEvaluator
             return operatorEvaluateResult;
         }
 
-        //var type = expression.GetType();
+        var type = expression.GetType();
 
         return null;
     }

@@ -12,9 +12,6 @@ public class AndCombinator : BooleanCombinator
             var booleanConvertResult = evaluator.BooleanConvert(evaluateResult);
             if (!booleanConvertResult)
                 return false;
-
-            //if (!evaluator.BooleanConvert(evaluator.Evaluate(expression)))
-            //    return false;
         }
 
         return true;
