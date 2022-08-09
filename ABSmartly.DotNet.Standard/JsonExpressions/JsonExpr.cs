@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using ABSmartly.JsonExpressions.Operators;
 
 namespace ABSmartly.JsonExpressions;
@@ -28,8 +30,18 @@ public class JsonExpr
 
     public bool EvaluateBooleanExpr(object expression, Dictionary<string, object> variables)
     {
-        var evaluator = new ExprEvaluator(variables, operators);
-        return evaluator.BooleanConvert(evaluator.Evaluate(expression));
+        try
+        {
+            var evaluator = new ExprEvaluator(variables, operators);
+            var evaluateResult = evaluator.Evaluate(expression);
+            var booleanConvertResult = evaluator.BooleanConvert(evaluateResult);
+            return booleanConvertResult;
+        }
+        catch (Exception e)
+        {
+            Debug.WriteLine(e);
+            return false;
+        }
     }
 
     public object EvaluateExpression(object expression, Dictionary<string, object> variables)

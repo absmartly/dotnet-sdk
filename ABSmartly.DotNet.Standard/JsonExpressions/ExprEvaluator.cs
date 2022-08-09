@@ -18,18 +18,38 @@ public class ExprEvaluator : IEvaluator
     public object Evaluate(object expression)
     {
         if (expression is IList)
-            return operators["and"].Evaluate(this, expression);
-
-        if (expression is IDictionary<string, object> exprDict)
         {
-            foreach (var kvp in exprDict)
+            if (!operators.ContainsKey("and"))
+                return null;
+
+            var andOperatorResult = operators["and"].Evaluate(this, expression);
+            return andOperatorResult;
+        }
+
+        //if (expression is IDictionary<string, object> exprDict)
+        if (expression is IDictionary exprDict)
+        {
+            var dict = exprDict as Dictionary<string, object>;
+            foreach (var kvp in dict)
             {
                 if(!operators.TryGetValue(kvp.Key, out var op))
                     break;
 
-                return op.Evaluate(this, kvp.Value);
+                var operatorEvaluateResult = op.Evaluate(this, kvp.Value);
+                return operatorEvaluateResult;
             }
         }
+
+        if (expression is KeyValuePair<string, object> exprKVP)
+        {
+            if (!operators.TryGetValue(exprKVP.Key, out var op))
+                return null;
+
+            var operatorEvaluateResult = op.Evaluate(this, exprKVP.Value);
+            return operatorEvaluateResult;
+        }
+
+        //var type = expression.GetType();
 
         return null;
     }

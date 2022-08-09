@@ -13,7 +13,8 @@ public abstract class BooleanCombinator : IOperator
 
         var objectList = list as List<object> ?? list.Cast<object>().ToList();
 
-        return Combine(evaluator, objectList);
+        var combined = Combine(evaluator, objectList);
+        return combined;
     }
 
     public abstract object Combine(IEvaluator evaluator, IList<object> args);

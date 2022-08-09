@@ -8,8 +8,13 @@ public class AndCombinator : BooleanCombinator
     {
         foreach (var expression in expressions)
         {
-            if (!evaluator.BooleanConvert(evaluator.Evaluate(expression)))
+            var evaluateResult = evaluator.Evaluate(expression);
+            var booleanConvertResult = evaluator.BooleanConvert(evaluateResult);
+            if (!booleanConvertResult)
                 return false;
+
+            //if (!evaluator.BooleanConvert(evaluator.Evaluate(expression)))
+            //    return false;
         }
 
         return true;
