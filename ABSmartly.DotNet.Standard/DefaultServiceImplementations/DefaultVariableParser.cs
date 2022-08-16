@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using ABSmartly.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -16,11 +17,12 @@ public class DefaultVariableParser : IVariableParser
         _logger = loggerFactory.CreateLogger<DefaultVariableParser>();
     }
 
-    public Dictionary<string, object> Parse(Context context, string experimentName, string variantName, string variableValue)
+    public Dictionary<string, object> Parse(Context context, string experimentName, string variantName, string config)
     {
         try
         {
-            throw new NotImplementedException();
+            var data = JsonSerializer.Deserialize<Dictionary<string, object>>(config);
+            return data;
         }
         catch (Exception e)
         {
