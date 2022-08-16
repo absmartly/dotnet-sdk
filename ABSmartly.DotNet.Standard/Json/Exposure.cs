@@ -20,16 +20,16 @@ public class Exposure
         AudienceMismatch = audienceMismatch;
     }
 
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public string Unit { get; set; }
-    public int Variant { get; set; }
-    public long ExposedAt { get; set; }
-    public bool Assigned { get; set; }
-    public bool Eligible { get; set; }
-    public bool Overridden { get; set; }
-    public bool FullOn { get; set; }
-    public bool Custom { get; set; }
+    public int Id { get; }
+    public string Name { get; }
+    public string Unit { get; }
+    public int Variant { get; }
+    public long ExposedAt { get; }
+    public bool Assigned { get; }
+    public bool Eligible { get; }
+    public bool Overridden { get; }
+    public bool FullOn { get; }
+    public bool Custom { get; }
     public bool AudienceMismatch { get; set; }
 
 

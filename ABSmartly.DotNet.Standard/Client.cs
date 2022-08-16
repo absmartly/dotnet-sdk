@@ -40,7 +40,7 @@ public class Client : IDisposable
         if (string.IsNullOrWhiteSpace(_config.Environment))
             throw new ArgumentNullException(nameof(_config.Environment), "Missing Environment configuration");
 
-        _deserializer = config.DataDeserializer ?? new DefaultContextDataDeserializer();
+        _deserializer = config.DataDeserializer ?? new DefaultContextDataDeserializer(loggerFactory);
         _serializer = config.Serializer ?? new DefaultContextEventSerializer(loggerFactory);
         _executor = config.Executor;
 

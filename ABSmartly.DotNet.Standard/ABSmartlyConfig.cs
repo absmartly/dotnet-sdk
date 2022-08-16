@@ -50,6 +50,7 @@ public class ABSmartlyConfig
     }
 
     public Client Client { get; }
+
     public ILoggerFactory LoggerFactory { get; } 
 
     public IContextDataProvider ContextDataProvider { get; }
@@ -63,6 +64,4 @@ public class ABSmartlyConfig
     public IAudienceDeserializer AudienceDeserializer { get; }
 
     public IScheduledExecutorService Scheduler { get; }
-
-
 }

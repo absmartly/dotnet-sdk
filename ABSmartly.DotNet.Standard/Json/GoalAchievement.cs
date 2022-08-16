@@ -6,17 +6,16 @@ namespace ABSmartly.Json;
 //@JsonIgnoreProperties(ignoreUnknown = true)
 public class GoalAchievement
 {
-    public GoalAchievement(string name, long achievedAt, Dictionary<string, object> properties)
+    public GoalAchievement(string name, long achievedAt, IDictionary<string, object> properties)
     {
         Name = name;
         AchievedAt = achievedAt;
         Properties = properties;
     }
 
-    public string Name { get; set; }
-    public long AchievedAt { get; set; }
-    // Todo: Dictionary or SortedDictionary -> IDictionary??
-    public IDictionary<string, object> Properties { get; set; }
+    public string Name { get; }
+    public long AchievedAt { get; }
+    public IDictionary<string, object> Properties { get; }
 
     #region Overrides - Equality / Hash / ToString
 

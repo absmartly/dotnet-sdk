@@ -56,9 +56,9 @@ public class Context : IDisposable
     // AtomicBoolean
     private readonly bool _refreshing;
 
-	private volatile Task _readyFuture;
-	private volatile Task _closingFuture;
-	private volatile Task _refreshFuture;
+	private volatile Task _readyTask;
+	private volatile Task _closingTask;
+	private volatile Task _refreshTask;
 
 	private readonly ReaderWriterLockSlim _timeoutLock = new();
 
@@ -227,7 +227,7 @@ public class Context : IDisposable
     {
         if (_data == null) 
         {
-            var future = _readyFuture; // cache here to avoid locking
+            var future = _readyTask; // cache here to avoid locking
             if (future != null && !future.IsCompleted) 
             {
                 //future.join();
@@ -408,20 +408,19 @@ public class Context : IDisposable
         {
             assignment.Exposed = true;
 
-            var exposure = new Exposure
-            {
-                Id = assignment.Id,
-                Name = assignment.Name,
-                Unit = assignment.UnitType,
-                Variant = assignment.Variant,
-                ExposedAt = _clock.Millis(),
-                Assigned = assignment.Assigned,
-                Eligible = assignment.Eligible,
-                Overridden = assignment.Overridden,
-                FullOn = assignment.FullOn,
-                Custom = assignment.Custom,
-                AudienceMismatch = assignment.AudienceMismatch
-            };
+            var exposure = new Exposure(
+                id: assignment.Id,
+                name: assignment.Name,
+                unit: assignment.UnitType,
+                variant: assignment.Variant,
+                exposedAt: _clock.Millis(),
+                assigned: assignment.Assigned,
+                eligible: assignment.Eligible,
+                overridden: assignment.Overridden,
+                fullOn: assignment.FullOn,
+                custom: assignment.Custom,
+                audienceMismatch: assignment.AudienceMismatch
+            );
 
             try 
             {
@@ -515,10 +514,11 @@ public class Context : IDisposable
     {
         CheckNotClosed();
 
-        var achievement = new GoalAchievement();
-        achievement.AchievedAt = _clock.Millis();
-        achievement.Name = goalName;
-        achievement.Properties = properties == null ? null : new SortedDictionary<string, object>(properties);
+        var achievement = new GoalAchievement(
+            achievedAt: _clock.Millis(),
+            name: goalName,
+            properties: properties == null ? null : new SortedDictionary<string, object>(properties)
+        );
 
         try 
         {
@@ -580,7 +580,7 @@ public class Context : IDisposable
         //    });
         //}
 
-        var future = _refreshFuture;
+        var future = _refreshTask;
         if (future != null) {
             return future;
         }
@@ -640,7 +640,7 @@ public class Context : IDisposable
             //    }
             //}
 
-            var future = _closingFuture;
+            var future = _closingTask;
             if (future != null) 
             {
                 return future;
@@ -1144,7 +1144,7 @@ public class Context : IDisposable
             _dataLock.EnterWriteLock();
             _index = new Dictionary<string, ExperimentVariables>();
             _indexVariables = new Dictionary<string, ExperimentVariables>();
-            _data = new ContextData();
+            _data = new ContextData(Array.Empty<Experiment>());
             _failed = true;
         } 
         finally 
@@ -1187,9 +1187,9 @@ public class Context : IDisposable
         _dataLock?.Dispose();
         _contextLock?.Dispose();
         //_eventLock?.Dispose();
-        _readyFuture?.Dispose();
-        _closingFuture?.Dispose();
-        _refreshFuture?.Dispose();
+        _readyTask?.Dispose();
+        _closingTask?.Dispose();
+        _refreshTask?.Dispose();
         _timeoutLock?.Dispose();
         _timeout?.Dispose();
         _refreshTimer?.Dispose();
