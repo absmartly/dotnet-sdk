@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.ResponseCompression;
+using ABSmartly.Utils.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -6,6 +6,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
+
+builder.Services.AddABSmartly(lifeTime: ServiceLifetime.Transient);
+builder.Services.AddABSmartly(
+    config =>
+    {
+
+    }
+);
 
 var app = builder.Build();
 

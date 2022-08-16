@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\ABSmartly.DotNet.Standard\ABSmartly.DotNet.Standard.csproj" />
     <ProjectReference Include="..\Client\ABSmartly.DotNet.Examples.Blazor.Client.csproj" />
     <ProjectReference Include="..\Shared\ABSmartly.DotNet.Examples.Blazor.Shared.csproj" />
   </ItemGroup>
