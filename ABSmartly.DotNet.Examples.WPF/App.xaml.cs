@@ -1,6 +1,6 @@
 ﻿using System.Windows;
 
-namespace WPF
+namespace ABSmartlyDotNetExamples.WPF
 {
     /// <summary>
     /// Interaction logic for App.xaml
