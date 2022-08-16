@@ -1,4 +1,7 @@
-﻿namespace ABSmartly.Json;
+﻿using System.Linq;
+using ABSmartly.Utils.Extensions;
+
+namespace ABSmartly.Json;
 
 //@JsonInclude(JsonInclude.Include.NON_NULL)
 //@JsonIgnoreProperties(ignoreUnknown = true)
@@ -38,7 +41,7 @@ public class ContextData
     public override string ToString()
     {
         return "ContextData{" +
-               //"experiments=" + Arrays.toString(Experiments) +
+               "experiments=" + Experiments.ToArrayString() +
                '}';
     }
 }
