@@ -4,11 +4,6 @@
 //@JsonIgnoreProperties(ignoreUnknown = true)
 public class Unit
 {
-    public Unit()
-    {
-        
-    }
-
     public Unit(string type, string uid)
     {
         Type = type;
@@ -18,6 +13,7 @@ public class Unit
     public string Type { get; set; }
     public string Uid { get; set; }
 
+    #region Overrides - Equality / Hash / ToString
 
     protected bool Equals(Unit other)
     {
@@ -47,4 +43,6 @@ public class Unit
                ", uid=" + Uid +
                '}';
     }
+
+    #endregion
 }

@@ -2,11 +2,6 @@
 
 public class Attribute
 {
-    public Attribute()
-    {
-        
-    }
-
     public Attribute(string name, object value, long setAt)
     {
         Name = name;
@@ -19,7 +14,8 @@ public class Attribute
     public long SetAt { get; set; }
 
 
-    // Todo: review equality and hash!
+    #region Overrides - Equality / Hash / ToString
+
     protected bool Equals(Attribute other)
     {
         return Name == other.Name && Equals(Value, other.Value) && SetAt == other.SetAt;
@@ -52,4 +48,6 @@ public class Attribute
                ", setAt=" + SetAt +
                '}';
     }
+
+    #endregion
 }

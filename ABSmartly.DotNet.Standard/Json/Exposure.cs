@@ -4,11 +4,6 @@
 //@JsonIgnoreProperties(ignoreUnknown = true)
 public class Exposure
 {
-    public Exposure()
-    {
-        
-    }
-
     public Exposure(int id, string name, string unit, int variant, long exposedAt, bool assigned, bool eligible,
         bool overridden, bool fullOn, bool custom, bool audienceMismatch)
     {
@@ -38,6 +33,7 @@ public class Exposure
     public bool AudienceMismatch { get; set; }
 
 
+    #region Overrides - Equality / Hash / ToString
 
     protected bool Equals(Exposure other)
     {
@@ -90,4 +86,6 @@ public class Exposure
                ", audienceMismatch=" + AudienceMismatch +
                '}';
     }
+
+    #endregion
 }

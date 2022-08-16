@@ -9,7 +9,10 @@ public static class ArrayExtensions
         foreach (var item in array)
         {
             text += item.ToString();
+            text += ",";
         }
+
+        text = text.TrimEnd(',');
 
         return text;
     }

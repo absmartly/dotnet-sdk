@@ -1,14 +1,11 @@
-﻿namespace ABSmartly.Json;
+﻿using ABSmartly.Utils.Extensions;
+
+namespace ABSmartly.Json;
 
 //@JsonInclude(JsonInclude.Include.NON_NULL)
 //@JsonIgnoreProperties(ignoreUnknown = true)
 public class PublishEvent
 {
-    public PublishEvent()
-    {
-        
-    }
-
     public PublishEvent(bool hashed, Unit[] units, long publishedAt, Exposure[] exposures, GoalAchievement[] goals, Attribute[] attributes)
     {
         Hashed = hashed;
@@ -26,6 +23,7 @@ public class PublishEvent
     public GoalAchievement[] Goals { get; set; }
     public Attribute[] Attributes { get; set; }
 
+    #region Overrides - Equality / Hash / ToString
 
     protected bool Equals(PublishEvent other)
     {
@@ -58,11 +56,13 @@ public class PublishEvent
     {
         return "PublishEvent{" +
                "hashedUnits=" + Hashed +
-               //", units=" + Arrays.toString(Units) +
+               ", units=" + Units.ToArrayString() +
                ", publishedAt=" + PublishedAt +
-               //", exposures=" + Arrays.toString(Exposures) +
-               //", goals=" + Arrays.toString(Goals) +
-               //", attributes=" + Arrays.toString(Attributes) +
+               ", exposures=" + Exposures.ToArrayString() +
+               ", goals=" + Goals.ToArrayString() +
+               ", attributes=" + Attributes.ToArrayString() +
                '}';
     }
+
+    #endregion
 }

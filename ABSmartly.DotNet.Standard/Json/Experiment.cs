@@ -1,12 +1,9 @@
-﻿namespace ABSmartly.Json;
+﻿using ABSmartly.Utils.Extensions;
+
+namespace ABSmartly.Json;
 
 public class Experiment
 {
-    public Experiment()
-    {
-        
-    }
-
     public Experiment(int id, string name, string unitType, int iteration, int seedHi, int seedLo, double[] split,
         int trafficSeedHi, int trafficSeedLo, double[] trafficSplit, int fullOnVariant,
         ExperimentApplication[] applications, ExperimentVariant[] variants, bool audienceStrict, string audience)
@@ -45,7 +42,8 @@ public class Experiment
     public string Audience { get; set; }
 
 
-    // Todo: review equality and hash!
+    #region Overrides - Equality / Hash / ToString
+
     protected bool Equals(Experiment other)
     {
         return Id == other.Id && Name == other.Name && UnitType == other.UnitType && Iteration == other.Iteration &&
@@ -87,7 +85,6 @@ public class Experiment
         }
     }
 
-    // Todo: add something for Arrays.ToString..
     public override string ToString()
     {
         return "ContextExperiment{" +
@@ -97,15 +94,17 @@ public class Experiment
                ", iteration=" + Iteration +
                ", seedHi=" + SeedHi +
                ", seedLo=" + SeedLo +
-               //", split=" + Arrays.toString(split) +
+               ", split=" + Split.ToArrayString() +
                ", trafficSeedHi=" + TrafficSeedHi +
                ", trafficSeedLo=" + TrafficSeedLo +
-               //", trafficSplit=" + Arrays.toString(trafficSplit) +
+               ", trafficSplit=" + TrafficSplit.ToArrayString() +
                ", fullOnVariant=" + FullOnVariant +
-               //", applications=" + Arrays.toString(applications) +
-               //", variants=" + Arrays.toString(variants) +
+               ", applications=" + Applications.ToArrayString() +
+               ", variants=" + Variants.ToArrayString() +
                ", audienceStrict=" + AudienceStrict +
                ", audience='" + Audience + '\'' +
                '}';
     }
+
+    #endregion
 }

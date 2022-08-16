@@ -4,20 +4,14 @@
 //@JsonIgnoreProperties(ignoreUnknown = true)
 public class ExperimentApplication
 {
-    public ExperimentApplication()
-    {
-
-    }
-
     public ExperimentApplication(string name) 
     {
         Name = name;
     }
 
-
     public string Name { get; set; }
 
-    
+    #region Overrides - Equality / Hash / ToString
 
     protected bool Equals(ExperimentApplication other)
     {
@@ -42,29 +36,7 @@ public class ExperimentApplication
         return "ExperimentApplication{" +
                "name='" + Name + '\'' +
                '}';
-    } 
+    }
 
-
-
-    ////@Override
-    //public  boolean equals(object o) {
-    //    if (this == o)
-    //        return true;
-    //    if (o == null || getClass() != o.getClass())
-    //        return false;
-    //    ExperimentApplication that = (ExperimentApplication) o;
-    //    return Objects.equals(name, that.name);
-    //}
-
-    ////@Override
-    //public int hashCode() {
-    //    return Objects.hash(name);
-    //}
-
-    ////@Override
-    //public string toString() {
-    //    return "ExperimentApplication{" +
-    //           "name='" + name + '\'' +
-    //           '}';
-    //}
+    #endregion
 }

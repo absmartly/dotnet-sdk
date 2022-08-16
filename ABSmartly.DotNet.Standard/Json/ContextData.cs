@@ -1,5 +1,4 @@
-﻿using System.Linq;
-using ABSmartly.Utils.Extensions;
+﻿using ABSmartly.Utils.Extensions;
 
 namespace ABSmartly.Json;
 
@@ -7,11 +6,6 @@ namespace ABSmartly.Json;
 //@JsonIgnoreProperties(ignoreUnknown = true)
 public class ContextData
 {
-    public ContextData()
-    {
-        
-    }
-
     public ContextData(Experiment[] experiments)
     {
         Experiments = experiments;
@@ -19,6 +13,9 @@ public class ContextData
 
     public Experiment[] Experiments { get; set; }
 
+
+
+    #region Overrides - Equality / Hash / ToString
 
     protected bool Equals(ContextData other)
     {
@@ -43,5 +40,9 @@ public class ContextData
         return "ContextData{" +
                "experiments=" + Experiments.ToArrayString() +
                '}';
-    }
+    }    
+
+    #endregion
+
+
 }

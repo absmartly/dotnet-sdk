@@ -4,21 +4,18 @@
 //@JsonIgnoreProperties(ignoreUnknown = true)
 public class ExperimentVariant
 {
-    public string Name { get; set; }
-
-    public string Config { get; set; }
-
-    public ExperimentVariant()
-    {
-        
-    }
-
     public ExperimentVariant(string name, string config)
     {
         Name = name;
         Config = config;
     }
 
+    public string Name { get; set; }
+
+    public string Config { get; set; }
+
+
+    #region Overrides - Equality / Hash / ToString
 
     protected bool Equals(ExperimentVariant other)
     {
@@ -48,4 +45,6 @@ public class ExperimentVariant
                ", config='" + Config + '\'' +
                '}';
     }
+
+    #endregion
 }

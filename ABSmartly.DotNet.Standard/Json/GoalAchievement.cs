@@ -6,11 +6,6 @@ namespace ABSmartly.Json;
 //@JsonIgnoreProperties(ignoreUnknown = true)
 public class GoalAchievement
 {
-    public GoalAchievement()
-    {
-        
-    }
-
     public GoalAchievement(string name, long achievedAt, Dictionary<string, object> properties)
     {
         Name = name;
@@ -22,6 +17,8 @@ public class GoalAchievement
     public long AchievedAt { get; set; }
     // Todo: Dictionary or SortedDictionary -> IDictionary??
     public IDictionary<string, object> Properties { get; set; }
+
+    #region Overrides - Equality / Hash / ToString
 
     protected bool Equals(GoalAchievement other)
     {
@@ -55,4 +52,6 @@ public class GoalAchievement
                ", properties=" + Properties +
                '}';
     }
+
+    #endregion
 }
