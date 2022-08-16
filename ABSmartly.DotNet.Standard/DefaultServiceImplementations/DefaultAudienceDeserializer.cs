@@ -31,8 +31,8 @@ public class DefaultAudienceDeserializer : IAudienceDeserializer
             }
 
             var jsonUtfReader = new Utf8JsonReader(jsonBytes);
-            var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(ref jsonUtfReader);
-            return dict;
+            var data = JsonSerializer.Deserialize<Dictionary<string, object>>(ref jsonUtfReader);
+            return data;
         }
         catch (Exception e)
         {
