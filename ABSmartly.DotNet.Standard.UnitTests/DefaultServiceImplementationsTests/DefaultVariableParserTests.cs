@@ -14,6 +14,6 @@ public class DefaultVariableParserTests
 
         var resultDictionary = parser.Parse(null, null, null, TestData.Json.Variables);
 
-        Assert.That(((JsonElement)resultDictionary["a"]).GetInt32(), Is.EqualTo(1));
+        Assert.That(resultDictionary["a"], Is.EqualTo(1));
     }
 }

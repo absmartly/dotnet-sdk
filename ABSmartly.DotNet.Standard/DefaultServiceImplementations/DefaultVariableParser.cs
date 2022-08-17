@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text.Json;
-using System.Text.Json.Nodes;
+//using System.Text.Json;
+//using System.Text.Json.Nodes;
 using ABSmartly.Interfaces;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace ABSmartly.DefaultServiceImplementations;
 
@@ -22,30 +23,8 @@ public class DefaultVariableParser : IVariableParser
     {
         try
         {
-
-
-            var jsonNode = JsonNode.Parse(config);
-            //var array = jsonNode!.AsArray();
-
-            var resultDict = new Dictionary<string, object>();
-
-
-
-
-            var rerr = jsonNode.Deserialize<Dictionary<string, object>>();
-            //foreach (var VARIABLE in result.Deserialize<>())
-            //{
-                
-            //}
-
-
-
-            var data2 = JsonSerializer.Deserialize<JsonNode>(config);
-
-            
-            var data22 = JsonSerializer.Deserialize<Dictionary<string, dynamic>>(config);
-            var data = JsonSerializer.Deserialize<Dictionary<string, object>>(config);
-            return data;
+            var data22 = JsonConvert.DeserializeObject<Dictionary<string, dynamic>>(config);
+            return data22;
         }
         catch (Exception e)
         {
