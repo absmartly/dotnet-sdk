@@ -8,9 +8,10 @@ using System.Threading.Tasks;
 
 namespace ABSmartly.DefaultServiceImplementations;
 
-internal class DefaultHttpClient : IHttpClient, IDisposable
+internal class DefaultHttpClient : IHttpClient
 {
     private readonly IHttpClientFactory _httpClientFactory;
+    public const string ABSmartyHttpClientName = "absmartly-defaulthttpclient";
 
     #region Lifecycle
 
@@ -19,20 +20,16 @@ internal class DefaultHttpClient : IHttpClient, IDisposable
         _httpClientFactory = httpClientFactory;
     }
 
-    public static DefaultHttpClient Create(DefaultHttpClientConfig config, IHttpClientFactory httpClientFactory)
-    {
-        return new DefaultHttpClient(config, httpClientFactory);
-    }    
+    //public static DefaultHttpClient Create(DefaultHttpClientConfig config, IHttpClientFactory httpClientFactory)
+    //{
+    //    return new DefaultHttpClient(config, httpClientFactory);
+    //}    
 
     #endregion
 
-
-
-    // Todo: Comment: I usually use a 'Result' object for return value, now I made it generic, so returns the expected data directly
-
     public async Task<T> GetAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers)
     {
-        var httpClient = _httpClientFactory.CreateClient();
+        var httpClient = _httpClientFactory.CreateClient(ABSmartyHttpClientName);
 
         var requestQueryString = "";
 
@@ -71,7 +68,7 @@ internal class DefaultHttpClient : IHttpClient, IDisposable
 
     public async Task<T> PutAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body)
     {
-        var httpClient = _httpClientFactory.CreateClient();
+        var httpClient = _httpClientFactory.CreateClient(ABSmartyHttpClientName);
 
         var requestQueryString = "";
 
@@ -112,7 +109,7 @@ internal class DefaultHttpClient : IHttpClient, IDisposable
 
     public async Task<T> PostAsync<T>(string url, Dictionary<string, string> query, Dictionary<string, string> headers, byte[] body)
     {
-        var httpClient = _httpClientFactory.CreateClient();
+        var httpClient = _httpClientFactory.CreateClient(ABSmartyHttpClientName);
 
         var requestQueryString = "";
 
@@ -150,14 +147,5 @@ internal class DefaultHttpClient : IHttpClient, IDisposable
             return default;
         }
     }
-
-    #region IDisposable
-
-    public void Dispose()
-    {
-
-    }   
-
-    #endregion
 }
 
