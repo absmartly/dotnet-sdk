@@ -24,9 +24,10 @@ public class DefaultVariableParser : IVariableParser
         {
             var jsonDict = JsonConvert.DeserializeObject<Dictionary<string, object>>(config);
 
-            var upDict = new Dictionary<string, object>();
+            var jArrayDict = new Dictionary<string, object>();
+            var jObjectDict = new Dictionary<string, Dictionary<string, object>>();
 
-            foreach (var kvp in jsonDict)
+            foreach (var kvp in jsonDict!)
             {
                 if (kvp.Value is JArray jArray)
                 {
@@ -37,24 +38,31 @@ public class DefaultVariableParser : IVariableParser
                         list.Add(jItem.ToObject<object>());
                     }
 
-                    upDict.Add(kvp.Key, list);
+                    jArrayDict.Add(kvp.Key, list);
                 }
 
                 else if (kvp.Value is JObject jObject)
                 {
 
+                    var dict = new Dictionary<string, object>();
+                    foreach (var jObjectKvP in jObject)
+                    {
+                        dict.Add(jObjectKvP.Key, jObjectKvP.Value.ToObject<object>());
+                    }
+
+                    jObjectDict.Add(kvp.Key, dict);
                 }
             }
 
-
-
-
-
-            foreach (var kvp in upDict)
+            foreach (var kvp in jArrayDict)
             {
                 jsonDict[kvp.Key] = kvp.Value;
             }
 
+            foreach (var kvp in jObjectDict)
+            {
+                jsonDict[kvp.Key] = kvp.Value;
+            }
 
             return jsonDict;
         }
