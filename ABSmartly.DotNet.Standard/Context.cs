@@ -70,7 +70,7 @@ public class Context : IDisposable
     #region Constructor
 
     private Context(Clock clock, ContextConfig config, IScheduledExecutorService scheduler,
-			Task<ContextData> dataFuture, IContextDataProvider dataProvider,
+			Task<ContextData> dataTask, IContextDataProvider dataProvider,
 			IContextEventHandler eventHandler, IContextEventLogger eventLogger, IVariableParser variableParser,
 			AudienceMatcher audienceMatcher) 
     {
@@ -78,7 +78,7 @@ public class Context : IDisposable
 		_publishDelay = config.GetPublishDelay();
 		_refreshInterval = config.GetRefreshInterval();
 		_eventHandler = eventHandler;
-		_eventLogger = config.EventLogger != null ? config.EventLogger : eventLogger;
+		_eventLogger = config.EventLogger ?? eventLogger;
 		_dataProvider = dataProvider;
 		_variableParser = variableParser;
 		_audienceMatcher = audienceMatcher;
@@ -789,12 +789,13 @@ public class Context : IDisposable
                experiment.UnitType.Equals(assignment.UnitType) &&
                experiment.Iteration == assignment.Iteration &&
                experiment.FullOnVariant == assignment.FullOnVariant &&
-               Array.Equals(experiment.TrafficSplit, assignment.TrafficSplit);
+               Equals(experiment.TrafficSplit, assignment.TrafficSplit);
     }
 
 
     #region Assignment
 
+    // Todo: rework...
     private Assignment GetAssignment(string experimentName) 
     {
         var readLock = new ReaderWriterLockSlim();
@@ -990,7 +991,6 @@ public class Context : IDisposable
 
     private byte[] GetUnitHash(string unitType, string unitUID)
     {
-        //throw new NotImplementedException();
         return Concurrency.ComputeIfAbsentRW(_contextLock, _hashedUnits, unitType, _ => MD5.HashToByte(unitUID));
     }
 

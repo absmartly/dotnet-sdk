@@ -7,9 +7,14 @@ public class ClientConfig
 {
     // Todo: https://www.codeproject.com/Questions/1273200/Is-there-an-equivalent-of-javas-executorservice-cl
 
-    public ClientConfig(string endpoint = null, string apiKey = null, string environment = null,
-        string application = null, IContextDataDeserializer dataDeserializer = null,
-        IContextEventSerializer serializer = null, IExecutor executor = null)
+    public ClientConfig(
+        string endpoint = null, 
+        string apiKey = null, 
+        string environment = null,
+        string application = null, 
+        IContextDataDeserializer dataDeserializer = null,
+        IContextEventSerializer serializer = null, 
+        IExecutor executor = null)
     {
         Endpoint = endpoint;
         ApiKey = apiKey;
@@ -20,9 +25,14 @@ public class ClientConfig
         Executor = executor;
     }
 
-    public static ClientConfig Create(string endpoint = null, string apiKey = null, string environment = null,
-        string application = null, IContextDataDeserializer dataDeserializer = null,
-        IContextEventSerializer serializer = null, IExecutor executor = null)
+    public static ClientConfig Create(
+        string endpoint = null, 
+        string apiKey = null, 
+        string environment = null,
+        string application = null, 
+        IContextDataDeserializer dataDeserializer = null,
+        IContextEventSerializer serializer = null, 
+        IExecutor executor = null)
     {
         return new ClientConfig(endpoint, apiKey, environment, application, dataDeserializer, serializer, executor);
     }
@@ -35,10 +45,10 @@ public class ClientConfig
     public static ClientConfig Create(ClientConfiguration configuration, string prefix)
     {
         return new ClientConfig(
-            endpoint: configuration.Endpoint,
-            environment: configuration.Environment,
-            application: configuration.Application,
-            apiKey: configuration.ApiKey
+            endpoint: prefix + configuration.Endpoint,
+            environment: prefix + configuration.Environment,
+            application: prefix + configuration.Application,
+            apiKey: prefix + configuration.ApiKey
         );
     }
 
