@@ -19,8 +19,7 @@ public class DefaultAudienceDeserializerTests
         var resultDictionary = deserializer.Deserialize(audienceBytes, 0, audienceBytes.Length);
         
         // Assert
-        var rd = resultDictionary;
-        var filterList = rd["filter"] as List<object>;
+        var filterList = resultDictionary["filter"] as List<object>;
         var filterDict = filterList?[0] as Dictionary<string, object>;
 
         var gteList = filterDict?["gte"] as List<object>;
