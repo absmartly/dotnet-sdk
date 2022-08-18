@@ -86,6 +86,6 @@ public class DefaultVariableParserTests
 
         var resultDictionary = parser.Parse(null, null, null, null);
 
-        Assert.IsNull(resultDictionary);
+        Assert.That(resultDictionary, Is.Null);
     }
 }

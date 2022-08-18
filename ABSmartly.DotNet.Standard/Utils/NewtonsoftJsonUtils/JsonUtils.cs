@@ -6,6 +6,13 @@ namespace ABSmartly.Utils.NewtonsoftJsonUtils;
 
 public class JsonUtils
 {
+    public static Dictionary<string, object> ParseJsonDictionaryOfStringObject(Dictionary<string, object> dictionary)
+    {
+        var parsedObject = ParseJsonObject(dictionary);
+        return parsedObject as Dictionary<string, object>;
+    }
+
+
     public static object ParseJsonObject(object json)
     {
         if (json is Dictionary<string, object> jsonDict)

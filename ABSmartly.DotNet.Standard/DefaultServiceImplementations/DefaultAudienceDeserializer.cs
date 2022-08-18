@@ -1,8 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text.Json;
+using System.IO;
+using System.Text;
 using ABSmartly.Interfaces;
+using ABSmartly.Utils.Converters;
+using ABSmartly.Utils.NewtonsoftJsonUtils;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace ABSmartly.DefaultServiceImplementations;
 
@@ -12,31 +17,26 @@ public class DefaultAudienceDeserializer : IAudienceDeserializer
 
     public DefaultAudienceDeserializer(ILoggerFactory loggerFactory)
     {
-        _logger = loggerFactory.CreateLogger<DefaultAudienceDeserializer>();
+        _logger = loggerFactory?.CreateLogger<DefaultAudienceDeserializer>();
     }
 
     public Dictionary<string, object> Deserialize(byte[] bytes, int offset, int length)
     {
         try
         {
-            // Todo: Manual implementation to support offset and length on the byte array, review!!
+            var jsonBytes = ByteConverter.Convert(bytes, offset, length);
 
-            var jsonBytes = new byte[length];
+            using var stream = new MemoryStream(jsonBytes);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            JsonReader jsReader = new JsonTextReader(reader);
 
-            var b = 0;
-            for (var i = offset; i < length; i++)
-            {
-                jsonBytes[b] = bytes[i];
-                b++;
-            }
-
-            var jsonUtfReader = new Utf8JsonReader(jsonBytes);
-            var data = JsonSerializer.Deserialize<Dictionary<string, object>>(ref jsonUtfReader);
-            return data;
+            var dictionaryRawJson = JsonSerializer.Create().Deserialize<Dictionary<string, object>>(jsReader);
+            var dictionaryParsed = JsonUtils.ParseJsonDictionaryOfStringObject(dictionaryRawJson);
+            return dictionaryParsed;
         }
         catch (Exception e)
         {
-            _logger.LogError(e.Message);
+            _logger?.LogError(e.Message);
             return null;
         }
     }

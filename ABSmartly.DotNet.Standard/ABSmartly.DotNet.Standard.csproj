@@ -12,6 +12,7 @@
     <Folder Include="DotNet\Time\Internal\" />
     <Folder Include="JsonExpressions\Operators\" />
     <Folder Include="Json\" />
+    <Folder Include="Utils\Converters\" />
   </ItemGroup>
 
   <ItemGroup>
