@@ -6,9 +6,9 @@ namespace ABSmartly.DefaultServiceImplementations;
 
 public class DefaultContextDataProvider : IContextDataProvider
 {
-    private readonly Client _client;
+    private readonly IClient _client;
 
-    public DefaultContextDataProvider(Client client)
+    public DefaultContextDataProvider(IClient client)
     {
         _client = client;
     }

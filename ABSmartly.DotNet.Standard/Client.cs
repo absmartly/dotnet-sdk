@@ -10,7 +10,13 @@ using Microsoft.Extensions.Logging;
 
 namespace ABSmartly;
 
-public class Client : IDisposable
+public interface IClient
+{
+    Task<ContextData> GetContextDataAsync();
+    Task<bool> PublishAsync(PublishEvent publishEvent);
+}
+
+public class Client : IDisposable, IClient
 {
     private string _url;
     //private Dictionary<string, string> _query;
