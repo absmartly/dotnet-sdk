@@ -15,9 +15,7 @@ public class DefaultVariableParserTests
 
         Assert.That(resultDictionary["a"], Is.EqualTo(1));
         Assert.That(resultDictionary["b"], Is.EqualTo("test"));
-
         Assert.That(resultDictionary["d"], Is.EqualTo(true));
-
         Assert.That(resultDictionary["g"], Is.EqualTo(9.123));
     }
 
@@ -30,10 +28,10 @@ public class DefaultVariableParserTests
 
         var enumerable = ((IEnumerable<object>)resultDictionary["f"]).ToList();
 
-        Assert.That(enumerable.ElementAt(0), Is.EqualTo(9234567890));
-        Assert.That(enumerable.ElementAt(1), Is.EqualTo("a"));
-        Assert.That(enumerable.ElementAt(2), Is.EqualTo(true));
-        Assert.That(enumerable.ElementAt(3), Is.EqualTo(false));
+        Assert.That(enumerable[0], Is.EqualTo(9234567890));
+        Assert.That(enumerable[1], Is.EqualTo("a"));
+        Assert.That(enumerable[2], Is.EqualTo(true));
+        Assert.That(enumerable[3], Is.EqualTo(false));
     }
 
     [Test]
@@ -50,15 +48,20 @@ public class DefaultVariableParserTests
     }
 
     [Test]
-    public void Parse_DictionaryOfList()
+    public void Parse_DictionaryOfIEnumerable()
     {
         var parser = new DefaultVariableParser();
 
         var resultDictionary = parser.Parse(null, null, null, TestData.Json.Variables);
 
         var dictionary = (Dictionary<string, object>)resultDictionary["c"];
-        var dictList = (Dictionary<string, object>)dictionary["list"];
 
+        var dictenum = (IEnumerable<object>)dictionary["list"];
+        var dictlist = dictenum.ToList();
+
+        Assert.That(dictlist[0], Is.EqualTo("x"));
+        Assert.That(dictlist[1], Is.EqualTo("y"));
+        Assert.That(dictlist[2], Is.EqualTo("z"));
     }
 
     [Test]
@@ -71,5 +74,8 @@ public class DefaultVariableParserTests
         var dictionary = (Dictionary<string, object>)resultDictionary["c"];
         var dictdict = (Dictionary<string, object>)dictionary["point"];
 
+        Assert.That(dictdict["x"], Is.EqualTo(-1));
+        Assert.That(dictdict["y"], Is.EqualTo(0));
+        Assert.That(dictdict["z"], Is.EqualTo(1));
     }
 }
