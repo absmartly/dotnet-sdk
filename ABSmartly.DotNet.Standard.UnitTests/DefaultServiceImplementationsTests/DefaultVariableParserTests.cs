@@ -7,7 +7,7 @@ namespace ABSmartly.DotNet.Standard.UnitTests.DefaultServiceImplementationsTests
 public class DefaultVariableParserTests
 {
     [Test]
-    public void Parse_SimpleObject()
+    public void Parse_SimpleObject_Returns_ExpectedResult()
     {
         var parser = new DefaultVariableParser();
 
@@ -20,7 +20,7 @@ public class DefaultVariableParserTests
     }
 
     [Test]
-    public void Parse_IEnumerableOfBaseValue()
+    public void Parse_IEnumerableOfBaseValue_Returns_ExpectedResult()
     {
         var parser = new DefaultVariableParser();
 
@@ -35,7 +35,7 @@ public class DefaultVariableParserTests
     }
 
     [Test]
-    public void Parse_DictionaryOfBaseValue()
+    public void Parse_DictionaryOfBaseValue_Returns_ExpectedResult()
     {
         var parser = new DefaultVariableParser();
 
@@ -48,7 +48,7 @@ public class DefaultVariableParserTests
     }
 
     [Test]
-    public void Parse_DictionaryOfIEnumerable()
+    public void Parse_DictionaryOfIEnumerable_Returns_ExpectedResult()
     {
         var parser = new DefaultVariableParser();
 
@@ -65,7 +65,7 @@ public class DefaultVariableParserTests
     }
 
     [Test]
-    public void Parse_DictionaryOfDictionary()
+    public void Parse_DictionaryOfDictionary_Returns_ExpectedResult()
     {
         var parser = new DefaultVariableParser();
 
@@ -77,5 +77,15 @@ public class DefaultVariableParserTests
         Assert.That(dictdict["x"], Is.EqualTo(-1));
         Assert.That(dictdict["y"], Is.EqualTo(0));
         Assert.That(dictdict["z"], Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Parse_InvalidValue_Returns_Null()
+    {
+        var parser = new DefaultVariableParser();
+
+        var resultDictionary = parser.Parse(null, null, null, null);
+
+        Assert.IsNull(resultDictionary);
     }
 }
