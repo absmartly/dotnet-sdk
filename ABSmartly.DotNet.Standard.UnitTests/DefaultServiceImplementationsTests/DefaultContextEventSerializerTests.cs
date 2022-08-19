@@ -85,7 +85,7 @@ public class DefaultContextEventSerializerTests
         );
     }
 
-        [Test]
+    [Test]
     public void Serialize_Returns_ExpectedBytes()
     {
         // Arrange
@@ -93,6 +93,8 @@ public class DefaultContextEventSerializerTests
 
         // Act
         var resultBytes = serializer.Serialize(publishEvent);
+
+        // Assert
         var resultString = Encoding.UTF8.GetString(resultBytes);
         var resultPublishEvent = JsonSerializer.Deserialize<PublishEvent>(resultString);
         var resultPublishEventString = resultPublishEvent!.ToString();
@@ -101,5 +103,15 @@ public class DefaultContextEventSerializerTests
         var referencePublishEventString = referencePublishEvent!.ToString();
 
         Assert.That(resultPublishEventString, Is.EqualTo(referencePublishEventString));
+    }
+
+    [Test]
+    public void Serialize_NullValue_Returns_Null()
+    {
+        var serializer = new DefaultContextEventSerializer(null);
+
+        var resultBytes = serializer.Serialize(null);
+
+        Assert.That(resultBytes, Is.Null);
     }
 }
