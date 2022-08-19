@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using ABSmartly.DefaultServiceImplementations;
+using ABSmartly.DotNet.Standard.UnitTests.TestUtils;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.DefaultServiceImplementationsTests;
 
@@ -11,9 +12,7 @@ public class DefaultAudienceDeserializerTests
     {
         // Arrange
         var deserializer = new DefaultAudienceDeserializer(null);
-
-        var audienceJson = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
-        var audienceBytes = Encoding.UTF8.GetBytes(audienceJson);
+        var audienceBytes = Encoding.UTF8.GetBytes(TestData.Json.Audience);
 
         // Act
         var resultDictionary = deserializer.Deserialize(audienceBytes, 0, audienceBytes.Length);
@@ -38,9 +37,7 @@ public class DefaultAudienceDeserializerTests
     {
         // Arrange
         var deserializer = new DefaultAudienceDeserializer(null);
-        
-        var audienceJson = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
-        var audienceBytes = Encoding.UTF8.GetBytes(audienceJson);
+        var audienceBytes = Encoding.UTF8.GetBytes(TestData.Json.Audience);
 
         // Act
         // 'ruin' the bytes with random offset and length..

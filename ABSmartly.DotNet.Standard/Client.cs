@@ -10,12 +10,6 @@ using Microsoft.Extensions.Logging;
 
 namespace ABSmartly;
 
-public interface IClient
-{
-    Task<ContextData> GetContextDataAsync();
-    Task<bool> PublishAsync(PublishEvent publishEvent);
-}
-
 public class Client : IDisposable, IClient
 {
     private string _url;
