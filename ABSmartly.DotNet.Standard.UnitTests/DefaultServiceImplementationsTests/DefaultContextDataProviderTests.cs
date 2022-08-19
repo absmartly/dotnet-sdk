@@ -9,7 +9,7 @@ namespace ABSmartly.DotNet.Standard.UnitTests.DefaultServiceImplementationsTests
 public class DefaultContextDataProviderTests
 {
     [Test]
-    public void Test()
+    public void GetContextDataAsync_Returns_ExpectedResult()
     {
         var client = new Mock<IClient>();
         client.Setup(q => q.GetContextDataAsync()).ReturnsAsync(new ContextData(new Experiment[]

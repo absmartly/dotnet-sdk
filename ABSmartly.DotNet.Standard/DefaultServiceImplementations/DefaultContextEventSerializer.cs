@@ -12,19 +12,19 @@ public class DefaultContextEventSerializer : IContextEventSerializer
 
     public DefaultContextEventSerializer(ILoggerFactory loggerFactory)
     {
-        _logger = loggerFactory.CreateLogger<DefaultContextEventSerializer>();
+        _logger = loggerFactory?.CreateLogger<DefaultContextEventSerializer>();
     }
 
     public byte[] Serialize(PublishEvent publishEvent)
     {
         try
         {
-            // Todo: ObjectMapper.writeValueAsBytes ??
-            return JsonSerializer.SerializeToUtf8Bytes(publishEvent);
+            var serializedBytes = JsonSerializer.SerializeToUtf8Bytes(publishEvent);
+            return serializedBytes;
         }
         catch (Exception e)
         {
-            _logger.LogError(e.Message);
+            _logger?.LogError(e.Message);
             return null;
         }
     }

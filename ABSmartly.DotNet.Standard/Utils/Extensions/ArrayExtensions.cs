@@ -6,6 +6,9 @@ public static class ArrayExtensions
     {
         var text = string.Empty;
 
+        if (array is null)
+            return text;
+
         foreach (var item in array)
         {
             text += item.ToString();
