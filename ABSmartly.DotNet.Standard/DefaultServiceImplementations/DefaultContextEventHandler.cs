@@ -6,9 +6,9 @@ namespace ABSmartly.DefaultServiceImplementations;
 
 public class DefaultContextEventHandler : IContextEventHandler
 {
-    private readonly Client _client;
+    private readonly IClient _client;
 
-    public DefaultContextEventHandler(Client client)
+    public DefaultContextEventHandler(IClient client)
     {
         _client = client;
     }
