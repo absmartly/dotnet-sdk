@@ -1,9 +1,7 @@
-﻿using System;
-using System.Net.Http;
+﻿using System.Net.Http;
 using ABSmartly.DefaultServiceImplementations;
 using ABSmartly.Interfaces;
 using ABSmartly.Temp;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace ABSmartly;
@@ -35,21 +33,21 @@ public class ABSmartlyConfig
     }
 
 
-    public static ABSmartlyConfig Create(
-        IHttpClientFactory httpClientFactory,
-        ILoggerFactory loggerFactory = null,
-        Client client = null,
+    //public static ABSmartlyConfig Create(
+    //    IHttpClientFactory httpClientFactory,
+    //    ILoggerFactory loggerFactory = null,
+    //    Client client = null,
 
-        IContextDataProvider contextDataProvider = null, 
-        IContextEventHandler contextEventHandler = null,
-        IContextEventLogger contextEventLogger = null, 
-        IVariableParser variableParser = null, 
-        IAudienceDeserializer audienceDeserializer = null,
-        IScheduledExecutorService scheduler = null
-    )
-    {
-        return new ABSmartlyConfig(httpClientFactory, loggerFactory, client, contextDataProvider, contextEventHandler, contextEventLogger, variableParser, audienceDeserializer, scheduler);
-    }
+    //    IContextDataProvider contextDataProvider = null, 
+    //    IContextEventHandler contextEventHandler = null,
+    //    IContextEventLogger contextEventLogger = null, 
+    //    IVariableParser variableParser = null, 
+    //    IAudienceDeserializer audienceDeserializer = null,
+    //    IScheduledExecutorService scheduler = null
+    //)
+    //{
+    //    return new ABSmartlyConfig(httpClientFactory, loggerFactory, client, contextDataProvider, contextEventHandler, contextEventLogger, variableParser, audienceDeserializer, scheduler);
+    //}
 
     public Client Client { get; }
 

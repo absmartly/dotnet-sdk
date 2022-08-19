@@ -44,9 +44,13 @@ namespace ABSmartlyDotNetExamples.WPF
                 environment: "Development"
             );
 
-            ABSmartlyConfig sdkConfig = ABSmartlyConfig.Create(
+            ABSmartlyConfig sdkConfig = new ABSmartlyConfig(
                 httpClientFactory: httpClientFactory
                 );
+            
+            //ABSmartlyConfig sdkConfig = ABSmartlyConfig.Create(
+            //    httpClientFactory: httpClientFactory
+            //    );
 
             sdk = ABSmartly.ABSmartly.Create(sdkConfig);
 

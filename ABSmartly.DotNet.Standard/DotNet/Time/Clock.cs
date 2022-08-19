@@ -21,6 +21,4 @@ public abstract class Clock
 
         return _utc = new SystemClockUTC();
     }
-
-
 }

@@ -19,14 +19,10 @@ public class ABSmartly : IDisposable
     private readonly IAudienceDeserializer _audienceDeserializer;
     private IScheduledExecutorService _scheduler;
 
-
     public static ABSmartly Create(ABSmartlyConfig config)
     {
         return new ABSmartly(config);
     }
-
-
-
 
     public ABSmartly(ABSmartlyConfig config)
     {
