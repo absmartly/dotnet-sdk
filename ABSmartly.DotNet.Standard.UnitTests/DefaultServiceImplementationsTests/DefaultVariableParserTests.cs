@@ -1,5 +1,4 @@
 ﻿using ABSmartly.DefaultServiceImplementations;
-using ABSmartly.DotNet.Standard.UnitTests.TestUtils;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.DefaultServiceImplementationsTests;
 

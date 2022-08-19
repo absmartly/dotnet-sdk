@@ -1,6 +1,4 @@
-﻿using System.Text;
-
-namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests.HashingTests;
+﻿namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests.HashingTests;
 
 // Todo: decide to test the MD5 
 //[TestFixture]

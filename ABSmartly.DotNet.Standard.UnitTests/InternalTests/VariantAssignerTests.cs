@@ -1,6 +1,4 @@
-﻿using System.Text;
-
-namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;
+﻿namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;
 
 [TestFixture]
 public class VariantAssignerTests
