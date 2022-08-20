@@ -31,10 +31,10 @@ public class ContextConfig
         EventLogger = contextEventLogger ?? new DefaultContextEventLogger();
     }
 
-    public static ContextConfig Create(IContextEventLogger contextEventLogger = null)
-    {
-        return new ContextConfig(contextEventLogger);
-    }
+    //public static ContextConfig Create(IContextEventLogger contextEventLogger = null)
+    //{
+    //    return new ContextConfig(contextEventLogger);
+    //}
 
     #endregion
 

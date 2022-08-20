@@ -54,7 +54,7 @@ namespace ABSmartlyDotNetExamples.WPF
 
             sdk = ABSmartly.ABSmartly.Create(sdkConfig);
 
-            ContextConfig contextConfig = ContextConfig.Create()
+            ContextConfig contextConfig = new ContextConfig()
                 .SetUnit("session_id", "bf06d8cb5d8137290c4abb64155584fbdb64d8")
                 .SetUnit("user_id", "123456");
 

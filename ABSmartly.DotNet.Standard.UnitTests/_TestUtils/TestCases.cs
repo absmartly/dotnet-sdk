@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
-// ReSharper disable RedundantExplicitArrayCreation
 
+// ReSharper disable RedundantExplicitArrayCreation
+// ReSharper disable once CheckNamespace
 namespace ABSmartly.DotNet.Standard.UnitTests.TestUtils;
 
 public class TestCases
