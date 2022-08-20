@@ -1,4 +1,5 @@
-﻿using ABSmartly.Interfaces;
+﻿using ABSmartly.DefaultServiceImplementations;
+using ABSmartly.Interfaces;
 using ABSmartly.Temp;
 
 namespace ABSmartly;
@@ -16,26 +17,26 @@ public class ClientConfig
         IContextEventSerializer serializer = null, 
         IExecutor executor = null)
     {
-        Endpoint = endpoint;
-        ApiKey = apiKey;
-        Environment = environment;
-        Application = application;
-        DataDeserializer = dataDeserializer;
-        Serializer = serializer;
+        Endpoint = endpoint ?? string.Empty;
+        ApiKey = apiKey ?? string.Empty;
+        Environment = environment ?? string.Empty ;
+        Application = application ?? string.Empty;
+        DataDeserializer = dataDeserializer ?? new DefaultContextDataDeserializer(null);
+        Serializer = serializer ?? new DefaultContextEventSerializer(null);
         Executor = executor;
     }
 
-    public static ClientConfig Create(
-        string endpoint = null, 
-        string apiKey = null, 
-        string environment = null,
-        string application = null, 
-        IContextDataDeserializer dataDeserializer = null,
-        IContextEventSerializer serializer = null, 
-        IExecutor executor = null)
-    {
-        return new ClientConfig(endpoint, apiKey, environment, application, dataDeserializer, serializer, executor);
-    }
+    //public static ClientConfig Create(
+    //    string endpoint = null, 
+    //    string apiKey = null, 
+    //    string environment = null,
+    //    string application = null, 
+    //    IContextDataDeserializer dataDeserializer = null,
+    //    IContextEventSerializer serializer = null, 
+    //    IExecutor executor = null)
+    //{
+    //    return new ClientConfig(endpoint, apiKey, environment, application, dataDeserializer, serializer, executor);
+    //}
 
     public static ClientConfig Create(ClientConfiguration configuration)
     {
