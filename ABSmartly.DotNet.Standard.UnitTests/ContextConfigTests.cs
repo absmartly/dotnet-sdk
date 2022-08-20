@@ -110,4 +110,35 @@ public class ContextConfigTests : TestCases
             Assert.That(resultCustomAssignments[kvp.Key], Is.EqualTo(kvp.Value));
         }
     }
+
+
+    [TestCase(0)]
+    [TestCase(-10)]
+    [TestCase(20)]
+    [TestCase(long.MinValue)]
+    [TestCase(long.MaxValue)]
+    public void PublishDelay_SetAndGet_Returns_ExpectedResult(long delay)
+    {
+        var config = new ContextConfig();
+        config.SetPublishDelay(delay);
+
+        var resultDelay = config.GetPublishDelay();
+
+        Assert.That(resultDelay, Is.EqualTo(delay));
+    }
+
+    [TestCase(0)]
+    [TestCase(-10)]
+    [TestCase(20)]
+    [TestCase(long.MinValue)]
+    [TestCase(long.MaxValue)]
+    public void RefreshInterval_SetAndGet_Returns_ExpectedResult(long refreshInterval)
+    {
+        var config = new ContextConfig();
+        config.SetRefreshInterval(refreshInterval);
+
+        var resultRefreshInterval = config.GetRefreshInterval();
+
+        Assert.That(resultRefreshInterval, Is.EqualTo(refreshInterval));
+    }
 }
