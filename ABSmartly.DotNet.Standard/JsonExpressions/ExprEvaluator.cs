@@ -61,13 +61,19 @@ public class ExprEvaluator : IEvaluator
         if (p is bool boolParam)
             return boolParam;
         
-
         if (p is string stringParam)
-            return !stringParam.ToLower().Equals("false") && !stringParam.Equals("0") && !stringParam.Equals("");
-
+        {
+            var stringResult = !stringParam.ToLower().Equals("false") && !stringParam.Equals("0") && !stringParam.Equals("");
+            return stringResult;
+        }
 
         if (p is int intParam)
             return intParam != 0;
+
+        if (p is long longParam)
+            return longParam != 0;
+
+        //var type = p.GetType();
 
         return true;
     }
