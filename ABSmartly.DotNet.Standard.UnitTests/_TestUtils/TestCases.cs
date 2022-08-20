@@ -121,6 +121,15 @@ public class TestCases
         yield return new object[] { "testTrue", true };
         yield return new object[] { "testfalse", false };
     }
+    public static IEnumerable<object[]> String_Int()
+    {
+        yield return new object[] { "123", 1 };
+        yield return new object[] { "abc", 0 };
+        yield return new object[] { "?!*", -1 };
+        yield return new object[] { "min", int.MinValue };
+        yield return new object[] { "max", int.MaxValue };
+    }
+
 
 
     public static IEnumerable<Dictionary<string, object>> DictionaryStringKeysWithNullValues()
@@ -199,6 +208,17 @@ public class TestCases
     {
         yield return new Dictionary<string, string> { { "01", "01" } };
         yield return new Dictionary<string, string> { { "testKey", "testValue" } };
+    }
+    public static IEnumerable<object> DictionaryOfStringInt()
+    {
+        yield return new Dictionary<string, int>
+        {
+            { "123", 1 },
+            { "abc", 0 },
+            { "?!*", -1 },
+            { "min", int.MinValue },
+            { "max", int.MaxValue },
+        };
     }
     public static IEnumerable<object> DictionaryOfStringString_WithKeyOfPath()
     {

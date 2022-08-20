@@ -56,4 +56,31 @@ public class ContextConfigTests : TestCases
             Assert.That(resultAttributes[kvp.Key], Is.EqualTo(kvp.Value));
         }
     }
+
+
+    [TestCaseSource(nameof(String_Int))]
+    public void Override_SetAndGet_Returns_ExpectedResult(string experimentName, int variant)
+    {
+        var config = new ContextConfig();
+        config.SetOverride(experimentName, variant);
+
+        var resultVariant = config.GetOverride(experimentName);
+
+        Assert.That(resultVariant, Is.EqualTo(variant));
+    }
+
+    [TestCaseSource(nameof(DictionaryOfStringInt))]
+    public void Overrides_SetAndGet_Returns_ExpectedResult(Dictionary<string, int> overrides)
+    {
+        var config = new ContextConfig();
+        config.SetOverrides(overrides);
+
+        var resultOverrides = config.GetOverrides();
+
+        Assert.That(resultOverrides.Count, Is.EqualTo(overrides.Count));
+        foreach (var kvp in overrides)
+        {
+            Assert.That(resultOverrides[kvp.Key], Is.EqualTo(kvp.Value));
+        }
+    }
 }
