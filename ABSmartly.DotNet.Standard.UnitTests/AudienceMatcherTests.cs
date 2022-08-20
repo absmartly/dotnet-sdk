@@ -1,4 +1,6 @@
 ﻿using ABSmartly.DefaultServiceImplementations;
+using ABSmartly.Interfaces;
+using Moq;
 
 namespace ABSmartly.DotNet.Standard.UnitTests;
 
@@ -20,6 +22,19 @@ public class AudienceMatcherTests
     public void Evaluate_EmptyOrNotContainsFilterAudienceArray_Returns_Null(string audience)
     {
         var audienceMatcher = new AudienceMatcher(new DefaultAudienceDeserializer(null));
+
+        var result = audienceMatcher.Evaluate(audience, null);
+        Assert.That(result, Is.Null);
+    }
+
+    [TestCase("{\"filter\":[{\"value\":5}]}")]
+    public void Evaluate_DeserializeResultNull_Returns_Null(string audience)
+    {
+        var audienceDeserializer = new Mock<IAudienceDeserializer>();
+        audienceDeserializer.Setup(q => q.Deserialize(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>()))
+            .Returns((Dictionary<string, object>)null);
+
+        var audienceMatcher = new AudienceMatcher(audienceDeserializer.Object);
 
         var result = audienceMatcher.Evaluate(audience, null);
         Assert.That(result, Is.Null);
@@ -63,4 +78,8 @@ public class AudienceMatcherTests
         var result = audienceMatcher.Evaluate(audience, attributes);
         Assert.That(result, Is.EqualTo(expectedResult));
     }
+
+
+
+
 }
