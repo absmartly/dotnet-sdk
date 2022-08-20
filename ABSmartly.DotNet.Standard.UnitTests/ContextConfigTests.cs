@@ -85,5 +85,29 @@ public class ContextConfigTests : TestCases
     }
 
 
+    [TestCaseSource(nameof(String_Int))]
+    public void CustomAssignment_SetAndGet_Returns_ExpectedResult(string experimentName, int variant)
+    {
+        var config = new ContextConfig();
+        config.SetCustomAssignment(experimentName, variant);
 
+        var resultVariant = config.GetCustomAssignment(experimentName);
+
+        Assert.That(resultVariant, Is.EqualTo(variant));
+    }
+
+    [TestCaseSource(nameof(DictionaryOfStringInt))]
+    public void CustomAssignments_SetAndGet_Returns_ExpectedResult(Dictionary<string, int> customAssignments)
+    {
+        var config = new ContextConfig();
+        config.SetCustomAssignments(customAssignments);
+
+        var resultCustomAssignments = config.GetCustomAssignments();
+
+        Assert.That(resultCustomAssignments.Count, Is.EqualTo(customAssignments.Count));
+        foreach (var kvp in customAssignments)
+        {
+            Assert.That(resultCustomAssignments[kvp.Key], Is.EqualTo(kvp.Value));
+        }
+    }
 }
