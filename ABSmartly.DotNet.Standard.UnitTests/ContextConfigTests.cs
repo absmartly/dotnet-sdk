@@ -3,6 +3,24 @@
 [TestFixture]
 public class ContextConfigTests : TestCases
 {
+    [Test]
+    public void Constructor_InitializesPublishDelay()
+    {
+        var config = new ContextConfig();
+        var publishDelay = config.GetPublishDelay();
+
+        Assert.That(publishDelay, Is.EqualTo(100));
+    }
+    [Test]
+    public void Constructor_InitializesRefreshInterval()
+    {
+        var config = new ContextConfig();
+        var refreshInterval = config.GetRefreshInterval();
+
+        Assert.That(refreshInterval, Is.EqualTo(0));
+    }
+
+
     [TestCase("session_id", "0ab1e23f4eee")]
     [TestCase("testType", "123456")]
     public void Unit_SetAndGet_Returns_ExpectedResult(string unitType, string uid)
