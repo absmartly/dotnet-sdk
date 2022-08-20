@@ -23,7 +23,7 @@ public class ClientConfig
         Application = application ?? string.Empty;
         DataDeserializer = dataDeserializer ?? new DefaultContextDataDeserializer(null);
         Serializer = serializer ?? new DefaultContextEventSerializer(null);
-        Executor = executor;
+        Executor = executor ?? new DefaultExecutor();
     }
 
     //public static ClientConfig Create(
