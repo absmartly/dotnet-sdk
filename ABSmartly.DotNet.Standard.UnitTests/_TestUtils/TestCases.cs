@@ -181,7 +181,16 @@ public class TestCases
         };
     }
 
-
+    public static IEnumerable<object> DictionaryOfStringObject()
+    {
+        yield return new Dictionary<string, object>
+        {
+            { "01", 1 },
+            { "02", 2 },
+            { "03", true },
+            { "04", "false" },
+        };
+    }
     public static IEnumerable<object> DictionaryOfStringNotString()
     {
         yield return new Dictionary<string, int> { { "01", 1 } };

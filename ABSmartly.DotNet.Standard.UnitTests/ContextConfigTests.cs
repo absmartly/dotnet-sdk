@@ -29,4 +29,31 @@ public class ContextConfigTests : TestCases
             Assert.That(resultUnits[kvp.Key], Is.EqualTo(kvp.Value));
         }
     }
+
+
+    [TestCaseSource(nameof(String_Object))]
+    public void Attribute_SetAndGet_Returns_ExpectedResult(string name, object value)
+    {
+        var config = new ContextConfig();
+        config.SetAttribute(name, value);
+
+        var resultValue = config.GetAttribute(name);
+
+        Assert.That(resultValue, Is.EqualTo(value));
+    }
+
+    [TestCaseSource(nameof(DictionaryOfStringObject))]
+    public void Attributes_SetAndGet_Returns_ExpectedResult(Dictionary<string, object> attributes)
+    {
+        var config = new ContextConfig();
+        config.SetAttributes(attributes);
+
+        var resultAttributes = config.GetAttributes();
+
+        Assert.That(resultAttributes.Count, Is.EqualTo(attributes.Count));
+        foreach (var kvp in attributes)
+        {
+            Assert.That(resultAttributes[kvp.Key], Is.EqualTo(kvp.Value));
+        }
+    }
 }
