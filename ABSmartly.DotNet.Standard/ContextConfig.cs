@@ -59,7 +59,10 @@ public class ContextConfig
 
 	public string GetUnit(string unitType)
     {
-        return _units.ContainsKey(unitType) ? _units[unitType] : string.Empty;
+        if (!_units.ContainsKey(unitType))
+            return string.Empty;
+
+        return _units[unitType];
     }    
 
 	public Dictionary<string, string> GetUnits() 
@@ -82,13 +85,15 @@ public class ContextConfig
         foreach (var kvp in attributes)
             _attributes.Add(kvp.Key, kvp.Value);
         
-
 		return this;
 	}
 
 	public object GetAttribute(string name)
     {
-        return _attributes.ContainsKey(name) ? _attributes[name] : null;
+        if (!_attributes.ContainsKey(name))
+            return null;
+
+        return _attributes[name];
     }
 
 	public Dictionary<string, object> GetAttributes() 
@@ -116,10 +121,10 @@ public class ContextConfig
 
 	public object GetOverride(string experimentName)
     {
-        if (_overrides.ContainsKey(experimentName))
-            return _overrides[experimentName];
+        if (!_overrides.ContainsKey(experimentName))
+            return null;
 
-        return null;
+        return _overrides[experimentName];
     }
 
 	public Dictionary<string, int> GetOverrides() 
@@ -147,7 +152,10 @@ public class ContextConfig
 
 	public object GetCustomAssignment(string experimentName)
     {
-        return _customAssigmnents.ContainsKey(experimentName) ? _customAssigmnents[experimentName] : null;
+        if (!_customAssigmnents.ContainsKey(experimentName))
+            return null;
+
+        return _customAssigmnents[experimentName];
     }
 
 	public Dictionary<string, int> GetCustomAssignments() 
