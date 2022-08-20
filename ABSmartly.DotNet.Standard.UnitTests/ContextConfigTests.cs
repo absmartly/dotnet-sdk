@@ -33,6 +33,18 @@ public class ContextConfigTests : TestCases
         Assert.That(resultUid, Is.EqualTo(uid));
     }
 
+    [TestCase("session_id", "0ab1e23f4eee")]
+    [TestCase("testType", "123456")]
+    public void Unit_Get_NotContainedKey_Returns_EmptyString(string unitType, string uid)
+    {
+        var config = new ContextConfig();
+        config.SetUnit(unitType, uid);
+
+        var resultUid = config.GetUnit("not-contained-key");
+
+        Assert.That(resultUid, Is.EqualTo(string.Empty));
+    }
+
     [TestCaseSource(nameof(DictionaryOfStringString))]
     public void Units_SetAndGet_Returns_ExpectedResult(Dictionary<string, string> units)
     {
@@ -58,6 +70,17 @@ public class ContextConfigTests : TestCases
         var resultValue = config.GetAttribute(name);
 
         Assert.That(resultValue, Is.EqualTo(value));
+    }
+
+    [TestCaseSource(nameof(String_Object))]
+    public void Attribute_Get_NotContainedKey_Returns_Null(string name, object value)
+    {
+        var config = new ContextConfig();
+        config.SetAttribute(name, value);
+
+        var resultValue = config.GetAttribute("not-contained-key");
+
+        Assert.That(resultValue, Is.EqualTo(null));
     }
 
     [TestCaseSource(nameof(DictionaryOfStringObject))]
@@ -87,6 +110,17 @@ public class ContextConfigTests : TestCases
         Assert.That(resultVariant, Is.EqualTo(variant));
     }
 
+    [TestCaseSource(nameof(String_Int))]
+    public void Override_Get_NotContainedKey_Returns_Null(string experimentName, int variant)
+    {
+        var config = new ContextConfig();
+        config.SetOverride(experimentName, variant);
+
+        var resultVariant = config.GetOverride("not-contained-key");
+
+        Assert.That(resultVariant, Is.EqualTo(null));
+    }
+
     [TestCaseSource(nameof(DictionaryOfStringInt))]
     public void Overrides_SetAndGet_Returns_ExpectedResult(Dictionary<string, int> overrides)
     {
@@ -112,6 +146,17 @@ public class ContextConfigTests : TestCases
         var resultVariant = config.GetCustomAssignment(experimentName);
 
         Assert.That(resultVariant, Is.EqualTo(variant));
+    }
+
+    [TestCaseSource(nameof(String_Int))]
+    public void CustomAssignment_Get_NotContainedKey_Returns_Null(string experimentName, int variant)
+    {
+        var config = new ContextConfig();
+        config.SetCustomAssignment(experimentName, variant);
+
+        var resultVariant = config.GetCustomAssignment("not-contained-key");
+
+        Assert.That(resultVariant, Is.EqualTo(null));
     }
 
     [TestCaseSource(nameof(DictionaryOfStringInt))]
