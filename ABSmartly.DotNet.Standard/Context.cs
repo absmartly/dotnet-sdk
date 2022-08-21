@@ -16,58 +16,62 @@ namespace ABSmartly;
 
 public class Context : IDisposable
 {
-    private readonly Clock _clock;
-	private readonly long _publishDelay;
-	private readonly long _refreshInterval;
-	private readonly IContextEventHandler _eventHandler;
-	private readonly IContextEventLogger _eventLogger;
-	private readonly IContextDataProvider _dataProvider;
-	private readonly IVariableParser _variableParser;
-	private readonly AudienceMatcher _audienceMatcher;
-	private readonly IScheduledExecutorService _scheduler;
-	private readonly Dictionary<string, string> _units;
-	private bool _failed;
+    #region Private Props/Services
 
-	private readonly ABLock _dataLock = new();
-	private ContextData _data;
-	private Dictionary<string, ExperimentVariables> _index;
-	private Dictionary<string, ExperimentVariables> _indexVariables;
+    private readonly Clock _clock;
+    private readonly long _publishDelay;
+    private readonly long _refreshInterval;
+    private readonly IContextEventHandler _eventHandler;
+    private readonly IContextEventLogger _eventLogger;
+    private readonly IContextDataProvider _dataProvider;
+    private readonly IVariableParser _variableParser;
+    private readonly AudienceMatcher _audienceMatcher;
+    private readonly IScheduledExecutorService _scheduler;
+    private readonly Dictionary<string, string> _units;
+    private bool _failed;
+
+    private readonly ABLock _dataLock = new();
+    private ContextData _data;
+    private Dictionary<string, ExperimentVariables> _index;
+    private Dictionary<string, ExperimentVariables> _indexVariables;
 
     private readonly ABLock _contextLock = new();
 
-	private readonly Dictionary<string, byte[]> _hashedUnits;
-	private readonly Dictionary<string, VariantAssigner> _assigners;
-	private readonly Dictionary<string, Assignment> _assignmentCache = new();
+    private readonly Dictionary<string, byte[]> _hashedUnits;
+    private readonly Dictionary<string, VariantAssigner> _assigners;
+    private readonly Dictionary<string, Assignment> _assignmentCache = new();
 
     //private readonly Monitor _eventLock; => replaced with Monitor
-	private readonly List<Exposure> _exposures = new();
-	private readonly List<GoalAchievement> _achievements = new();
+    private readonly List<Exposure> _exposures = new();
+    private readonly List<GoalAchievement> _achievements = new();
 
-	private readonly List<Attribute> _attributes = new();
-	private readonly Dictionary<string, int> _overrides;
-	private readonly Dictionary<string, int> _cassignments;
+    private readonly List<Attribute> _attributes = new();
+    private readonly Dictionary<string, int> _overrides;
+    private readonly Dictionary<string, int> _cassignments;
 
-	// AtomicInteger
+    // AtomicInteger
     public int PendingCount { get; private set; }
 
 
-	// AtomicBoolean
+    // AtomicBoolean
     private readonly bool _closing;
     // AtomicBoolean
     private readonly bool _closed;
     // AtomicBoolean
     private readonly bool _refreshing;
 
-	private volatile Task _readyTask;
-	private volatile Task _closingTask;
-	private volatile Task _refreshTask;
+    private volatile Task _readyTask;
+    private volatile Task _closingTask;
+    private volatile Task _refreshTask;
 
-	private readonly ReaderWriterLockSlim _timeoutLock = new();
+    private readonly ReaderWriterLockSlim _timeoutLock = new();
 
-	// ScheduledFuture<?>
+    // ScheduledFuture<?>
     private volatile Task<object> _timeout;
     // ScheduledFuture<?>
     private volatile Task<object> _refreshTimer;
+
+    #endregion
 
     #region Constructor & Initialization
 
@@ -464,7 +468,8 @@ public class Context : IDisposable
 
     #region Variable
 
-    public Dictionary<string, string> GetVariableKeys() {
+    public Dictionary<string, string> GetVariableKeys() 
+    {
         CheckReady(true);
 
         var variableKeys = new Dictionary<string, string>(_indexVariables.Count);
@@ -491,20 +496,13 @@ public class Context : IDisposable
         CheckReady(true);
 
         var assignment = GetVariableAssignment(key);
-        if (assignment != null) 
+        if (assignment?.Variables is not null) 
         {
-            if (assignment.Variables != null) 
-            {
-                if (!assignment.Exposed) 
-                {
-                    QueueExposure(assignment);
-                }
+            if (!assignment.Exposed)
+                QueueExposure(assignment);
 
-                if (assignment.Variables.ContainsKey(key)) 
-                {
-                    return assignment.Variables[key];
-                }
-            }
+            if (assignment.Variables.ContainsKey(key))
+                return assignment.Variables[key];
         }
 
         return defaultValue;
@@ -515,14 +513,10 @@ public class Context : IDisposable
         CheckReady(true);
 
         var assignment = GetVariableAssignment(key);
-        if (assignment != null) 
+        if (assignment?.Variables is not null) 
         {
-            if (assignment.Variables != null) 
-            {
-                if (assignment.Variables.ContainsKey(key)) {
-                    return assignment.Variables[key];
-                }
-            }
+            if (assignment.Variables.ContainsKey(key))
+                return assignment.Variables[key];
         }
 
         return defaultValue;
@@ -661,16 +655,6 @@ public class Context : IDisposable
 
 
 
-
-
-    #region Close
-
-
-
-
-
-    #endregion
-
     private Task Flush() 
     {
 		ClearTimeout();
@@ -807,7 +791,7 @@ public class Context : IDisposable
     }
 
 
-    #region Assignment
+
 
     // Todo: rework...
     private Assignment GetAssignment(string experimentName) 
@@ -970,10 +954,6 @@ public class Context : IDisposable
             _contextLock.ExitWriteLock();
         }
 	}
-
-    #endregion
-
-
     private Assignment GetVariableAssignment(string key) 
     {
         var experiment = GetVariableExperiment(key);
