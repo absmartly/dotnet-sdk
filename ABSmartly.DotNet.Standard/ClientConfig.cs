@@ -14,16 +14,16 @@ public class ClientConfig
         string apiKey = null, 
         string environment = null,
         string application = null, 
-        IContextDataDeserializer dataDeserializer = null,
-        IContextEventSerializer serializer = null, 
+        IContextDataDeserializer contextDataDeserializer = null,
+        IContextEventSerializer contextEventSerializer = null, 
         IExecutor executor = null)
     {
         Endpoint = endpoint ?? string.Empty;
         ApiKey = apiKey ?? string.Empty;
         Environment = environment ?? string.Empty ;
         Application = application ?? string.Empty;
-        DataDeserializer = dataDeserializer ?? new DefaultContextDataDeserializer(null);
-        EventSerializer = serializer ?? new DefaultContextEventSerializer(null);
+        DataDeserializer = contextDataDeserializer ?? new DefaultContextDataDeserializer(null);
+        EventSerializer = contextEventSerializer ?? new DefaultContextEventSerializer(null);
         Executor = executor ?? new DefaultExecutor();
 
         if (!string.IsNullOrWhiteSpace(prefix))

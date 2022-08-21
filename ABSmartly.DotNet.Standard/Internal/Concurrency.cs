@@ -6,14 +6,14 @@ namespace ABSmartly.Internal;
 
 public class Concurrency
 {
-    public static V ComputeIfAbsentRW<K, V>(ABLock rwlock, IDictionary<K, V> map, K key, Func<K, V> computer) 
+    public static V ComputeIfAbsentRW<K, V>(ABLock rwlock, IDictionary<K, V> dictionary, K key, Func<K, V> computer) 
     {
         try 
         {
             rwlock.EnterReadLock();
 
-            if (map.ContainsKey(key))
-                return map[key];
+            if (dictionary.ContainsKey(key))
+                return dictionary[key];
         }
         finally 
         {
@@ -25,11 +25,11 @@ public class Concurrency
             rwlock.EnterWriteLock();
 
             // double check
-            if (map.ContainsKey(key))
-                return map[key];
+            if (dictionary.ContainsKey(key))
+                return dictionary[key];
 
             V newValue = computer.Invoke(key);
-            map.Add(key, newValue);
+            dictionary.Add(key, newValue);
             return newValue;
         }
         finally 
@@ -38,17 +38,17 @@ public class Concurrency
         }
     }
 
-    public static V GetRW<K, V>(ABLock rwlock, IDictionary<K, V> map, K key) 
+    public static V GetRW<K, V>(ABLock rwlock, IDictionary<K, V> dictionary, K key) 
     {
 
         try
         {
             rwlock.EnterReadLock();
 
-            if (!map.ContainsKey(key))
+            if (!dictionary.ContainsKey(key))
                 return default;
 
-            return map[key];
+            return dictionary[key];
         }
         finally 
         {
@@ -56,14 +56,14 @@ public class Concurrency
         }
     }
 
-    public static V PutRW<K, V>(ABLock rwlock, IDictionary<K, V> map, K key, V value) 
+    public static V PutRW<K, V>(ABLock rwlock, IDictionary<K, V> dictionary, K key, V value) 
     {
         try 
         {
             rwlock.EnterWriteLock();
 
-            map.Add(key, value);
-            return map[key];
+            dictionary.Add(key, value);
+            return dictionary[key];
         }
         finally 
         {

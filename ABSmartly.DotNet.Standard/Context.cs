@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using ABSmartly.DefaultServiceImplementations;
 using ABSmartly.Definitions;
 using ABSmartly.DotNet.Time;
 using ABSmartly.Interfaces;
@@ -12,7 +10,6 @@ using ABSmartly.Internal.Hashing;
 using ABSmartly.Json;
 using ABSmartly.Temp;
 using ABSmartly.Utils;
-using Microsoft.Extensions.Logging;
 using Attribute = ABSmartly.Json.Attribute;
 
 namespace ABSmartly;
@@ -52,6 +49,8 @@ public class Context : IDisposable
 
 	// AtomicInteger
     public int PendingCount { get; private set; }
+
+
 	// AtomicBoolean
     private readonly bool _closing;
     // AtomicBoolean
@@ -78,11 +77,11 @@ public class Context : IDisposable
     public Context(
         //IHttpClientFactory httpClientFactory = null, 
         //ILoggerFactory loggerFactory = null,
-        Clock clock = null,
         ContextConfig config = null, 
+        Clock clock = null,
         //IClient client = null,
         Task<ContextData> dataTask = null,
-        IScheduledExecutorService scheduler = null, 
+        IScheduledExecutorService scheduledExecutorService = null, 
         IContextDataProvider dataProvider = null,
         IContextEventHandler eventHandler = null, 
         IContextEventLogger eventLogger = null, 
@@ -109,7 +108,7 @@ public class Context : IDisposable
 		_dataProvider = dataProvider;
 		_variableParser = variableParser;
 		_audienceMatcher = audienceMatcher;
-		_scheduler = scheduler;        
+		_scheduler = scheduledExecutorService;        
 
         #endregion
 
@@ -199,6 +198,44 @@ public class Context : IDisposable
         #endregion
     }
 
+
+    public Task<Context> WaitUntilReadyAsync() {
+        if (_data != null) 
+        {
+            return Task.FromResult(this);
+        }
+        else 
+        {
+            //return readyFuture_.thenApply(new Function<Void, Context>() {
+            //    @Override
+            //    public Context apply(Void k) {
+            //    return Context.this;
+            //}
+
+            //}
+            //    );
+
+            // Todo: finish..
+            throw new NotImplementedException();
+        }
+    }
+
+    public Context WaitUntilReady() 
+    {
+        if (_data == null) 
+        {
+            var future = _readyTask; // cache here to avoid locking
+            if (future != null && !future.IsCompleted) 
+            {
+                //future.join();
+
+                // Todo: finish..
+                throw new NotImplementedException();
+            }
+        }
+        return this;
+    }
+
     #endregion
 
     #region Builder
@@ -244,42 +281,7 @@ public class Context : IDisposable
 
 
 
-    public Task<Context> WaitUntilReadyAsync() {
-        if (_data != null) 
-        {
-            return Task.FromResult(this);
-        }
-        else 
-        {
-            //return readyFuture_.thenApply(new Function<Void, Context>() {
-            //    @Override
-            //    public Context apply(Void k) {
-            //    return Context.this;
-            //}
 
-            //}
-            //    );
-
-            // Todo: finish..
-            throw new NotImplementedException();
-        }
-    }
-
-    public Context WaitUntilReady() 
-    {
-        if (_data == null) 
-        {
-            var future = _readyTask; // cache here to avoid locking
-            if (future != null && !future.IsCompleted) 
-            {
-                //future.join();
-
-                // Todo: finish..
-                throw new NotImplementedException();
-            }
-        }
-        return this;
-    }
 
     public string[] GetExperiments() {
         CheckReady(true);
@@ -306,7 +308,7 @@ public class Context : IDisposable
         }
     }
 
-    public ContextData GetData() 
+    public ContextData GetContextData() 
     {
         CheckReady(true);
 
@@ -320,6 +322,57 @@ public class Context : IDisposable
             _dataLock.ExitReadLock();
         }
     }
+
+
+
+
+
+
+
+
+
+    #region Attribute
+
+    public void SetAttribute(string name, object value) 
+    {
+        CheckNotClosed();
+
+        Concurrency.AddRW(_contextLock, _attributes, new Attribute(name, value, _clock.Millis()));
+    }
+
+    public void SetAttributes(Dictionary<string, object> attributes) 
+    {
+        foreach (var kvp in attributes)
+        {
+            SetAttribute(kvp.Key, kvp.Value);
+        }
+    }
+
+    #endregion
+
+    #region CustomAssignment
+
+    public void SetCustomAssignment(string experimentName, int variant) 
+    {
+        CheckNotClosed();
+
+        Concurrency.PutRW(_contextLock, _cassignments, experimentName, variant);
+    }
+
+    public int GetCustomAssignment(string experimentName) 
+    {
+        return Concurrency.GetRW(_contextLock, _cassignments, experimentName);
+    }
+
+    public void SetCustomAssignments(Dictionary<string, int> customAssignments) 
+    {
+        foreach (var kvp in customAssignments)
+        {
+            SetCustomAssignment(kvp.Key, kvp.Value);
+        }
+    }
+
+    #endregion
 
     #region Override
 
@@ -347,26 +400,24 @@ public class Context : IDisposable
 
     #endregion
 
-    #region CustomAssignment
+    #region Treatment
 
-    public void SetCustomAssignment(string experimentName, int variant) 
+    public int GetTreatment(string experimentName) 
     {
-        CheckNotClosed();
+        CheckReady(true);
 
-        Concurrency.PutRW(_contextLock, _cassignments, experimentName, variant);
-    }
+        var assignment = GetAssignment(experimentName);
+        if (!assignment.Exposed) 
+            QueueExposure(assignment);
 
-    public int GetCustomAssignment(string experimentName) 
+        return assignment.Variant;
+    }    
+
+    public int PeekTreatment(string experimentName) 
     {
-        return Concurrency.GetRW(_contextLock, _cassignments, experimentName);
-    }
+        CheckReady(true);
 
-    public void SetCustomAssignments(Dictionary<string, int> customAssignments) 
-    {
-        foreach (var kvp in customAssignments)
-        {
-            SetCustomAssignment(kvp.Key, kvp.Value);
-        }
+        return GetAssignment(experimentName).Variant;
     }
 
     #endregion
@@ -410,88 +461,6 @@ public class Context : IDisposable
     }
 
     #endregion
-
-    #region Attribute
-
-    public void SetAttribute(string name, object value) 
-    {
-        CheckNotClosed();
-
-        Concurrency.AddRW(_contextLock, _attributes, new Attribute(name, value, _clock.Millis()));
-    }
-
-    public void SetAttributes(Dictionary<string, object> attributes) 
-    {
-        foreach (var kvp in attributes)
-        {
-            SetAttribute(kvp.Key, kvp.Value);
-        }
-    }
-
-    #endregion
-
-    #region Treatment
-
-    public int GetTreatment(string experimentName) 
-    {
-        CheckReady(true);
-
-        var assignment = GetAssignment(experimentName);
-        if (!assignment.Exposed) 
-            QueueExposure(assignment);
-
-        return assignment.Variant;
-    }    
-
-    public int PeekTreatment(string experimentName) 
-    {
-        CheckReady(true);
-
-        return GetAssignment(experimentName).Variant;
-    }
-
-    #endregion
-
-
-
-    private void QueueExposure(Assignment assignment)
-    {
-        // Todo: review
-        //if (assignment.Exposed.CompareAndSet(false, true)) 
-        if (assignment.Exposed == false) 
-        {
-            assignment.Exposed = true;
-
-            var exposure = new Exposure(
-                id: assignment.Id,
-                name: assignment.Name,
-                unit: assignment.UnitType,
-                variant: assignment.Variant,
-                exposedAt: _clock.Millis(),
-                assigned: assignment.Assigned,
-                eligible: assignment.Eligible,
-                overridden: assignment.Overridden,
-                fullOn: assignment.FullOn,
-                custom: assignment.Custom,
-                audienceMismatch: assignment.AudienceMismatch
-            );
-
-            try 
-            {
-                Monitor.Enter(this);
-                PendingCount++;
-                _exposures.Add(exposure);
-            } 
-            finally 
-            {
-                Monitor.Exit(this);
-            }
-
-            LogEvent(EventType.Exposure, exposure);
-
-            SetTimeout();
-        }
-    }
 
     #region Variable
 
@@ -563,32 +532,55 @@ public class Context : IDisposable
 
 
 
-    public void Track(string goalName, Dictionary<string, object> properties) 
+
+
+    private void QueueExposure(Assignment assignment)
     {
-        CheckNotClosed();
-
-        var achievement = new GoalAchievement(
-            achievedAt: _clock.Millis(),
-            name: goalName,
-            properties: properties == null ? null : new SortedDictionary<string, object>(properties)
-        );
-
-        try 
+        // Todo: review
+        //if (assignment.Exposed.CompareAndSet(false, true)) 
+        if (assignment.Exposed == false) 
         {
-            Monitor.Enter(achievement);
-            PendingCount++;
-            _achievements.Add(achievement);
-        } 
-        finally 
-        {
-            Monitor.Exit(achievement);
+            assignment.Exposed = true;
+
+            var exposure = new Exposure(
+                id: assignment.Id,
+                name: assignment.Name,
+                unit: assignment.UnitType,
+                variant: assignment.Variant,
+                exposedAt: _clock.Millis(),
+                assigned: assignment.Assigned,
+                eligible: assignment.Eligible,
+                overridden: assignment.Overridden,
+                fullOn: assignment.FullOn,
+                custom: assignment.Custom,
+                audienceMismatch: assignment.AudienceMismatch
+            );
+
+            try 
+            {
+                Monitor.Enter(this);
+                PendingCount++;
+                _exposures.Add(exposure);
+            } 
+            finally 
+            {
+                Monitor.Exit(this);
+            }
+
+            LogEvent(EventType.Exposure, exposure);
+
+            SetTimeout();
         }
-
-        LogEvent(EventType.Goal, achievement);
-
-        SetTimeout();
     }
 
+
+
+    #region Public Control Functions - Publish / Refresh / Track
+
+    public void Publish() {
+        //PublishAsync().join();
+        PublishAsync();
+    }    
     public Task PublishAsync() 
     {
         CheckNotClosed();
@@ -596,13 +588,10 @@ public class Context : IDisposable
         return Flush();
     }
 
-    public void Publish() {
-        //PublishAsync().join();
-        PublishAsync();
+    public void Refresh()
+    {
+        RefreshAsync();
     }
-
-    #region Refresh
-
     public Task RefreshAsync() 
     {
         CheckNotClosed();
@@ -642,71 +631,43 @@ public class Context : IDisposable
         //return CompletableFuture.completedFuture(null);
     }
 
-    public void Refresh()
+    public void Track(string goalName, Dictionary<string, object> properties) 
     {
-        RefreshAsync();
+        CheckNotClosed();
+
+        var achievement = new GoalAchievement(
+            achievedAt: _clock.Millis(),
+            name: goalName,
+            properties: properties == null ? null : new SortedDictionary<string, object>(properties)
+        );
+
+        try 
+        {
+            Monitor.Enter(achievement);
+            PendingCount++;
+            _achievements.Add(achievement);
+        } 
+        finally 
+        {
+            Monitor.Exit(achievement);
+        }
+
+        LogEvent(EventType.Goal, achievement);
+
+        SetTimeout();
     }
 
     #endregion
 
+
+
+
+
     #region Close
 
-    public Task CloseAsync() 
-    {
-        if (!_closed) 
-        {
-            //if (closing_.compareAndSet(false, true)) 
-            //{
-            //    clearRefreshTimer();
 
-            //    if (pendingCount_.get() > 0) 
-            //    {
-            //        closingFuture_ = new CompletableFuture<Void>();
 
-            //        flush().thenAccept(new Consumer<Void>() {
-            //            @Override
-            //            public void accept(Void x) {
-            //            closed_.set(true);
-            //            closing_.set(false);
-            //            closingFuture_.complete(null);
 
-            //            Context.this.logEvent(ContextEventLogger.EventType.Close, null);
-            //        }
-            //        }).exceptionally(new Function<Throwable, Void>() {
-            //            @Override
-            //            public Void apply(Throwable exception) {
-            //            closed_.set(true);
-            //            closing_.set(false);
-            //            closingFuture_.completeExceptionally(exception);
-            //            // event logger gets this error during publish
-
-            //            return null;
-            //        }
-            //        });
-
-            //        return closingFuture_;
-            //    } else {
-            //        closed_.set(true);
-            //        closing_.set(false);
-
-            //        Context.this.logEvent(ContextEventLogger.EventType.Close, null);
-            //    }
-            //}
-
-            var future = _closingTask;
-            if (future != null) 
-            {
-                return future;
-            }
-        }
-
-        return Task.CompletedTask;
-    }
-
-    public void Close()
-    {
-        CloseAsync();
-    }
 
     #endregion
 
@@ -1212,30 +1173,82 @@ public class Context : IDisposable
 
     #region Log
 
-    private void LogEvent(EventType eventType, object data) 
+    private void LogEvent(EventType eventType, object data)
     {
-        if (_eventLogger != null) 
-        {
-            _eventLogger.HandleEvent(this, eventType, data);
-        }
+        _eventLogger?.HandleEvent(this, eventType, data);
     }
 
-    private void LogError(Exception error) 
+    private void LogError(Exception error)
     {
-        if (_eventLogger != null) 
-        {
-            //while (error instanceof CompletionException) 
-            //{
-            //    error = error.getCause();
-            //}
-            _eventLogger.HandleEvent(this, EventType.Error, error.Message);
-        }
+        //while (error instanceof CompletionException) 
+        //{
+        //    error = error.getCause();
+        //}
+        _eventLogger?.HandleEvent(this, EventType.Error, error.Message);
     }
 
     #endregion
 
 
-    #region IDisposable
+    #region Close & Dispose
+
+
+
+    public void Close()
+    {
+        CloseAsync();
+    }
+    public Task CloseAsync() 
+    {
+        if (!_closed) 
+        {
+            //if (closing_.compareAndSet(false, true)) 
+            //{
+            //    clearRefreshTimer();
+
+            //    if (pendingCount_.get() > 0) 
+            //    {
+            //        closingFuture_ = new CompletableFuture<Void>();
+
+            //        flush().thenAccept(new Consumer<Void>() {
+            //            @Override
+            //            public void accept(Void x) {
+            //            closed_.set(true);
+            //            closing_.set(false);
+            //            closingFuture_.complete(null);
+
+            //            Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+            //        }
+            //        }).exceptionally(new Function<Throwable, Void>() {
+            //            @Override
+            //            public Void apply(Throwable exception) {
+            //            closed_.set(true);
+            //            closing_.set(false);
+            //            closingFuture_.completeExceptionally(exception);
+            //            // event logger gets this error during publish
+
+            //            return null;
+            //        }
+            //        });
+
+            //        return closingFuture_;
+            //    } else {
+            //        closed_.set(true);
+            //        closing_.set(false);
+
+            //        Context.this.logEvent(ContextEventLogger.EventType.Close, null);
+            //    }
+            //}
+
+            var future = _closingTask;
+            if (future != null) 
+            {
+                return future;
+            }
+        }
+
+        return Task.CompletedTask;
+    }
 
     public void Dispose()
     {

@@ -57,7 +57,7 @@ public class ABSmartly : IDisposable
         var context = new Context(
             clock: Clock.SystemUTC(),
             config: config,
-            scheduler: _scheduler,
+            scheduledExecutorService: _scheduler,
             dataTask: _contextDataProvider.GetContextDataAsync(),
             dataProvider: _contextDataProvider,
             eventHandler: _contextEventHandler,
@@ -77,7 +77,7 @@ public class ABSmartly : IDisposable
         var context = new Context(
             clock: Clock.SystemUTC(),
             config: config,
-            scheduler: _scheduler,
+            scheduledExecutorService: _scheduler,
             dataTask: Task.FromResult(data),
             dataProvider: _contextDataProvider,
             eventHandler: _contextEventHandler,
