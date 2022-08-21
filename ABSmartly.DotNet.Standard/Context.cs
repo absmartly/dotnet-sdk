@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using ABSmartly.DefaultServiceImplementations;
 using ABSmartly.Definitions;
 using ABSmartly.DotNet.Time;
 using ABSmartly.Interfaces;
@@ -10,6 +12,7 @@ using ABSmartly.Internal.Hashing;
 using ABSmartly.Json;
 using ABSmartly.Temp;
 using ABSmartly.Utils;
+using Microsoft.Extensions.Logging;
 using Attribute = ABSmartly.Json.Attribute;
 
 namespace ABSmartly;
@@ -67,13 +70,37 @@ public class Context : IDisposable
     // ScheduledFuture<?>
     private volatile Task<object> _refreshTimer;
 
-    #region Constructor
+    #region Constructor & Initialization
 
-    private Context(Clock clock, ContextConfig config, IScheduledExecutorService scheduler,
-			Task<ContextData> dataTask, IContextDataProvider dataProvider,
-			IContextEventHandler eventHandler, IContextEventLogger eventLogger, IVariableParser variableParser,
-			AudienceMatcher audienceMatcher) 
+    /// <summary>
+    /// Only pass valid service implementations at this point!!!
+    /// </summary>
+    public Context(
+        //IHttpClientFactory httpClientFactory = null, 
+        //ILoggerFactory loggerFactory = null,
+        Clock clock = null,
+        ContextConfig config = null, 
+        //IClient client = null,
+        Task<ContextData> dataTask = null,
+        IScheduledExecutorService scheduler = null, 
+        IContextDataProvider dataProvider = null,
+        IContextEventHandler eventHandler = null, 
+        IContextEventLogger eventLogger = null, 
+        IVariableParser variableParser = null,
+        AudienceMatcher audienceMatcher = null)
     {
+        #region Property Assignment
+
+        //clock ??= Clock.SystemUTC();
+        //config ??= new ContextConfig();
+        //client ??= new Client(config, httpClientFactory, loggerFactory);
+        //scheduler ??= new ScheduledThreadPoolExecutor(10);
+        //dataProvider ??= new DefaultContextDataProvider(null);
+        //eventHandler ??= new DefaultContextEventHandler(null);
+        //eventLogger ??= new DefaultContextEventLogger();
+        //variableParser ??= new DefaultVariableParser(loggerFactory);
+        //audienceMatcher ??= new AudienceMatcher(new DefaultAudienceDeserializer(loggerFactory));
+
         _clock = clock;
 		_publishDelay = config.GetPublishDelay();
 		_refreshInterval = config.GetRefreshInterval();
@@ -82,11 +109,15 @@ public class Context : IDisposable
 		_dataProvider = dataProvider;
 		_variableParser = variableParser;
 		_audienceMatcher = audienceMatcher;
-		_scheduler = scheduler;
+		_scheduler = scheduler;        
 
-		_units = new Dictionary<string, string>();
+        #endregion
 
-		var units = config.GetUnits();
+        #region Initialization
+
+        _units = new Dictionary<string, string>();
+
+        var units = config.GetUnits();
 		if (units != null) 
         {
 			SetUnits(units);
@@ -105,6 +136,15 @@ public class Context : IDisposable
 
         var cassignments = config.GetCustomAssignments();
 		_cassignments = cassignments != null ? new Dictionary<string, int>(cassignments) : new Dictionary<string, int>();
+
+        if (dataTask.IsCompleted)
+        {
+
+        }
+        else
+        {
+            
+        }
 
 		// Todo: simplify it..
 		//if (dataFuture.IsCompleted) {
@@ -155,25 +195,27 @@ public class Context : IDisposable
 		//		}
 		//	});
 		//}
-	}
+
+        #endregion
+    }
 
     #endregion
 
     #region Builder
 
-    public static Context Create(Clock clock, 
-                                 ContextConfig config,
-                                 IScheduledExecutorService scheduler,
-                                 Task<ContextData> dataFuture, 
-                                 IContextDataProvider dataProvider,
-                                 IContextEventHandler eventHandler, 
-                                 IContextEventLogger eventLogger,
-                                 IVariableParser variableParser, 
-                                 AudienceMatcher audienceMatcher) 
-    {
-        return new Context(clock, config, scheduler, dataFuture, dataProvider, eventHandler, eventLogger,
-            variableParser, audienceMatcher);
-    }    
+    //public static Context Create(Clock clock, 
+    //                             ContextConfig config,
+    //                             IScheduledExecutorService scheduler,
+    //                             Task<ContextData> dataFuture, 
+    //                             IContextDataProvider dataProvider,
+    //                             IContextEventHandler eventHandler, 
+    //                             IContextEventLogger eventLogger,
+    //                             IVariableParser variableParser, 
+    //                             AudienceMatcher audienceMatcher)
+    //{
+    //    return new Context(clock, config, dataFuture, scheduler, dataProvider, eventHandler, eventLogger,
+    //        variableParser, audienceMatcher);
+    //}    
 
     #endregion
 
@@ -388,6 +430,7 @@ public class Context : IDisposable
 
     #endregion
 
+    #region Treatment
 
     public int GetTreatment(string experimentName) 
     {
@@ -398,7 +441,18 @@ public class Context : IDisposable
             QueueExposure(assignment);
 
         return assignment.Variant;
+    }    
+
+    public int PeekTreatment(string experimentName) 
+    {
+        CheckReady(true);
+
+        return GetAssignment(experimentName).Variant;
     }
+
+    #endregion
+
+
 
     private void QueueExposure(Assignment assignment)
     {
@@ -439,12 +493,7 @@ public class Context : IDisposable
         }
     }
 
-    public int PeekTreatment(string experimentName) 
-    {
-        CheckReady(true);
-
-        return GetAssignment(experimentName).Variant;
-    }
+    #region Variable
 
     public Dictionary<string, string> GetVariableKeys() {
         CheckReady(true);
@@ -508,7 +557,11 @@ public class Context : IDisposable
         }
 
         return defaultValue;
-    }
+    }    
+
+    #endregion
+
+
 
     public void Track(string goalName, Dictionary<string, object> properties) 
     {
@@ -989,15 +1042,17 @@ public class Context : IDisposable
         return Concurrency.GetRW(_dataLock, _indexVariables, key);
     }
 
+    private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash) 
+    {
+        return Concurrency.ComputeIfAbsentRW(_contextLock, _assigners, unitType, (_ => new VariantAssigner(unitHash)));
+    }
+
     private byte[] GetUnitHash(string unitType, string unitUID)
     {
         return Concurrency.ComputeIfAbsentRW(_contextLock, _hashedUnits, unitType, _ => MD5.HashToByte(unitUID));
     }
 
-    private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash) 
-    {
-        return Concurrency.ComputeIfAbsentRW(_contextLock, _assigners, unitType, (_ => new VariantAssigner(unitHash)));
-    }
+
 
     #region Timeout
 

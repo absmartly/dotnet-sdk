@@ -1,5 +1,6 @@
 ﻿namespace ABSmartly.Temp;
 
+// Todo: Move to appsettings.json!!
 public class ClientConfiguration
 {
     public string Endpoint { get; set; }

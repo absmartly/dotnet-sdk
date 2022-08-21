@@ -23,7 +23,6 @@
 
   <ItemGroup>
     <Folder Include="DefaultServiceImplementationsTests\" />
-    <Folder Include="_TestUtils\" />
   </ItemGroup>
 
 </Project>

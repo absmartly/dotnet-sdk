@@ -5,12 +5,6 @@ using System.Threading;
 
 namespace ABSmartly.Temp;
 
-public interface IScheduledExecutorService
-{
-
-}
-
-
 // Source: https://blog.adamfurmanek.pl/2018/08/18/trivial-scheduledthreadpoolexecutor-in-c/
 public class ScheduledThreadPoolExecutor : IScheduledExecutorService
 {
