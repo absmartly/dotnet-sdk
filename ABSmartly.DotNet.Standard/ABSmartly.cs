@@ -16,7 +16,7 @@ public class ABSmartly : IDisposable
     private ILoggerFactory _loggerFactory;
     private IHttpClientFactory _httpClientFactory;
 
-    private Client _client;
+    private IClient _client;
     private IContextDataProvider _contextDataProvider;
     private IContextEventHandler _contextEventHandler;
     private IContextEventLogger _contextEventLogger;
@@ -41,7 +41,7 @@ public class ABSmartly : IDisposable
             httpClientFactory: httpClientFactory,
             loggerFactory: loggerFactory,
 
-            client: null,
+            client: config?.Client,
             contextDataProvider: config?.ContextDataProvider,
             contextEventHandler: config?.ContextEventHandler,
             contextEventLogger: config?.ContextEventLogger,
@@ -55,7 +55,7 @@ public class ABSmartly : IDisposable
         ClientConfiguration clientConfiguration,
         IHttpClientFactory httpClientFactory,
         ILoggerFactory loggerFactory = null,
-        Client client = null,
+        IClient client = null,
 
         IContextDataProvider contextDataProvider = null,
         IContextEventHandler contextEventHandler = null,

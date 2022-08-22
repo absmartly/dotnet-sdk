@@ -16,11 +16,13 @@ public class WeatherForecastController : ControllerBase
 
     private readonly ILogger<WeatherForecastController> _logger;
     private readonly ABSmartly _abSmartly;
+    private readonly Context _context;
 
     public WeatherForecastController(ILogger<WeatherForecastController> logger, ABSmartly abSmartly)
     {
         _logger = logger;
         _abSmartly = abSmartly;
+        _context = _abSmartly.CreateContext()
     }
 
     [HttpGet]

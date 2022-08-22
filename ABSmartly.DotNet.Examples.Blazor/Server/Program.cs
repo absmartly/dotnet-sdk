@@ -1,3 +1,4 @@
+using ABSmartlyDotNetExamples.Blazor.Shared.ABSmartlyServiceImplementations;
 using ABSmartlySdk.Temp;
 using ABSmartlySdk.Utils.Extensions;
 
@@ -12,15 +13,8 @@ builder.Services.AddRazorPages();
 builder.Services.Configure<ClientConfiguration>(configuration.GetSection("ABSmartlyConfig"));
 builder.Services.AddABSmartly(options: config =>
 {
-
+    config.ContextDataProvider = new ExampleContextDataProvider();
 });
-//builder.Services.AddABSmartly(
-//    config =>
-//    {
-
-//    }
-//);
-//builder.Services.AddABSmartly(configuration.GetSection(""));
 
 var app = builder.Build();
 
@@ -42,7 +36,6 @@ app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
 
 app.UseRouting();
-
 
 app.MapRazorPages();
 app.MapControllers();

@@ -1,6 +1,5 @@
 ﻿using ABSmartlySdk.Interfaces;
 using ABSmartlySdk.Temp;
-using Microsoft.Extensions.Logging;
 
 namespace ABSmartlySdk;
 
@@ -64,9 +63,9 @@ public class ABSmartlyConfig
     //    return new ABSmartlyConfig(httpClientFactory, loggerFactory, client, contextDataProvider, contextEventHandler, contextEventLogger, variableParser, audienceDeserializer, scheduler);
     //}
 
-    public IClient Client { get; set; }
+    //public ILoggerFactory LoggerFactory { get; set; }
 
-    public ILoggerFactory LoggerFactory { get; set; }
+    public IClient Client { get; set; }
 
     public IContextDataProvider ContextDataProvider { get; set; }
 
