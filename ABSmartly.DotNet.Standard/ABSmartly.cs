@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Net.Http;
 using ABSmartlySdk.DefaultServiceImplementations;
 using ABSmartlySdk.DotNet.Time;
@@ -30,6 +31,8 @@ public class ABSmartly : IDisposable
     private IScheduledExecutorService _scheduler;    
 
     #endregion
+
+    #region Constructor & Initialization
 
     /// <summary>
     /// Constructor for .Net Core 3+ / .Net 5+ DI Service
@@ -99,35 +102,7 @@ public class ABSmartly : IDisposable
         _scheduler = scheduler ?? new ScheduledThreadPoolExecutor(1);
     }
 
-    //private void Init(ABSmartlyConfig config, ClientConfiguration clientConfiguration)
-    //{
-
-
-
-    //    _client = config.Client;
-    //    _contextDataProvider = config.ContextDataProvider;
-    //    _contextEventHandler = config.ContextEventHandler;
-    //    _contextEventLogger = config.ContextEventLogger;
-    //    _variableParser = config.VariableParser;
-    //    _audienceDeserializer = config.AudienceDeserializer;
-    //    _scheduler = config.Scheduler;
-
-    //    //if (_contextDataProvider == null || _contextEventHandler == null)
-    //    //{
-    //    //    _client = config.Client;
-    //    //    if (_client is null) 
-    //    //    {
-    //    //        throw new ArgumentNullException(nameof(_client), "Missing Client instance");
-    //    //    }
-
-    //    //    _contextDataProvider ??= new DefaultContextDataProvider(_client);
-    //    //    _contextEventHandler ??= new DefaultContextEventHandler(_client);
-    //    //}
-
-    //    //_variableParser ??= new DefaultVariableParser(config.LoggerFactory);
-    //    //_audienceDeserializer ??= new DefaultAudienceDeserializer(config.LoggerFactory);
-    //    //_scheduler ??= new ScheduledThreadPoolExecutor(1);
-    //}
+    #endregion
 
     #region Context
 
@@ -146,35 +121,7 @@ public class ABSmartly : IDisposable
             );
 
         return context;
-        //return Context.Create(Clock.SystemUTC(), config, _scheduler, _contextDataProvider.GetContextDataAsync(),
-        //    _contextDataProvider, _contextEventHandler, _contextEventLogger, _variableParser,
-        //    new AudienceMatcher(_audienceDeserializer));
     }
-
-    //public Context CreateContext(ContextConfig config, ContextData data) 
-    //{
-    //    var context = new Context(
-    //        clock: Clock.SystemUTC(),
-    //        config: config,
-    //        scheduledExecutorService: _scheduler,
-    //        dataTask: Task.FromResult(data),
-    //        dataProvider: _contextDataProvider,
-    //        eventHandler: _contextEventHandler,
-    //        eventLogger: _contextEventLogger,
-    //        variableParser: _variableParser,
-    //        audienceMatcher: new AudienceMatcher(_audienceDeserializer)
-    //    );
-
-    //    return context;
-    //    //return Context.Create(Clock.SystemUTC(), config, _scheduler, Task.FromResult(data),
-    //    //    _contextDataProvider, _contextEventHandler, _contextEventLogger, _variableParser,
-    //    //    new AudienceMatcher(_audienceDeserializer));
-    //}
-
-    //public Task<ContextData> GetContextDataAsync()
-    //{
-    //    return _contextDataProvider.GetContextDataAsync();
-    //}    
 
     #endregion
 
@@ -194,9 +141,9 @@ public class ABSmartly : IDisposable
             {
                 //_scheduler.AwaitTermination(5000, TimeUnit.MILLISECONDS);
             }
-            catch (Exception ignored)
+            catch (Exception e)
             {
-
+                Debug.WriteLine(e);
             }
 
             _scheduler = null;

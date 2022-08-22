@@ -1,6 +1,4 @@
 ﻿using System.Collections.Generic;
-using ABSmartlySdk.DefaultServiceImplementations;
-using ABSmartlySdk.Interfaces;
 
 namespace ABSmartlySdk;
 
@@ -14,11 +12,9 @@ public class ContextConfig
     private long _publishDelay;
     private long _refreshInterval;
 
-    //public IContextEventLogger EventLogger { get; }
-
     #region Lifecycle
 
-    public ContextConfig(/*IContextEventLogger contextEventLogger = null*/)
+    public ContextConfig()
     {
         _units = new Dictionary<string, string>();
         _attributes = new Dictionary<string, object>();
@@ -27,14 +23,7 @@ public class ContextConfig
 
         _publishDelay = 100;
         _refreshInterval = 0;
-
-        //EventLogger = contextEventLogger ?? new DefaultContextEventLogger();
     }
-
-    //public static ContextConfig Create(IContextEventLogger contextEventLogger = null)
-    //{
-    //    return new ContextConfig(contextEventLogger);
-    //}
 
     #endregion
 

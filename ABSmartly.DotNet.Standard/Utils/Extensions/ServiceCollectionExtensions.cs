@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
     private static void Add(IServiceCollection services, Action<ABSmartlyConfig> options = null, ServiceLifetime? lifeTime = null)
     {
         // Step 1: Http Client Registration
+        // ReSharper disable once UnusedParameter.Local
         services.AddHttpClient<ABSmartly>(DefaultHttpClient.ABSmartyHttpClientName, o =>
         {
             // Todo: add a base address??
