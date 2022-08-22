@@ -28,17 +28,20 @@ public class Client : IDisposable, IClient
     {
         _config = config ?? throw new ArgumentNullException(nameof(config), "Config is null..");
 
-        if (string.IsNullOrWhiteSpace(_config.Endpoint))
-            throw new ArgumentNullException(nameof(_config.Endpoint), "Missing Endpoint configuration");
+        // Todo: handle it nicer!!!
+        // Debug/Console writeline!?!?
+        // Platform specific error message!?!?!?!
+        //if (string.IsNullOrWhiteSpace(_config.Endpoint))
+        //    throw new ArgumentNullException(nameof(_config.Endpoint), "Missing Endpoint configuration");
 
-        if (string.IsNullOrWhiteSpace(_config.ApiKey))
-            throw new ArgumentNullException(nameof(_config.ApiKey), "Missing APIKey configuration");
+        //if (string.IsNullOrWhiteSpace(_config.ApiKey))
+        //    throw new ArgumentNullException(nameof(_config.ApiKey), "Missing APIKey configuration");
 
-        if (string.IsNullOrWhiteSpace(_config.Application))
-            throw new ArgumentNullException(nameof(_config.Application), "Missing Application configuration");
+        //if (string.IsNullOrWhiteSpace(_config.Application))
+        //    throw new ArgumentNullException(nameof(_config.Application), "Missing Application configuration");
 
-        if (string.IsNullOrWhiteSpace(_config.Environment))
-            throw new ArgumentNullException(nameof(_config.Environment), "Missing Environment configuration");
+        //if (string.IsNullOrWhiteSpace(_config.Environment))
+        //    throw new ArgumentNullException(nameof(_config.Environment), "Missing Environment configuration");
 
         _deserializer = config.DataDeserializer ?? new DefaultContextDataDeserializer(loggerFactory);
         _serializer = config.EventSerializer ?? new DefaultContextEventSerializer(loggerFactory);

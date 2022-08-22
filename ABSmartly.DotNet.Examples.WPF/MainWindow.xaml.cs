@@ -37,47 +37,47 @@ namespace ABSmartlyDotNetExamples.WPF
 
         private void InitializeABSmartly()
         {
-            var httpClientFactory = _serviceProvider.GetService<IHttpClientFactory>();
+            //var httpClientFactory = _serviceProvider.GetService<IHttpClientFactory>();
 
-            var clientConfiguration = new ClientConfiguration()
-            {
-                Prefix = "",
-                Environment = "Development",
-                Application = ProductName,
-                Endpoint = "https://acme.absmartly.io/v1",
-                ApiKey = "apiKey"
-            };
+            //var clientConfiguration = new ClientConfiguration()
+            //{
+            //    Prefix = "",
+            //    Environment = "Development",
+            //    Application = ProductName,
+            //    Endpoint = "https://acme.absmartly.io/v1",
+            //    ApiKey = "apiKey"
+            //};
 
-            //ClientConfig config = new ClientConfig(
+            ////ClientConfig config = new ClientConfig(
 
-            //);
+            ////);
 
-            ABSmartlyConfig sdkConfig = new ABSmartlyConfig(
-                clientConfiguration: clientConfiguration,
-                httpClientFactory: httpClientFactory
-                );
-            
-            //ABSmartlyConfig sdkConfig = ABSmartlyConfig.Create(
+            //ABSmartlyConfig sdkConfig = new ABSmartlyConfig(
+            //    clientConfiguration: clientConfiguration,
             //    httpClientFactory: httpClientFactory
             //    );
+            
+            ////ABSmartlyConfig sdkConfig = ABSmartlyConfig.Create(
+            ////    httpClientFactory: httpClientFactory
+            ////    );
 
-            sdk = new ABSmartly(sdkConfig);
-            //sdk = ABSmartly.ABSmartly.Create(sdkConfig);
+            //sdk = new ABSmartly(sdkConfig);
+            ////sdk = ABSmartly.ABSmartly.Create(sdkConfig);
 
-            ContextConfig contextConfig = new ContextConfig()
-                .SetUnit("session_id", "bf06d8cb5d8137290c4abb64155584fbdb64d8")
-                .SetUnit("user_id", "123456");
+            //ContextConfig contextConfig = new ContextConfig()
+            //    .SetUnit("session_id", "bf06d8cb5d8137290c4abb64155584fbdb64d8")
+            //    .SetUnit("user_id", "123456");
 
-            context = sdk.CreateContext(contextConfig);
-            //context = sdk.CreateContext(contextConfig).WaitUntilReady();
-            int treatment = context.GetTreatment("exp_test_ab");
-            Debug.WriteLine(treatment);
+            //context = sdk.CreateContext(contextConfig);
+            ////context = sdk.CreateContext(contextConfig).WaitUntilReady();
+            //int treatment = context.GetTreatment("exp_test_ab");
+            //Debug.WriteLine(treatment);
 
-            properties = new Dictionary<string, object>
-            {
-                { "value", 125 },
-                { "fee", 125 }
-            };
+            //properties = new Dictionary<string, object>
+            //{
+            //    { "value", 125 },
+            //    { "fee", 125 }
+            //};
         }
 
         private void Button1_Click(object sender, RoutedEventArgs e)

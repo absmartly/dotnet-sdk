@@ -9,10 +9,10 @@ namespace ABSmartlySdk.Utils.Extensions;
 
 public static class ServiceCollectionExtensions
 {
-    public static void AddABSmartly(this IServiceCollection services, IOptions<ClientConfiguration> clientConfiguration)
-    {
+    //public static void AddABSmartly(this IServiceCollection services, IOptions<ClientConfiguration> clientConfiguration)
+    //{
 
-    }
+    //}
 
     public static void AddABSmartly(this IServiceCollection services, Action<ABSmartlyConfig> options = null, ServiceLifetime? lifeTime = null)
     {
@@ -30,12 +30,19 @@ public static class ServiceCollectionExtensions
 
     private static void Add(IServiceCollection services, Action<ABSmartlyConfig> options = null, ServiceLifetime? lifeTime = null)
     {
+        // Step 1: Http Client Registration
         services.AddHttpClient<ABSmartly>(DefaultHttpClient.ABSmartyHttpClientName, o =>
         {
             // Todo: add a base address??
             //o.BaseAddress = new Uri("");
         });
 
+        // Step 2: Configure Options
+        if (options is not null)
+            services.Configure(options);
+
+
+        // Step 3: Lifetime
         if (lifeTime is null)
             lifeTime = ServiceLifetime.Singleton;
 
@@ -48,8 +55,7 @@ public static class ServiceCollectionExtensions
         else if (lifeTime is ServiceLifetime.Transient)
             services.AddTransient<ABSmartly>();
 
-        if (options is not null)
-            services.Configure(options);
+
 
         //var absmartly = ABSmartly.Create(null);
         //return absmartly;

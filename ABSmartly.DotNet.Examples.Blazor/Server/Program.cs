@@ -13,7 +13,7 @@ var section = builder.Configuration.GetSection("ABSmartlyConfig");
 builder.Services.Configure<ClientConfiguration>(section);
 builder.Services.AddABSmartly(lifeTime: ServiceLifetime.Transient, options: config =>
 {
-    
+
 });
 //builder.Services.AddABSmartly(
 //    config =>
