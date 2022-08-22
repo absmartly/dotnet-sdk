@@ -1,19 +1,27 @@
+using ABSmartlySdk.Temp;
 using ABSmartlySdk.Utils.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
+//var configuration = builder.Configuration;
 
 // Add services to the container.
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
 
-builder.Services.AddABSmartly(lifeTime: ServiceLifetime.Transient);
-builder.Services.AddABSmartly(
-    config =>
-    {
+var section = builder.Configuration.GetSection("ABSmartlyConfig");
+builder.Services.Configure<ClientConfiguration>(section);
+builder.Services.AddABSmartly(lifeTime: ServiceLifetime.Transient, options: config =>
+{
+    
+});
+//builder.Services.AddABSmartly(
+//    config =>
+//    {
 
-    }
-);
+//    }
+//);
+//builder.Services.AddABSmartly(configuration.GetSection(""));
 
 var app = builder.Build();
 

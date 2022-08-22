@@ -3,26 +3,42 @@ using ABSmartlySdk.DefaultServiceImplementations;
 using ABSmartlySdk.DotNet.Time;
 using ABSmartlySdk.Interfaces;
 using ABSmartlySdk.Temp;
+using Microsoft.Extensions.Options;
 
 namespace ABSmartlySdk;
 
 public class ABSmartly : IDisposable
 {
+    #region Private Services
+
     private Client _client;
-    private readonly IContextDataProvider _contextDataProvider;
-    private readonly IContextEventHandler _contextEventHandler;
-    private readonly IContextEventLogger _contextEventLogger;
-    private readonly IVariableParser _variableParser;
+    private IContextDataProvider _contextDataProvider;
+    private IContextEventHandler _contextEventHandler;
+    private IContextEventLogger _contextEventLogger;
+    private IVariableParser _variableParser;
 
-    private readonly IAudienceDeserializer _audienceDeserializer;
-    private IScheduledExecutorService _scheduler;
+    private IAudienceDeserializer _audienceDeserializer;
+    private IScheduledExecutorService _scheduler;    
 
-    public static ABSmartly Create(ABSmartlyConfig config)
-    {
-        return new ABSmartly(config);
-    }
+    #endregion
+
+
+    //public static ABSmartly Create(ABSmartlyConfig config)
+    //{
+    //    return new ABSmartly(config);
+    //}
+
+    //public ABSmartly(IOptions<ABSmartlyConfig> c)
+    //{
+    //    Init(c.Value);
+    //}
 
     public ABSmartly(ABSmartlyConfig config)
+    {
+        Init(config);
+    }
+
+    private void Init(ABSmartlyConfig config)
     {
         _contextDataProvider = config.ContextDataProvider;
         _contextEventHandler = config.ContextEventHandler;
