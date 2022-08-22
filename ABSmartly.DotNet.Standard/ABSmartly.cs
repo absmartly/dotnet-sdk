@@ -22,6 +22,10 @@ public class ABSmartly : IDisposable
     private IContextEventLogger _contextEventLogger;
     private IVariableParser _variableParser;
 
+    private IContextDataDeserializer _contextDataDeserializer;
+    private IContextEventSerializer _contextEventSerializer;
+    private IExecutor _executor;
+
     private IAudienceDeserializer _audienceDeserializer;
     private IScheduledExecutorService _scheduler;    
 
@@ -45,6 +49,11 @@ public class ABSmartly : IDisposable
             contextDataProvider: config?.ContextDataProvider,
             contextEventHandler: config?.ContextEventHandler,
             contextEventLogger: config?.ContextEventLogger,
+
+            contextDataDeserializer: config?.ContextDataDeserializer,
+            contextEventSerializer: config?.ContextEventSerializer,
+            executor: config?.Executor,
+
             variableParser: config?.VariableParser,
             audienceDeserializer: config?.AudienceDeserializer,
             scheduler: config?.Scheduler
@@ -60,6 +69,11 @@ public class ABSmartly : IDisposable
         IContextDataProvider contextDataProvider = null,
         IContextEventHandler contextEventHandler = null,
         IContextEventLogger contextEventLogger = null,
+
+        IContextDataDeserializer contextDataDeserializer = null,
+        IContextEventSerializer contextEventSerializer = null,
+        IExecutor executor = null,
+
         IVariableParser variableParser = null,
         IAudienceDeserializer audienceDeserializer = null,
         IScheduledExecutorService scheduler = null)
@@ -67,11 +81,19 @@ public class ABSmartly : IDisposable
         _loggerFactory = loggerFactory ?? new LoggerFactory();
         _httpClientFactory = httpClientFactory;
 
-        _client = client ?? new Client(_httpClientFactory, _loggerFactory, new ClientConfig(clientConfiguration));
+        _client = client ?? new Client(_httpClientFactory, _loggerFactory, 
+            clientConfiguration,
+            _contextDataDeserializer, _contextEventSerializer, _executor
+        );
 
         _contextDataProvider = contextDataProvider ?? new DefaultContextDataProvider(client);
         _contextEventHandler = contextEventHandler ?? new DefaultContextEventHandler(client);
         _contextEventLogger = contextEventLogger ?? new DefaultContextEventLogger();
+
+        _contextDataDeserializer = contextDataDeserializer ?? new DefaultContextDataDeserializer(_loggerFactory);
+        _contextEventSerializer = contextEventSerializer ?? new DefaultContextEventSerializer(_loggerFactory);
+        _executor = executor ?? new DefaultExecutor();
+
         _variableParser = variableParser ?? new DefaultVariableParser(_loggerFactory);
         _audienceDeserializer = audienceDeserializer ?? new DefaultAudienceDeserializer(_loggerFactory);
         _scheduler = scheduler ?? new ScheduledThreadPoolExecutor(1);

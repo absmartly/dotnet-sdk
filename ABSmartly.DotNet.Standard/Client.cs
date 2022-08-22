@@ -16,7 +16,7 @@ public class Client : IDisposable, IClient
     //private Dictionary<string, string> _query;
     //private Dictionary<string, string> _headers;
 
-    private readonly ClientConfig _config;
+    private readonly ClientConfiguration _config;
     private readonly IHttpClientFactory _httpClientFactory;
 
     private IExecutor _executor;
@@ -24,7 +24,11 @@ public class Client : IDisposable, IClient
     private IContextEventSerializer _serializer;
 
 
-    public Client(IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory, ClientConfig config)
+    public Client(IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory, 
+        ClientConfiguration config,
+        IContextDataDeserializer contextDataDeserializer,
+        IContextEventSerializer contextEventSerializer,
+        IExecutor executor)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config), "Config is null..");
 
@@ -43,9 +47,9 @@ public class Client : IDisposable, IClient
         //if (string.IsNullOrWhiteSpace(_config.Environment))
         //    throw new ArgumentNullException(nameof(_config.Environment), "Missing Environment configuration");
 
-        _deserializer = config.DataDeserializer ?? new DefaultContextDataDeserializer(loggerFactory);
-        _serializer = config.EventSerializer ?? new DefaultContextEventSerializer(loggerFactory);
-        _executor = config.Executor;
+        _deserializer = contextDataDeserializer;
+        _serializer = contextEventSerializer;
+        _executor = executor;
 
 
         _url = config.Endpoint + "/context";

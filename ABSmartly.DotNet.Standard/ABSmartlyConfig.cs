@@ -73,6 +73,13 @@ public class ABSmartlyConfig
 
     public IContextEventLogger ContextEventLogger { get; set; }
 
+    public IContextDataDeserializer ContextDataDeserializer { get; set; }
+
+    public IContextEventSerializer ContextEventSerializer { get; set; }
+
+    public IExecutor Executor { get; set; }
+
+
     public IVariableParser VariableParser { get; set;  }
 
     public IAudienceDeserializer AudienceDeserializer { get; set;  }
