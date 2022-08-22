@@ -81,32 +81,22 @@ public class Context : IDisposable
     public Context(
         //IHttpClientFactory httpClientFactory = null, 
         //ILoggerFactory loggerFactory = null,
-        ContextConfig config = null, 
-        Clock clock = null,
+        ContextConfig config, 
+        Clock clock,
         //IClient client = null,
-        Task<ContextData> dataTask = null,
-        IScheduledExecutorService scheduledExecutorService = null, 
-        IContextDataProvider dataProvider = null,
-        IContextEventHandler eventHandler = null, 
-        IContextEventLogger eventLogger = null, 
-        IVariableParser variableParser = null,
-        AudienceMatcher audienceMatcher = null)
+        Task<ContextData> dataTask,
+        IScheduledExecutorService scheduledExecutorService, 
+        IContextDataProvider dataProvider,
+        IContextEventHandler eventHandler, 
+        IContextEventLogger eventLogger, 
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher)
     {
         #region Property Assignment
 
-        //clock ??= Clock.SystemUTC();
-        //config ??= new ContextConfig();
-        //client ??= new Client(config, httpClientFactory, loggerFactory);
-        //scheduler ??= new ScheduledThreadPoolExecutor(10);
-        //dataProvider ??= new DefaultContextDataProvider(null);
-        //eventHandler ??= new DefaultContextEventHandler(null);
-        //eventLogger ??= new DefaultContextEventLogger();
-        //variableParser ??= new DefaultVariableParser(loggerFactory);
-        //audienceMatcher ??= new AudienceMatcher(new DefaultAudienceDeserializer(loggerFactory));
-
         _clock = clock;
-		_publishDelay = config.GetPublishDelay();
-		_refreshInterval = config.GetRefreshInterval();
+		_publishDelay = config.PublishDelay;
+		_refreshInterval = config.RefreshInterval;
 		_eventHandler = eventHandler;
 		_eventLogger = eventLogger;
 		_dataProvider = dataProvider;
@@ -129,15 +119,15 @@ public class Context : IDisposable
 		_assigners = new Dictionary<string, VariantAssigner>(_units.Count);
 		_hashedUnits = new Dictionary<string, byte[]>(_units.Count);
 
-		var attributes = config.GetAttributes();
+		var attributes = config.Attributes;
 		if (attributes != null) {
 			SetAttributes(attributes);
 		}
 
-        var overrides = config.GetOverrides();
+        var overrides = config.Overrides;
 		_overrides = overrides != null ? new Dictionary<string, int>(overrides) : new Dictionary<string, int>();
 
-        var cassignments = config.GetCustomAssignments();
+        var cassignments = config.CustomAssigmnents;
 		_cassignments = cassignments != null ? new Dictionary<string, int>(cassignments) : new Dictionary<string, int>();
 
         if (dataTask.IsCompleted)

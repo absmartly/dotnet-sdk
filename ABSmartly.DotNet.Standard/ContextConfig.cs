@@ -4,35 +4,40 @@ namespace ABSmartlySdk;
 
 public class ContextConfig
 {
-    private readonly Dictionary<string, string> _units;
-    private readonly Dictionary<string, object> _attributes;
-    private readonly Dictionary<string, int> _overrides;
-    private readonly Dictionary<string, int> _customAssigmnents;
-
-    private long _publishDelay;
-    private long _refreshInterval;
-
     #region Lifecycle
 
     public ContextConfig()
     {
-        _units = new Dictionary<string, string>();
-        _attributes = new Dictionary<string, object>();
-        _overrides = new Dictionary<string, int>();
-        _customAssigmnents = new Dictionary<string, int>();
+        Units = new Dictionary<string, string>();
+        Attributes = new Dictionary<string, object>();
+        Overrides = new Dictionary<string, int>();
+        CustomAssigmnents = new Dictionary<string, int>();
 
-        _publishDelay = 100;
-        _refreshInterval = 0;
+        // Assign default values
+        PublishDelay = 100;
+        RefreshInterval = 0;
     }
 
     #endregion
+
+    public Dictionary<string, string> Units { get; }
+    public Dictionary<string, object> Attributes { get; }
+    public Dictionary<string, int> Overrides { get; }
+    public Dictionary<string, int> CustomAssigmnents { get; }
+
+    public long PublishDelay { get; set; }
+    public long RefreshInterval { get; set; }
+
+
+
+
 
 
     #region Units
 
     public ContextConfig SetUnit(string unitType, string uid) 
     {
-        _units.Add(unitType, uid);
+        Units.Add(unitType, uid);
 		return this;
 	}
 
@@ -48,15 +53,15 @@ public class ContextConfig
 
 	public string GetUnit(string unitType)
     {
-        if (!_units.ContainsKey(unitType))
+        if (!Units.ContainsKey(unitType))
             return string.Empty;
 
-        return _units[unitType];
+        return Units[unitType];
     }    
 
 	public Dictionary<string, string> GetUnits() 
     {
-		return _units;
+		return Units;
 	}
 
     #endregion
@@ -65,30 +70,30 @@ public class ContextConfig
 
 	public ContextConfig SetAttribute(string name, object value) 
     {
-        _attributes.Add(name, value);
+        Attributes.Add(name, value);
 		return this;
 	}
 
 	public ContextConfig SetAttributes(Dictionary<string, object> attributes) 
     {
         foreach (var kvp in attributes)
-            _attributes.Add(kvp.Key, kvp.Value);
+            Attributes.Add(kvp.Key, kvp.Value);
         
 		return this;
 	}
 
-	public object GetAttribute(string name)
-    {
-        if (!_attributes.ContainsKey(name))
-            return null;
+	//public object GetAttribute(string name)
+ //   {
+ //       if (!Attributes.ContainsKey(name))
+ //           return null;
 
-        return _attributes[name];
-    }
+ //       return Attributes[name];
+ //   }
 
-	public Dictionary<string, object> GetAttributes() 
-    {
-		return _attributes;
-	}    
+	//public Dictionary<string, object> GetAttributes() 
+ //   {
+	//	return Attributes;
+	//}    
 
     #endregion
 
@@ -96,91 +101,91 @@ public class ContextConfig
 
 	public ContextConfig SetOverride(string experimentName, int variant) 
     {
-        _overrides.Add(experimentName, variant);
+        Overrides.Add(experimentName, variant);
 		return this;
 	}
 
 	public ContextConfig SetOverrides(Dictionary<string, int> overrides) 
     {
         foreach (var kvp in overrides)
-            _overrides.Add(kvp.Key, kvp.Value);
+            Overrides.Add(kvp.Key, kvp.Value);
 
         return this;
 	}
 
-	public object GetOverride(string experimentName)
+    public object GetOverride(string experimentName)
     {
-        if (!_overrides.ContainsKey(experimentName))
+        if (!Overrides.ContainsKey(experimentName))
             return null;
 
-        return _overrides[experimentName];
+        return Overrides[experimentName];
     }
 
-	public Dictionary<string, int> GetOverrides() 
-    {
-		return _overrides;
-	}    
+    //public Dictionary<string, int> GetOverrides() 
+    //   {
+    //	return Overrides;
+    //}    
 
     #endregion
 
     #region CustomAssignments
 
-	public ContextConfig SetCustomAssignment(string experimentName, int variant) 
+    public ContextConfig SetCustomAssignment(string experimentName, int variant) 
     {
-        _customAssigmnents.Add(experimentName, variant);
+        CustomAssigmnents.Add(experimentName, variant);
 		return this;
 	}
 
 	public ContextConfig SetCustomAssignments(Dictionary<string, int> customAssignments) 
     {
         foreach (var kvp in customAssignments)
-            _customAssigmnents.Add(kvp.Key, kvp.Value);
+            CustomAssigmnents.Add(kvp.Key, kvp.Value);
 
         return this;
 	}
 
 	public object GetCustomAssignment(string experimentName)
     {
-        if (!_customAssigmnents.ContainsKey(experimentName))
+        if (!CustomAssigmnents.ContainsKey(experimentName))
             return null;
 
-        return _customAssigmnents[experimentName];
+        return CustomAssigmnents[experimentName];
     }
 
-	public Dictionary<string, int> GetCustomAssignments() 
-    {
-		return _customAssigmnents;
-	}    
+	//public Dictionary<string, int> GetCustomAssignments() 
+ //   {
+	//	return CustomAssigmnents;
+	//}    
 
     #endregion
 
     #region PublishDelay
 
-	public ContextConfig SetPublishDelay(long delay) 
-    {
-		_publishDelay = delay;
-		return this;
-	}
+	//public ContextConfig SetPublishDelay(long delay) 
+ //   {
+	//	PublishDelay = delay;
+	//	return this;
+	//}
 
-	public long GetPublishDelay() 
-    {
-		return _publishDelay;
-	}
+	//public long GetPublishDelay() 
+ //   {
+	//	return PublishDelay;
+	//}
 
     #endregion
 
     #region RefreshInterval
 
-	public ContextConfig SetRefreshInterval(long interval) 
-    {
-		_refreshInterval = interval;
-		return this;
-	}
+	//public ContextConfig SetRefreshInterval(long interval) 
+ //   {
+	//	RefreshInterval = interval;
+	//	return this;
+	//}
 
-	public long GetRefreshInterval() 
-    {
-		return _refreshInterval;
-	}    
+	//public long GetRefreshInterval() 
+ //   {
+	//	return RefreshInterval;
+	//}    
 
     #endregion
 }
