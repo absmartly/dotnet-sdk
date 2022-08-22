@@ -33,7 +33,8 @@ public class WeatherForecastController : ControllerBase
             })
             .ToArray();
 
-        var properties = temps.ToDictionary<WeatherForecast, string, object>(forecast => forecast.Summary, forecast => forecast.TemperatureC);
+        // Bad, do it manually, null issue...
+        //var properties = temps.ToDictionary<WeatherForecast, string, object>(forecast => forecast.Summary, forecast => forecast.TemperatureC);
         //_context.Track("WeatherForecastCount", properties);
 
         return temps;

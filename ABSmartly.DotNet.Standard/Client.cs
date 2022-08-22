@@ -2,7 +2,6 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
-using ABSmartlySdk.DefaultServiceImplementations;
 using ABSmartlySdk.Interfaces;
 using ABSmartlySdk.Json;
 using ABSmartlySdk.Temp;

@@ -110,25 +110,13 @@ public class Context : IDisposable
 
         _units = new Dictionary<string, string>();
 
-        var units = config.GetUnits();
-		if (units != null) 
-        {
-			SetUnits(units);
-		}
-
+        SetUnits(config.Units);
 		_assigners = new Dictionary<string, VariantAssigner>(_units.Count);
 		_hashedUnits = new Dictionary<string, byte[]>(_units.Count);
 
-		var attributes = config.Attributes;
-		if (attributes != null) {
-			SetAttributes(attributes);
-		}
-
-        var overrides = config.Overrides;
-		_overrides = overrides != null ? new Dictionary<string, int>(overrides) : new Dictionary<string, int>();
-
-        var cassignments = config.CustomAssigmnents;
-		_cassignments = cassignments != null ? new Dictionary<string, int>(cassignments) : new Dictionary<string, int>();
+        SetAttributes(config.Attributes);
+        SetOverrides(config.Overrides);
+        SetCustomAssignments(config.CustomAssigmnents);
 
         if (dataTask.IsCompleted)
         {

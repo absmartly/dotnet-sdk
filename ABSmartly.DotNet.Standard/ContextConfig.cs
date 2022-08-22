@@ -8,12 +8,13 @@ public class ContextConfig
 
     public ContextConfig()
     {
+        // Assign default values
+
         Units = new Dictionary<string, string>();
         Attributes = new Dictionary<string, object>();
         Overrides = new Dictionary<string, int>();
         CustomAssigmnents = new Dictionary<string, int>();
 
-        // Assign default values
         PublishDelay = 100;
         RefreshInterval = 0;
     }
@@ -27,11 +28,6 @@ public class ContextConfig
 
     public long PublishDelay { get; set; }
     public long RefreshInterval { get; set; }
-
-
-
-
-
 
     #region Units
 
@@ -59,11 +55,6 @@ public class ContextConfig
         return Units[unitType];
     }    
 
-	public Dictionary<string, string> GetUnits() 
-    {
-		return Units;
-	}
-
     #endregion
 
     #region Attributes
@@ -81,19 +72,6 @@ public class ContextConfig
         
 		return this;
 	}
-
-	//public object GetAttribute(string name)
- //   {
- //       if (!Attributes.ContainsKey(name))
- //           return null;
-
- //       return Attributes[name];
- //   }
-
-	//public Dictionary<string, object> GetAttributes() 
- //   {
-	//	return Attributes;
-	//}    
 
     #endregion
 
@@ -121,11 +99,6 @@ public class ContextConfig
         return Overrides[experimentName];
     }
 
-    //public Dictionary<string, int> GetOverrides() 
-    //   {
-    //	return Overrides;
-    //}    
-
     #endregion
 
     #region CustomAssignments
@@ -151,41 +124,6 @@ public class ContextConfig
 
         return CustomAssigmnents[experimentName];
     }
-
-	//public Dictionary<string, int> GetCustomAssignments() 
- //   {
-	//	return CustomAssigmnents;
-	//}    
-
-    #endregion
-
-    #region PublishDelay
-
-	//public ContextConfig SetPublishDelay(long delay) 
- //   {
-	//	PublishDelay = delay;
-	//	return this;
-	//}
-
-	//public long GetPublishDelay() 
- //   {
-	//	return PublishDelay;
-	//}
-
-    #endregion
-
-    #region RefreshInterval
-
-	//public ContextConfig SetRefreshInterval(long interval) 
- //   {
-	//	RefreshInterval = interval;
-	//	return this;
-	//}
-
-	//public long GetRefreshInterval() 
- //   {
-	//	return RefreshInterval;
-	//}    
 
     #endregion
 }
