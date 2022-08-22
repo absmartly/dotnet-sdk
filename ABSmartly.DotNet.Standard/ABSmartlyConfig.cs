@@ -9,6 +9,7 @@ namespace ABSmartlySdk;
 public class ABSmartlyConfig
 {
     public ABSmartlyConfig(
+        ClientConfiguration clientConfiguration,
         IHttpClientFactory httpClientFactory,
         ILoggerFactory loggerFactory = null,
         Client client = null,
@@ -22,7 +23,7 @@ public class ABSmartlyConfig
     )
     {
         LoggerFactory = loggerFactory ?? new LoggerFactory();
-        Client = client ?? new Client(new ClientConfig(), httpClientFactory, loggerFactory);
+        Client = client ?? new Client(new ClientConfig(clientConfiguration), httpClientFactory, loggerFactory);
 
         ContextDataProvider = contextDataProvider ?? new DefaultContextDataProvider(Client);
         ContextEventHandler = contextEventHandler ?? new DefaultContextEventHandler(Client);

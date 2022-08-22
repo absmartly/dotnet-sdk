@@ -1,5 +1,6 @@
 ﻿using ABSmartlySdk;
 using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartlySdk.Temp;
 
 namespace ABSmartly.DotNet.Standard.UnitTests;
 
@@ -8,7 +9,7 @@ public class ClientConfigTests
     [Test]
     public void EmptyConstructor_Initializes_DefaultValuesAndTypes()
     {
-        var config = new ClientConfig();
+        var config = new ClientConfig(new ClientConfiguration());
 
         Assert.That(config.Endpoint, Is.EqualTo(string.Empty));
         Assert.That(config.ApiKey, Is.EqualTo(string.Empty));
@@ -25,12 +26,17 @@ public class ClientConfigTests
     [TestCase("prefix_", "", "", "", "")]
     public void Constructor_Initializes_SetValues(string prefix, string endpoint, string apiKey, string environment, string application)
     {
+        var clientConfiguration = new ClientConfiguration
+        {
+            Prefix = prefix,
+            Environment = environment,
+            Application = application,
+            Endpoint = endpoint,
+            ApiKey = apiKey
+        };
+
         var config = new ClientConfig(
-            prefix: prefix,
-            endpoint: endpoint,
-            apiKey: apiKey,
-            environment: environment,
-            application: application
+            clientConfiguration
             );
 
         var endpointPrefix = string.IsNullOrWhiteSpace(endpoint) ? "" : prefix;

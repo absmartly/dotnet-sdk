@@ -63,11 +63,16 @@ public partial class ContextTests : TestCases
             contextEventSerializer = new DefaultContextEventSerializer(loggerFactory.Object);
             executor = new DefaultExecutor();
 
+            var clientConfiguration = new ClientConfiguration
+            {
+                Prefix = "",
+                Environment = "unittest",
+                Application = "unittest",
+                Endpoint = "testendpoint",
+                ApiKey = "testkex"
+            };
             clientConfig = new ClientConfig(
-                endpoint: "testendpoint",
-                apiKey: "testkex",
-                environment: "unittest",
-                application: "unittest",
+                clientConfiguration,
                 contextDataDeserializer: contextDataDeserializer,
                 contextEventSerializer: contextEventSerializer,
                 executor: executor

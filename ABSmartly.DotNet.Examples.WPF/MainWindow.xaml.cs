@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Windows;
 using ABSmartlySdk;
+using ABSmartlySdk.Temp;
 using Microsoft.Extensions.DependencyInjection;
 using ABSmartly = ABSmartlySdk.ABSmartly;
 
@@ -38,14 +39,21 @@ namespace ABSmartlyDotNetExamples.WPF
         {
             var httpClientFactory = _serviceProvider.GetService<IHttpClientFactory>();
 
-            ClientConfig config = new ClientConfig(
-                endpoint: "https://acme.absmartly.io/v1",
-                apiKey: "apiKey",
-                application: ProductName,
-                environment: "Development"
-            );
+            var clientConfiguration = new ClientConfiguration()
+            {
+                Prefix = "",
+                Environment = "Development",
+                Application = ProductName,
+                Endpoint = "https://acme.absmartly.io/v1",
+                ApiKey = "apiKey"
+            };
+
+            //ClientConfig config = new ClientConfig(
+
+            //);
 
             ABSmartlyConfig sdkConfig = new ABSmartlyConfig(
+                clientConfiguration: clientConfiguration,
                 httpClientFactory: httpClientFactory
                 );
             

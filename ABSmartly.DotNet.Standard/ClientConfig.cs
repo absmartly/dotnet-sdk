@@ -9,36 +9,37 @@ public class ClientConfig
     // Todo: https://www.codeproject.com/Questions/1273200/Is-there-an-equivalent-of-javas-executorservice-cl
 
     public ClientConfig(
-        string prefix = null,
-        string endpoint = null, 
-        string apiKey = null, 
-        string environment = null,
-        string application = null, 
+        //string prefix = null,
+        //string endpoint = null, 
+        //string apiKey = null, 
+        //string environment = null,
+        //string application = null, 
+        ClientConfiguration configuration,
         IContextDataDeserializer contextDataDeserializer = null,
         IContextEventSerializer contextEventSerializer = null, 
         IExecutor executor = null)
     {
-        Endpoint = endpoint ?? string.Empty;
-        ApiKey = apiKey ?? string.Empty;
-        Environment = environment ?? string.Empty ;
-        Application = application ?? string.Empty;
+        Endpoint = configuration.Endpoint ?? string.Empty;
+        ApiKey = configuration.ApiKey ?? string.Empty;
+        Environment = configuration.Environment ?? string.Empty ;
+        Application = configuration.Application ?? string.Empty;
         DataDeserializer = contextDataDeserializer ?? new DefaultContextDataDeserializer(null);
         EventSerializer = contextEventSerializer ?? new DefaultContextEventSerializer(null);
         Executor = executor ?? new DefaultExecutor();
 
-        if (!string.IsNullOrWhiteSpace(prefix))
+        if (!string.IsNullOrWhiteSpace(configuration.Prefix))
         {
             if (!string.IsNullOrWhiteSpace(Endpoint))
-                Endpoint = prefix + Endpoint;
+                Endpoint = configuration.Prefix + Endpoint;
 
             if (!string.IsNullOrWhiteSpace(ApiKey))
-                ApiKey = prefix + ApiKey;
+                ApiKey = configuration.Prefix + ApiKey;
             
             if (!string.IsNullOrWhiteSpace(Environment))
-                Environment = prefix + Environment;
+                Environment = configuration.Prefix + Environment;
 
             if (!string.IsNullOrWhiteSpace(Application))
-                Application = prefix + Application;
+                Application = configuration.Prefix + Application;
         }
     }
 
