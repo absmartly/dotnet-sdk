@@ -2,6 +2,7 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
+using ABSmartlySdk.DefaultServiceImplementations;
 using ABSmartlySdk.Interfaces;
 using ABSmartlySdk.Json;
 using ABSmartlySdk.Temp;
@@ -59,7 +60,7 @@ public class Client : IDisposable, IClient
     {
         try
         {
-            var httpClient = _httpClientFactory.CreateClient();
+            var httpClient = _httpClientFactory.CreateClient(DefaultHttpClient.ABSmartyHttpClientName);
             httpClient.DefaultRequestHeaders.Add("X-API-Key", _config.ApiKey);
             httpClient.DefaultRequestHeaders.Add("X-Application", _config.Application );
             httpClient.DefaultRequestHeaders.Add("X-Environment", _config.Environment);
@@ -81,7 +82,7 @@ public class Client : IDisposable, IClient
     {
         try
         {
-            var httpClient = _httpClientFactory.CreateClient();
+            var httpClient = _httpClientFactory.CreateClient(DefaultHttpClient.ABSmartyHttpClientName);
             httpClient.DefaultRequestHeaders.Add("X-API-Key", _config.ApiKey);
             httpClient.DefaultRequestHeaders.Add("X-Application", _config.Application );
             httpClient.DefaultRequestHeaders.Add("X-Environment", _config.Environment);
