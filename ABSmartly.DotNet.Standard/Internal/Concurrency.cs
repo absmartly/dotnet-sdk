@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using ABSmartly.Utils;
+using ABSmartlySdk.Utils;
 
-namespace ABSmartly.Internal;
+namespace ABSmartlySdk.Internal;
 
 public class Concurrency
 {

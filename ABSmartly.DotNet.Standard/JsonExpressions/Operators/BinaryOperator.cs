@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ABSmartly.JsonExpressions.Operators;
+namespace ABSmartlySdk.JsonExpressions.Operators;
 
 public abstract class BinaryOperator : IOperator
 {

@@ -1,4 +1,5 @@
-﻿using ABSmartly.Utils;
+﻿using ABSmartlySdk.Internal;
+using ABSmartlySdk.Utils;
 using Moq;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;

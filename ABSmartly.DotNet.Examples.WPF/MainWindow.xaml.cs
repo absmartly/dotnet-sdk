@@ -4,8 +4,9 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Reflection;
 using System.Windows;
-using ABSmartly;
+using ABSmartlySdk;
 using Microsoft.Extensions.DependencyInjection;
+using ABSmartly = ABSmartlySdk.ABSmartly;
 
 namespace ABSmartlyDotNetExamples.WPF
 {
@@ -29,7 +30,7 @@ namespace ABSmartlyDotNetExamples.WPF
 
         private readonly ServiceProvider _serviceProvider;
 
-        private ABSmartly.ABSmartly sdk;
+        private ABSmartly sdk;
         private Dictionary<string, object> properties;
         private Context context;
 
@@ -52,13 +53,15 @@ namespace ABSmartlyDotNetExamples.WPF
             //    httpClientFactory: httpClientFactory
             //    );
 
-            sdk = ABSmartly.ABSmartly.Create(sdkConfig);
+            sdk = new ABSmartly(sdkConfig);
+            //sdk = ABSmartly.ABSmartly.Create(sdkConfig);
 
             ContextConfig contextConfig = new ContextConfig()
                 .SetUnit("session_id", "bf06d8cb5d8137290c4abb64155584fbdb64d8")
                 .SetUnit("user_id", "123456");
 
-            context = sdk.CreateContext(contextConfig).WaitUntilReady();
+            context = sdk.CreateContext(contextConfig);
+            //context = sdk.CreateContext(contextConfig).WaitUntilReady();
             int treatment = context.GetTreatment("exp_test_ab");
             Debug.WriteLine(treatment);
 

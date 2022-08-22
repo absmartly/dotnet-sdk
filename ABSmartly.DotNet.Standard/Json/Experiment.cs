@@ -1,6 +1,6 @@
-﻿using ABSmartly.Utils.Extensions;
+﻿using ABSmartlySdk.Utils.Extensions;
 
-namespace ABSmartly.Json;
+namespace ABSmartlySdk.Json;
 
 public class Experiment
 {

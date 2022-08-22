@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
-namespace ABSmartly.Temp;
+namespace ABSmartlySdk.Temp;
 
 // Source: https://blog.adamfurmanek.pl/2018/08/18/trivial-scheduledthreadpoolexecutor-in-c/
 public class ScheduledThreadPoolExecutor : IScheduledExecutorService

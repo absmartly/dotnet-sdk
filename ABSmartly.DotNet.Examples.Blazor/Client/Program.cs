@@ -1,4 +1,4 @@
-using ABSmartly.DotNet.Examples.Blazor.Client;
+using ABSmartlyDotNetExamples.Blazor.Client;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 

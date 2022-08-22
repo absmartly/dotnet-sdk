@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace ABSmartly.DotNet.Nio.Charset;
+namespace ABSmartlySdk.DotNet.Nio.Charset;
 
 public class StandardCharsets
 {

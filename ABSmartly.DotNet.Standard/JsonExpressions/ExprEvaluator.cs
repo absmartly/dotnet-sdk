@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ABSmartly.JsonExpressions;
+namespace ABSmartlySdk.JsonExpressions;
 
 public class ExprEvaluator : IEvaluator
 {

@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
-using ABSmartly.Json;
+using ABSmartlySdk.Json;
 
-namespace ABSmartly.Temp;
+namespace ABSmartlySdk.Temp;
 
 internal class ExperimentVariables
 {

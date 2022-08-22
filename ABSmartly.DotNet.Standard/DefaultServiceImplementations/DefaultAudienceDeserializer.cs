@@ -2,14 +2,14 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using ABSmartly.Interfaces;
-using ABSmartly.Utils.Converters;
-using ABSmartly.Utils.NewtonsoftJsonUtils;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Utils.Converters;
+using ABSmartlySdk.Utils.NewtonsoftJsonUtils;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
-namespace ABSmartly.DefaultServiceImplementations;
+namespace ABSmartlySdk.DefaultServiceImplementations;
 
 public class DefaultAudienceDeserializer : IAudienceDeserializer
 {

@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Text.Json;
-using ABSmartly.Interfaces;
-using ABSmartly.Json;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Json;
 using Microsoft.Extensions.Logging;
 
-namespace ABSmartly.DefaultServiceImplementations;
+namespace ABSmartlySdk.DefaultServiceImplementations;
 
 public class DefaultContextEventSerializer : IContextEventSerializer
 {

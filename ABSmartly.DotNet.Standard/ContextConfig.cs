@@ -1,8 +1,8 @@
-﻿using ABSmartly.Interfaces;
-using System.Collections.Generic;
-using ABSmartly.DefaultServiceImplementations;
+﻿using System.Collections.Generic;
+using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartlySdk.Interfaces;
 
-namespace ABSmartly;
+namespace ABSmartlySdk;
 
 public class ContextConfig
 {

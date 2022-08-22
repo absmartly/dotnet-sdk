@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace ABSmartly.JsonExpressions.Operators;
+namespace ABSmartlySdk.JsonExpressions.Operators;
 
 public class VarOperator : IOperator
 {

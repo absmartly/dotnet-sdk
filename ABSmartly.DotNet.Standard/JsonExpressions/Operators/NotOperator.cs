@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.JsonExpressions.Operators;
+﻿namespace ABSmartlySdk.JsonExpressions.Operators;
 
 public class NotOperator : UnaryOperator
 {

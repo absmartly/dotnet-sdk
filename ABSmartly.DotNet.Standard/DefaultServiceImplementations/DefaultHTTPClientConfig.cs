@@ -1,6 +1,6 @@
-﻿using ABSmartly.Temp;
+﻿using ABSmartlySdk.Temp;
 
-namespace ABSmartly.DefaultServiceImplementations;
+namespace ABSmartlySdk.DefaultServiceImplementations;
 
 internal class DefaultHttpClientConfig
 {

@@ -1,6 +1,6 @@
 ﻿using ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests.TestImplementations;
-using ABSmartly.JsonExpressions;
-using ABSmartly.JsonExpressions.Operators;
+using ABSmartlySdk.JsonExpressions;
+using ABSmartlySdk.JsonExpressions.Operators;
 using Moq;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests;

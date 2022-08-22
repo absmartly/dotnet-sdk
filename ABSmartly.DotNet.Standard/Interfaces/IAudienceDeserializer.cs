@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace ABSmartly.Interfaces;
+namespace ABSmartlySdk.Interfaces;
 
 public interface IAudienceDeserializer
 {

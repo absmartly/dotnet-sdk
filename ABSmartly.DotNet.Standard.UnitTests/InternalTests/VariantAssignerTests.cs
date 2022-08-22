@@ -1,4 +1,7 @@
-﻿namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;
+﻿using ABSmartlySdk.Internal;
+using ABSmartlySdk.Internal.Hashing;
+
+namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;
 
 [TestFixture]
 public class VariantAssignerTests

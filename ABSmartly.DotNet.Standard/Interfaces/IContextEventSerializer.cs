@@ -1,6 +1,6 @@
-﻿using ABSmartly.Json;
+﻿using ABSmartlySdk.Json;
 
-namespace ABSmartly.Interfaces;
+namespace ABSmartlySdk.Interfaces;
 
 public interface IContextEventSerializer
 {

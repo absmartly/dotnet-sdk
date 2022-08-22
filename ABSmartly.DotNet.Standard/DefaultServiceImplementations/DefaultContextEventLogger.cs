@@ -1,7 +1,7 @@
-﻿using ABSmartly.Definitions;
-using ABSmartly.Interfaces;
+﻿using ABSmartlySdk.Definitions;
+using ABSmartlySdk.Interfaces;
 
-namespace ABSmartly.DefaultServiceImplementations;
+namespace ABSmartlySdk.DefaultServiceImplementations;
 
 public class DefaultContextEventLogger : IContextEventLogger
 {

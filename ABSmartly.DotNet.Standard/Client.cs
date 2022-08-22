@@ -2,13 +2,13 @@
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
-using ABSmartly.DefaultServiceImplementations;
-using ABSmartly.Interfaces;
-using ABSmartly.Json;
-using ABSmartly.Temp;
+using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Json;
+using ABSmartlySdk.Temp;
 using Microsoft.Extensions.Logging;
 
-namespace ABSmartly;
+namespace ABSmartlySdk;
 
 public class Client : IDisposable, IClient
 {

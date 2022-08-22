@@ -2,7 +2,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
-namespace ABSmartly.JsonExpressions.Operators;
+namespace ABSmartlySdk.JsonExpressions.Operators;
 
 public class MatchOperator : BinaryOperator
 {

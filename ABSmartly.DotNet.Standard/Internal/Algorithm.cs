@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace ABSmartly.Internal;
+namespace ABSmartlySdk.Internal;
 
 public class Algorithm
 {

@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.DotNet.Standard.UnitTests.TestUtils;
+﻿namespace ABSmartly.DotNet.Standard.UnitTests._TestUtils;
 
 public static class TestData
 {

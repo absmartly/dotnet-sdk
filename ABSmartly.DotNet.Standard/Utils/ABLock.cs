@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading;
 
-namespace ABSmartly.Utils;
+namespace ABSmartlySdk.Utils;
 
 public class ABLock : IDisposable
 {

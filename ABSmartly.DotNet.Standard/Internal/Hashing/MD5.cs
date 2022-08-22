@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Text;
 
-namespace ABSmartly.Internal.Hashing;
+namespace ABSmartlySdk.Internal.Hashing;
 
 // Todo: completely refactored, simplified
 // private static readonly ThreadLocal<byte[]> threadBuffer = new(() => new byte[512]); => removed

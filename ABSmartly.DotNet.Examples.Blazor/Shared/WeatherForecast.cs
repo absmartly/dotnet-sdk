@@ -1,4 +1,4 @@
-namespace ABSmartly.DotNet.Examples.Blazor.Shared
+namespace ABSmartlyDotNetExamples.Blazor.Shared
 {
     public class WeatherForecast
     {

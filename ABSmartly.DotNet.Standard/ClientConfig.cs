@@ -1,8 +1,8 @@
-﻿using ABSmartly.DefaultServiceImplementations;
-using ABSmartly.Interfaces;
-using ABSmartly.Temp;
+﻿using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Temp;
 
-namespace ABSmartly;
+namespace ABSmartlySdk;
 
 public class ClientConfig
 {

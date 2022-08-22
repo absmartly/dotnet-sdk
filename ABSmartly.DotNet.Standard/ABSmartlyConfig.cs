@@ -1,10 +1,10 @@
 ﻿using System.Net.Http;
-using ABSmartly.DefaultServiceImplementations;
-using ABSmartly.Interfaces;
-using ABSmartly.Temp;
+using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Temp;
 using Microsoft.Extensions.Logging;
 
-namespace ABSmartly;
+namespace ABSmartlySdk;
 
 public class ABSmartlyConfig
 {

@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using ABSmartlySdk.Internal.Hashing;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests.HashingTests;
 

@@ -1,4 +1,6 @@
-﻿namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;
+﻿using ABSmartlySdk.Internal;
+
+namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;
 
 [TestFixture]
 public class BuffersTests

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace ABSmartly.DotNet.Time.Internal;
+namespace ABSmartlySdk.DotNet.Time.Internal;
 
 public class SystemClockUTC : Clock
 {

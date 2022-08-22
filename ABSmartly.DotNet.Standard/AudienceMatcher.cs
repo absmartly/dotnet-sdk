@@ -1,9 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Text;
-using ABSmartly.Interfaces;
-using ABSmartly.JsonExpressions;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.JsonExpressions;
 
-namespace ABSmartly;
+namespace ABSmartlySdk;
 
 public class AudienceMatcher
 {

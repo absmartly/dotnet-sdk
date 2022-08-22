@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace ABSmartly.Temp;
+namespace ABSmartlySdk.Temp;
 
 internal class Assignment
 {

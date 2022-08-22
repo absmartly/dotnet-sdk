@@ -1,6 +1,6 @@
-﻿using ABSmartly.DotNet.Time.Internal;
+﻿using ABSmartlySdk.DotNet.Time.Internal;
 
-namespace ABSmartly.DotNet.Time;
+namespace ABSmartlySdk.DotNet.Time;
 
 public abstract class Clock
 {

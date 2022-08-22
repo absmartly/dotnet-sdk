@@ -1,8 +1,9 @@
 ﻿using System.Text;
 using System.Text.Json;
-using ABSmartly.DefaultServiceImplementations;
-using ABSmartly.Json;
-using Attribute = ABSmartly.Json.Attribute;
+using ABSmartly.DotNet.Standard.UnitTests._TestUtils;
+using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartlySdk.Json;
+using Attribute = ABSmartlySdk.Json.Attribute;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.DefaultServiceImplementationsTests;
 

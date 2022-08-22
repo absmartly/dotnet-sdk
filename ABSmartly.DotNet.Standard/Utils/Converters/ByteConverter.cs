@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 
-namespace ABSmartly.Utils.Converters;
+namespace ABSmartlySdk.Utils.Converters;
 
 public class ByteConverter
 {

@@ -2,17 +2,17 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using ABSmartly.Definitions;
-using ABSmartly.DotNet.Time;
-using ABSmartly.Interfaces;
-using ABSmartly.Internal;
-using ABSmartly.Internal.Hashing;
-using ABSmartly.Json;
-using ABSmartly.Temp;
-using ABSmartly.Utils;
-using Attribute = ABSmartly.Json.Attribute;
+using ABSmartlySdk.Definitions;
+using ABSmartlySdk.DotNet.Time;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Internal;
+using ABSmartlySdk.Internal.Hashing;
+using ABSmartlySdk.Json;
+using ABSmartlySdk.Temp;
+using ABSmartlySdk.Utils;
+using Attribute = ABSmartlySdk.Json.Attribute;
 
-namespace ABSmartly;
+namespace ABSmartlySdk;
 
 public class Context : IDisposable
 {

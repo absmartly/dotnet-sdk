@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.DotNet.Time.Internal;
+﻿namespace ABSmartlySdk.DotNet.Time.Internal;
 
 public class FixedClock : Clock
 {

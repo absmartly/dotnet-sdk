@@ -1,6 +1,6 @@
 ﻿using System.Linq;
 
-namespace ABSmartly.Internal;
+namespace ABSmartlySdk.Internal;
 
 public abstract class Buffers
 {

@@ -1,4 +1,4 @@
-﻿using ABSmartly.JsonExpressions;
+﻿using ABSmartlySdk.JsonExpressions;
 using Moq;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests;

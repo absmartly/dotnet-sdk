@@ -1,6 +1,6 @@
-﻿using ABSmartly.Definitions;
+﻿using ABSmartlySdk.Definitions;
 
-namespace ABSmartly.Interfaces;
+namespace ABSmartlySdk.Interfaces;
 
 public interface IContextEventLogger
 {

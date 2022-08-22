@@ -2,7 +2,7 @@
 using System.Security.Cryptography;
 using Murmur;
 
-namespace ABSmartly.Internal.Hashing;
+namespace ABSmartlySdk.Internal.Hashing;
 
 /// <summary>
 /// Wrapper around the MurMur package

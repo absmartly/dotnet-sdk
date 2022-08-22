@@ -1,12 +1,12 @@
 ﻿using System;
-using ABSmartly.Interfaces;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ABSmartlySdk.Interfaces;
 
-namespace ABSmartly.DefaultServiceImplementations;
+namespace ABSmartlySdk.DefaultServiceImplementations;
 
 internal class DefaultHttpClient : IHttpClient
 {

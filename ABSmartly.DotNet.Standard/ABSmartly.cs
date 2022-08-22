@@ -1,12 +1,10 @@
 ﻿using System;
-using System.Threading.Tasks;
-using ABSmartly.DefaultServiceImplementations;
-using ABSmartly.DotNet.Time;
-using ABSmartly.Interfaces;
-using ABSmartly.Json;
-using ABSmartly.Temp;
+using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartlySdk.DotNet.Time;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Temp;
 
-namespace ABSmartly;
+namespace ABSmartlySdk;
 
 public class ABSmartly : IDisposable
 {
@@ -72,30 +70,30 @@ public class ABSmartly : IDisposable
         //    new AudienceMatcher(_audienceDeserializer));
     }
 
-    public Context CreateContext(ContextConfig config, ContextData data) 
-    {
-        var context = new Context(
-            clock: Clock.SystemUTC(),
-            config: config,
-            scheduledExecutorService: _scheduler,
-            dataTask: Task.FromResult(data),
-            dataProvider: _contextDataProvider,
-            eventHandler: _contextEventHandler,
-            eventLogger: _contextEventLogger,
-            variableParser: _variableParser,
-            audienceMatcher: new AudienceMatcher(_audienceDeserializer)
-        );
+    //public Context CreateContext(ContextConfig config, ContextData data) 
+    //{
+    //    var context = new Context(
+    //        clock: Clock.SystemUTC(),
+    //        config: config,
+    //        scheduledExecutorService: _scheduler,
+    //        dataTask: Task.FromResult(data),
+    //        dataProvider: _contextDataProvider,
+    //        eventHandler: _contextEventHandler,
+    //        eventLogger: _contextEventLogger,
+    //        variableParser: _variableParser,
+    //        audienceMatcher: new AudienceMatcher(_audienceDeserializer)
+    //    );
 
-        return context;
-        //return Context.Create(Clock.SystemUTC(), config, _scheduler, Task.FromResult(data),
-        //    _contextDataProvider, _contextEventHandler, _contextEventLogger, _variableParser,
-        //    new AudienceMatcher(_audienceDeserializer));
-    }
+    //    return context;
+    //    //return Context.Create(Clock.SystemUTC(), config, _scheduler, Task.FromResult(data),
+    //    //    _contextDataProvider, _contextEventHandler, _contextEventLogger, _variableParser,
+    //    //    new AudienceMatcher(_audienceDeserializer));
+    //}
 
-    public Task<ContextData> GetContextDataAsync()
-    {
-        return _contextDataProvider.GetContextDataAsync();
-    }
+    //public Task<ContextData> GetContextDataAsync()
+    //{
+    //    return _contextDataProvider.GetContextDataAsync();
+    //}
 
     #region IDisposable
 

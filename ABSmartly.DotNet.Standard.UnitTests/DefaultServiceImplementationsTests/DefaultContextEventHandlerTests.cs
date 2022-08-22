@@ -1,5 +1,5 @@
-﻿using ABSmartly.DefaultServiceImplementations;
-using ABSmartly.Interfaces;
+﻿using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartlySdk.Interfaces;
 using Moq;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.DefaultServiceImplementationsTests;

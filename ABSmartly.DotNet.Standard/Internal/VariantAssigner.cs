@@ -1,7 +1,7 @@
 ﻿using System.Threading;
-using ABSmartly.Internal.Hashing;
+using ABSmartlySdk.Internal.Hashing;
 
-namespace ABSmartly.Internal;
+namespace ABSmartlySdk.Internal;
 
 public class VariantAssigner
 {

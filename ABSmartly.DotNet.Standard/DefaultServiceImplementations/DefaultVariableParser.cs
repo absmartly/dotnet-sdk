@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using ABSmartly.Interfaces;
-using ABSmartly.Utils.NewtonsoftJsonUtils;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Utils.NewtonsoftJsonUtils;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
-namespace ABSmartly.DefaultServiceImplementations;
+namespace ABSmartlySdk.DefaultServiceImplementations;
 
 public class DefaultVariableParser : IVariableParser
 {

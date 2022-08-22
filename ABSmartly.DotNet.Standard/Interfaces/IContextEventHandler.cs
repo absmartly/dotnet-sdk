@@ -1,7 +1,7 @@
 ﻿using System.Threading.Tasks;
-using ABSmartly.Json;
+using ABSmartlySdk.Json;
 
-namespace ABSmartly.Interfaces;
+namespace ABSmartlySdk.Interfaces;
 
 public interface IContextEventHandler
 {

@@ -1,4 +1,4 @@
-using ABSmartly.Utils.Extensions;
+using ABSmartlySdk.Utils.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 

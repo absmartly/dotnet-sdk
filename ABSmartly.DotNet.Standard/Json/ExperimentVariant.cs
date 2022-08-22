@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.Json;
+﻿namespace ABSmartlySdk.Json;
 
 //@JsonInclude(JsonInclude.Include.NON_NULL)
 //@JsonIgnoreProperties(ignoreUnknown = true)

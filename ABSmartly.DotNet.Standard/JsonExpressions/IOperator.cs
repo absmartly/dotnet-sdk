@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.JsonExpressions;
+﻿namespace ABSmartlySdk.JsonExpressions;
 
 public interface IOperator
 {

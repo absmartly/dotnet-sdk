@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.Utils.Extensions;
+﻿namespace ABSmartlySdk.Utils.Extensions;
 
 // Todo: check that this extension is not exposed outside of the project! A lazy, but not a good practice to add extension methods for default types
 //internal static class IntegerExtensions

@@ -1,5 +1,5 @@
-﻿using ABSmartly.JsonExpressions;
-using ABSmartly.JsonExpressions.Operators;
+﻿using ABSmartlySdk.JsonExpressions;
+using ABSmartlySdk.JsonExpressions.Operators;
 using Moq;
 // ReSharper disable ExpressionIsAlwaysNull
 

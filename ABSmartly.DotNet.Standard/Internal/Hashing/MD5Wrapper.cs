@@ -1,6 +1,6 @@
 ﻿using DotNetMD5 = System.Security.Cryptography.MD5;
 
-namespace ABSmartly.Internal.Hashing;
+namespace ABSmartlySdk.Internal.Hashing;
 
 internal static class MD5Wrapper
 {

@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.Json;
+﻿namespace ABSmartlySdk.Json;
 
 public class Attribute
 {

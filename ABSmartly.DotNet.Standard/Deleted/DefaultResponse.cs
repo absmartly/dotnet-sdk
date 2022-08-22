@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.Deleted;
+﻿namespace ABSmartlySdk.Deleted;
 
 //public class DefaultResponse : IResponse
 //{

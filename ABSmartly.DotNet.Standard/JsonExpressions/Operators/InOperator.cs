@@ -1,7 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 
-namespace ABSmartly.JsonExpressions.Operators;
+namespace ABSmartlySdk.JsonExpressions.Operators;
 
 public class InOperator : BinaryOperator
 {

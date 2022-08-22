@@ -1,8 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace ABSmartly.Interfaces;
+namespace ABSmartlySdk.Interfaces;
 
 public interface IHttpClient
 {

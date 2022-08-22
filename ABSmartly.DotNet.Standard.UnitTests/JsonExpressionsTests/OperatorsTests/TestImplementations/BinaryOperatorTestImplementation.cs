@@ -1,5 +1,5 @@
-﻿using ABSmartly.JsonExpressions;
-using ABSmartly.JsonExpressions.Operators;
+﻿using ABSmartlySdk.JsonExpressions;
+using ABSmartlySdk.JsonExpressions.Operators;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests.TestImplementations;
 

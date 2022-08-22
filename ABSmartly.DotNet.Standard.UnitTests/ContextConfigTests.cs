@@ -1,4 +1,6 @@
-﻿namespace ABSmartly.DotNet.Standard.UnitTests;
+﻿using ABSmartlySdk;
+
+namespace ABSmartly.DotNet.Standard.UnitTests;
 
 [TestFixture]
 public class ContextConfigTests : TestCases

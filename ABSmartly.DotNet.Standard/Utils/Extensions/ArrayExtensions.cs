@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.Utils.Extensions;
+﻿namespace ABSmartlySdk.Utils.Extensions;
 
 public static class ArrayExtensions
 {

@@ -1,13 +1,13 @@
-﻿using ABSmartly.Interfaces;
-using ABSmartly.Json;
-using Microsoft.Extensions.Logging;
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
-using ABSmartly.Utils.Converters;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Json;
+using ABSmartlySdk.Utils.Converters;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
-namespace ABSmartly.DefaultServiceImplementations;
+namespace ABSmartlySdk.DefaultServiceImplementations;
 
 public class DefaultContextDataDeserializer : IContextDataDeserializer
 {

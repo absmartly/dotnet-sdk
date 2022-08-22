@@ -1,9 +1,11 @@
 ﻿using System.Text.Json;
-using ABSmartly.DefaultServiceImplementations;
-using ABSmartly.DotNet.Time;
-using ABSmartly.Interfaces;
-using ABSmartly.Json;
-using ABSmartly.Temp;
+using ABSmartly.DotNet.Standard.UnitTests._TestUtils;
+using ABSmartlySdk;
+using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartlySdk.DotNet.Time;
+using ABSmartlySdk.Interfaces;
+using ABSmartlySdk.Json;
+using ABSmartlySdk.Temp;
 using Microsoft.Extensions.Logging;
 using Moq;
 

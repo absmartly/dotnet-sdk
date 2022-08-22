@@ -1,7 +1,7 @@
-using ABSmartly.DotNet.Examples.Blazor.Shared;
+using ABSmartlyDotNetExamples.Blazor.Shared;
 using Microsoft.AspNetCore.Mvc;
 
-namespace ABSmartly.DotNet.Examples.Blazor.Server.Controllers
+namespace ABSmartlyDotNetExamples.Blazor.Server.Controllers
 {
     [ApiController]
     [Route("[controller]")]

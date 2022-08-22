@@ -1,8 +1,8 @@
-﻿using Newtonsoft.Json.Linq;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json.Linq;
 
-namespace ABSmartly.Utils.NewtonsoftJsonUtils;
+namespace ABSmartlySdk.Utils.NewtonsoftJsonUtils;
 
 public class JsonUtils
 {

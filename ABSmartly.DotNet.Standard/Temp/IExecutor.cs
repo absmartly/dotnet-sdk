@@ -1,4 +1,4 @@
-﻿namespace ABSmartly.Temp;
+﻿namespace ABSmartlySdk.Temp;
 
 public interface IExecutor
 {

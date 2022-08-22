@@ -1,8 +1,8 @@
 ﻿using System;
-using ABSmartly.DefaultServiceImplementations;
+using ABSmartlySdk.DefaultServiceImplementations;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ABSmartly.Utils.Extensions;
+namespace ABSmartlySdk.Utils.Extensions;
 
 public static class ServiceCollectionExtensions
 {

@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using ABSmartly.JsonExpressions.Operators;
+using ABSmartlySdk.JsonExpressions.Operators;
 
-namespace ABSmartly.JsonExpressions;
+namespace ABSmartlySdk.JsonExpressions;
 
 public class JsonExpr
 {
