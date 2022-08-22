@@ -27,29 +27,9 @@ public class ABSmartly : IDisposable
 
     #endregion
 
-
-    //public static ABSmartly Create(ABSmartlyConfig config)
-    //{
-    //    return new ABSmartly(config);
-    //}
-
-    //public ABSmartly(IOptions<ABSmartlyConfig> c)
-    //{
-    //    Init(c.Value);
-    //}
-
-    //public ABSmartly()
-    //{
-        
-    //}
-
-    //public ABSmartly(ABSmartlyConfig config)
-    //{
-    //    //Init(config);
-    //}
-
-
-
+    /// <summary>
+    /// Constructor for .Net Core 3+ / .Net 5+ DI Service
+    /// </summary> 
     public ABSmartly(
         IHttpClientFactory httpClientFactory, 
         ILoggerFactory loggerFactory,
@@ -70,10 +50,7 @@ public class ABSmartly : IDisposable
             scheduler: config?.Scheduler
             );
     }
-
-
-
-
+    
     private void Init(
         ClientConfiguration clientConfiguration,
         IHttpClientFactory httpClientFactory,
@@ -98,31 +75,6 @@ public class ABSmartly : IDisposable
         _variableParser = variableParser ?? new DefaultVariableParser(loggerFactory);
         _audienceDeserializer = audienceDeserializer ?? new DefaultAudienceDeserializer(loggerFactory);
         _scheduler = scheduler ?? new ScheduledThreadPoolExecutor(1);
-
-
-        //_client = config.Client;
-        //_contextDataProvider = config.ContextDataProvider;
-        //_contextEventHandler = config.ContextEventHandler;
-        //_contextEventLogger = config.ContextEventLogger;
-        //_variableParser = config.VariableParser;
-        //_audienceDeserializer = config.AudienceDeserializer;
-        //_scheduler = config.Scheduler;
-
-        //if (_contextDataProvider == null || _contextEventHandler == null)
-        //{
-        //    _client = config.Client;
-        //    if (_client is null) 
-        //    {
-        //        throw new ArgumentNullException(nameof(_client), "Missing Client instance");
-        //    }
-
-        //    _contextDataProvider ??= new DefaultContextDataProvider(_client);
-        //    _contextEventHandler ??= new DefaultContextEventHandler(_client);
-        //}
-
-        //_variableParser ??= new DefaultVariableParser(config.LoggerFactory);
-        //_audienceDeserializer ??= new DefaultAudienceDeserializer(config.LoggerFactory);
-        //_scheduler ??= new ScheduledThreadPoolExecutor(1);
     }
 
     //private void Init(ABSmartlyConfig config, ClientConfiguration clientConfiguration)

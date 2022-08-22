@@ -2,16 +2,15 @@ using ABSmartlySdk.Temp;
 using ABSmartlySdk.Utils.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
-//var configuration = builder.Configuration;
+var configuration = builder.Configuration;
 
 // Add services to the container.
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
 
-var section = builder.Configuration.GetSection("ABSmartlyConfig");
-builder.Services.Configure<ClientConfiguration>(section);
-builder.Services.AddABSmartly(lifeTime: ServiceLifetime.Transient, options: config =>
+builder.Services.Configure<ClientConfiguration>(configuration.GetSection("ABSmartlyConfig"));
+builder.Services.AddABSmartly(options: config =>
 {
 
 });
