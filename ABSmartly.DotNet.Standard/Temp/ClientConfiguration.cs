@@ -5,7 +5,7 @@ public class ClientConfiguration
 {
     public ClientConfiguration()
     {
-        
+
     }
 
     public ClientConfiguration(string prefix, string environment, string application, string endpoint, string apiKey)

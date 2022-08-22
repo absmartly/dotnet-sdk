@@ -9,11 +9,6 @@ public class ClientConfig
     // Todo: https://www.codeproject.com/Questions/1273200/Is-there-an-equivalent-of-javas-executorservice-cl
 
     public ClientConfig(
-        //string prefix = null,
-        //string endpoint = null, 
-        //string apiKey = null, 
-        //string environment = null,
-        //string application = null, 
         ClientConfiguration configuration,
         IContextDataDeserializer contextDataDeserializer = null,
         IContextEventSerializer contextEventSerializer = null, 
@@ -42,33 +37,6 @@ public class ClientConfig
                 Application = configuration.Prefix + Application;
         }
     }
-
-    //public static ClientConfig Create(
-    //    string endpoint = null, 
-    //    string apiKey = null, 
-    //    string environment = null,
-    //    string application = null, 
-    //    IContextDataDeserializer dataDeserializer = null,
-    //    IContextEventSerializer serializer = null, 
-    //    IExecutor executor = null)
-    //{
-    //    return new ClientConfig(endpoint, apiKey, environment, application, dataDeserializer, serializer, executor);
-    //}
-
-    //public static ClientConfig Create(ClientConfiguration configuration)
-    //{
-    //    return Create(configuration, string.Empty);
-    //}
-
-    //public static ClientConfig Create(ClientConfiguration configuration, string prefix)
-    //{
-    //    return new ClientConfig(
-    //        endpoint: prefix + configuration.Endpoint,
-    //        environment: prefix + configuration.Environment,
-    //        application: prefix + configuration.Application,
-    //        apiKey: prefix + configuration.ApiKey
-    //    );
-    //}
 
     public string Endpoint { get; }
 

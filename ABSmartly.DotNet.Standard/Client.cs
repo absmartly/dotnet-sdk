@@ -24,7 +24,7 @@ public class Client : IDisposable, IClient
     private IContextEventSerializer _serializer;
 
 
-    public Client(ClientConfig config, IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory)
+    public Client(IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory, ClientConfig config)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config), "Config is null..");
 

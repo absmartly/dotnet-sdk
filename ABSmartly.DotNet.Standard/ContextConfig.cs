@@ -14,11 +14,11 @@ public class ContextConfig
     private long _publishDelay;
     private long _refreshInterval;
 
-    public IContextEventLogger EventLogger { get; }
+    //public IContextEventLogger EventLogger { get; }
 
     #region Lifecycle
 
-    public ContextConfig(IContextEventLogger contextEventLogger = null)
+    public ContextConfig(/*IContextEventLogger contextEventLogger = null*/)
     {
         _units = new Dictionary<string, string>();
         _attributes = new Dictionary<string, object>();
@@ -28,7 +28,7 @@ public class ContextConfig
         _publishDelay = 100;
         _refreshInterval = 0;
 
-        EventLogger = contextEventLogger ?? new DefaultContextEventLogger();
+        //EventLogger = contextEventLogger ?? new DefaultContextEventLogger();
     }
 
     //public static ContextConfig Create(IContextEventLogger contextEventLogger = null)

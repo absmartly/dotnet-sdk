@@ -67,13 +67,13 @@ public class ABSmartly : IDisposable
         _loggerFactory = loggerFactory ?? new LoggerFactory();
         _httpClientFactory = httpClientFactory;
 
-        _client = client ?? new Client(new ClientConfig(clientConfiguration), httpClientFactory, loggerFactory);
+        _client = client ?? new Client(_httpClientFactory, _loggerFactory, new ClientConfig(clientConfiguration));
 
         _contextDataProvider = contextDataProvider ?? new DefaultContextDataProvider(client);
         _contextEventHandler = contextEventHandler ?? new DefaultContextEventHandler(client);
         _contextEventLogger = contextEventLogger ?? new DefaultContextEventLogger();
-        _variableParser = variableParser ?? new DefaultVariableParser(loggerFactory);
-        _audienceDeserializer = audienceDeserializer ?? new DefaultAudienceDeserializer(loggerFactory);
+        _variableParser = variableParser ?? new DefaultVariableParser(_loggerFactory);
+        _audienceDeserializer = audienceDeserializer ?? new DefaultAudienceDeserializer(_loggerFactory);
         _scheduler = scheduler ?? new ScheduledThreadPoolExecutor(1);
     }
 
@@ -109,11 +109,11 @@ public class ABSmartly : IDisposable
 
     #region Context
 
-    public Context CreateContext(ContextConfig config)
+    public Context CreateContext(ContextConfig config = null)
     {
         var context = new Context(
             clock: Clock.SystemUTC(),
-            config: config,
+            config: config ?? new ContextConfig(),
             scheduledExecutorService: _scheduler,
             dataTask: _contextDataProvider.GetContextDataAsync(),
             dataProvider: _contextDataProvider,

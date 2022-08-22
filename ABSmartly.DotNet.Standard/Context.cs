@@ -108,7 +108,7 @@ public class Context : IDisposable
 		_publishDelay = config.GetPublishDelay();
 		_refreshInterval = config.GetRefreshInterval();
 		_eventHandler = eventHandler;
-		_eventLogger = config.EventLogger ?? eventLogger;
+		_eventLogger = eventLogger;
 		_dataProvider = dataProvider;
 		_variableParser = variableParser;
 		_audienceMatcher = audienceMatcher;
