@@ -1,0 +1,143 @@
+﻿@page "/booking"
+@inject IHttpClientFactory ClientFactory
+
+<PageTitle>Book apartments</PageTitle>
+
+@using ABSmartlyExamples.SkiResortApp.Data
+@using System.Text.Json
+@using System.Text.Json.Serialization
+
+<h1>Book your apartments - <button class="btn btn-outline-secondary" @onclick="GetData"><span class="oi oi-reload" aria-hidden="true"></span></button></h1>
+
+<p>Check the weather forecast for upcoming days and book you apartments instantly!</p>
+
+@if (_forecasts == null)
+{
+    <p>
+        <em>Loading...</em>
+    </p>
+}
+else if (_gotForecastError)
+{
+    <p>
+        <b>Error occured</b>
+    </p>
+}
+else
+{
+    <p>
+        <b>User ID: @_userId</b>
+    </p>
+
+    switch (_bookStatus)
+    {
+        case BookStatus.Booked:
+            <div class="alert alert-success">
+                You booked apartments!
+                @if (_forecasts?.FirstOrDefault()?.TemperatureC > 0)
+                {
+                    <b>It will be HOT! :)</b>
+                }
+            </div>
+            break;
+        case BookStatus.Error:
+            <div class="alert alert-success">
+                We were not able to book your apartments. Please try again!
+            </div>
+            break;
+    }
+    
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Date</th>
+            <th>Temp. (C)</th>
+            <th>Temp. (F)</th>
+            <th>Summary</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var forecast in _forecasts)
+        {
+            <tr>
+                <td>@forecast.Date.ToShortDateString()</td>
+                <td>@forecast.TemperatureC</td>
+                <td>@forecast.TemperatureF</td>
+                <td>@forecast.Summary</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    
+    <div>
+        <button class="btn btn-primary" @onclick="Book">Book It!</button>
+    </div>
+}
+
+@code {
+    private bool _gotForecastError;
+    private WeatherForecast[]? _forecasts;
+    private string? _userId;
+    private BookStatus? _bookStatus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetData();
+    }
+
+    private async Task GetData()
+    {
+        _gotForecastError = false;
+        _bookStatus = null;
+        _forecasts = null;
+        _userId = null;
+        
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            "https://localhost:7255/Test");
+        request.Headers.Add("Accept", "application/json");
+        request.Headers.Add("User-Agent", "ABSmartlyExamples-BlazorApp");
+
+        var client = ClientFactory.CreateClient();
+
+        var response = await client.SendAsync(request);
+
+        if (response.IsSuccessStatusCode)
+        {
+            await using var responseStream = await response.Content.ReadAsStreamAsync();
+            _forecasts = await JsonSerializer.DeserializeAsync<WeatherForecast[]>(responseStream, new JsonSerializerOptions
+            {
+                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                PropertyNameCaseInsensitive = true
+            });
+
+            _userId = _forecasts?.FirstOrDefault()?.UserId;
+        }
+        else
+        {
+            _gotForecastError = true;
+        }
+    }
+    
+    private async Task Book()
+    {
+        _bookStatus = null;
+        
+        var request = new HttpRequestMessage(HttpMethod.Post,
+            $"https://localhost:7255/Test/Book/{_userId}");
+        request.Headers.Add("User-Agent", "ABSmartlyExamples-BlazorApp");
+
+        var client = ClientFactory.CreateClient();
+
+        var response = await client.SendAsync(request);
+
+        _bookStatus = response.IsSuccessStatusCode ? BookStatus.Booked : BookStatus.Error;
+    }
+
+    public enum BookStatus
+    {
+        Booked,
+        Error
+    }
+}

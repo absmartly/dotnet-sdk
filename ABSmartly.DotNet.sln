@@ -11,6 +11,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{4B
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ABSmartlyExamples.SkiResortApp", "examples\Blazor\ABSmartlyExamples.SkiResortApp\ABSmartlyExamples.SkiResortApp.csproj", "{54B66373-B29C-44BD-BD5D-FBBE3D09C4BF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ABSmartlyExamples.NETFramework461", "examples\NETFramework\ABSmartlyExamples.NETFramework461\ABSmartlyExamples.NETFramework461.csproj", "{CD5E0CC0-AD26-4CE2-A199-688B79F80D8A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -29,12 +31,17 @@ Global
 		{54B66373-B29C-44BD-BD5D-FBBE3D09C4BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{54B66373-B29C-44BD-BD5D-FBBE3D09C4BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{54B66373-B29C-44BD-BD5D-FBBE3D09C4BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CD5E0CC0-AD26-4CE2-A199-688B79F80D8A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CD5E0CC0-AD26-4CE2-A199-688B79F80D8A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CD5E0CC0-AD26-4CE2-A199-688B79F80D8A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CD5E0CC0-AD26-4CE2-A199-688B79F80D8A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{54B66373-B29C-44BD-BD5D-FBBE3D09C4BF} = {4B12CBE9-2387-4B0D-8676-A42FA4D07B3B}
+		{CD5E0CC0-AD26-4CE2-A199-688B79F80D8A} = {4B12CBE9-2387-4B0D-8676-A42FA4D07B3B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {FF916795-B173-4E25-95A9-A2693DB8F1FC}
