@@ -1,19 +1,18 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace ABSmartly.JsonExpressions.Operators;
 
 public class MatchOperator : BinaryOperator
 {
-    public override object Binary(IEvaluator evaluator, object lhs, object rhs)
+    protected override object Binary(IEvaluator evaluator, object lhs, object rhs)
     {
         var text = evaluator.StringConvert(lhs);
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrEmpty(text))
             return null;
 
         var pattern = evaluator.StringConvert(rhs);
-        if (pattern is null)
+        if (string.IsNullOrEmpty(pattern))
             return null;
 
         try
@@ -21,9 +20,8 @@ public class MatchOperator : BinaryOperator
             var match = Regex.Match(text, pattern);
             return match.Success;
         }
-        catch (Exception e)
+        catch (Exception)
         {
-            Debug.WriteLine(e);
             return null;
         }
     }

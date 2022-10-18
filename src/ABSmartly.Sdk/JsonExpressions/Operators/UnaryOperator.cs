@@ -8,5 +8,5 @@ public abstract class UnaryOperator : IOperator
         return Unary(evaluator, arg);
     }
 
-    public abstract object Unary(IEvaluator evaluator, object arg);
+    protected abstract object Unary(IEvaluator evaluator, object arg);
 }

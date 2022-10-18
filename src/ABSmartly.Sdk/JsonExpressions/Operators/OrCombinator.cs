@@ -4,12 +4,12 @@ namespace ABSmartly.JsonExpressions.Operators;
 
 public class OrCombinator : BooleanCombinator
 {
-    public override object Combine(IEvaluator evaluator, IList<object> exprs)
+    internal override object Combine(IEvaluator evaluator, IList<object> expressions)
     {
-        foreach (var expr in exprs)
-            if (evaluator.BooleanConvert(evaluator.Evaluate(expr)))
+        foreach (var expr in expressions)
+            if (evaluator.BooleanConvert(evaluator.Evaluate(expr)) is true)
                 return true;
 
-        return exprs.Count == 0;
+        return expressions.Count == 0;
     }
 }

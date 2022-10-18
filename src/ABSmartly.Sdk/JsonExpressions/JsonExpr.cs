@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using ABSmartly.JsonExpressions.Operators;
 
 namespace ABSmartly.JsonExpressions;
@@ -23,24 +22,17 @@ public static class JsonExpr
         { "lte", new LessThanOrEqualOperator() }
     };
 
-    public static bool EvaluateBooleanExpr(object expression, Dictionary<string, object> variables)
+    public static bool? EvaluateBooleanExpr(object expression, Dictionary<string, object> variables)
     {
-        try
-        {
-            var evaluator = new ExprEvaluator(variables, Operators);
-            var evaluateResult = evaluator.Evaluate(expression);
-            var booleanConvertResult = evaluator.BooleanConvert(evaluateResult);
-            return booleanConvertResult;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
+        var evaluator = new ExprEvaluator(Operators, variables);
+        var evaluateResult = evaluator.Evaluate(expression);
+        
+        return evaluator.BooleanConvert(evaluateResult);
     }
 
     public static object EvaluateExpression(object expression, Dictionary<string, object> variables)
     {
-        var evaluator = new ExprEvaluator(variables, Operators);
+        var evaluator = new ExprEvaluator(Operators, variables);
         return evaluator.Evaluate(expression);
     }
 }

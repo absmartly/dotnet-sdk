@@ -2,8 +2,5 @@
 
 public class NotOperator : UnaryOperator
 {
-    public override object Unary(IEvaluator evaluator, object args)
-    {
-        return !evaluator.BooleanConvert(args);
-    }
+    protected override object Unary(IEvaluator evaluator, object args) => !evaluator.BooleanConvert(args);
 }

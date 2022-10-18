@@ -30,5 +30,5 @@ public abstract class BinaryOperator : IOperator
         return Binary(evaluator, lhs, rhs);
     }
 
-    public abstract object Binary(IEvaluator evaluator, object lhs, object rhs);
+    protected abstract object Binary(IEvaluator evaluator, object lhs, object rhs);
 }

@@ -4,9 +4,9 @@ public interface IEvaluator
 {
     object Evaluate(object expression);
 
-    bool BooleanConvert(object p);
+    bool? BooleanConvert(object p);
 
-    int? IntConvert(object p);
+    double? NumberConvert(object p);
 
     string StringConvert(object p);
 
