@@ -8,12 +8,10 @@ public class MatchOperator : BinaryOperator
     protected override object Binary(IEvaluator evaluator, object lhs, object rhs)
     {
         var text = evaluator.StringConvert(lhs);
-        if (string.IsNullOrEmpty(text))
-            return null;
+        if (text == null) return null;
 
         var pattern = evaluator.StringConvert(rhs);
-        if (string.IsNullOrEmpty(pattern))
-            return null;
+        if (pattern == null) return null;
 
         try
         {

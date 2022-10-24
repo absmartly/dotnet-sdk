@@ -1,8 +1,8 @@
 ﻿using System.Text;
 using ABSmartly.DotNet.Standard.UnitTests._TestUtils;
-using ABSmartlySdk.DefaultServiceImplementations;
+using ABSmartly.Services;
 
-namespace ABSmartly.DotNet.Standard.UnitTests.DefaultServiceImplementationsTests;
+namespace ABSmartly.Sdk.Tests.DefaultServiceImplementationsTests;
 
 [TestFixture]
 public class DefaultAudienceDeserializerTests
@@ -12,10 +12,9 @@ public class DefaultAudienceDeserializerTests
     {
         // Arrange
         var deserializer = new DefaultAudienceDeserializer(null);
-        var audienceBytes = Encoding.UTF8.GetBytes(TestData.Json.Audience);
 
         // Act
-        var resultDictionary = deserializer.Deserialize(audienceBytes, 0, audienceBytes.Length);
+        var resultDictionary = deserializer.Deserialize(TestData.Json.Audience);
         
         // Assert
         var filterList = resultDictionary["filter"] as List<object>;

@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace ABSmartly.JsonExpressions.EqualityComparison;
 
-public class ListComparer: EqualityComparer<List<object>>
+public class ListComparer: IEqualityComparer<List<object>>, IEqualityComparer
 {
     private readonly Func<object, IEqualityComparer> _valueComparerSelector;
 
@@ -14,7 +14,7 @@ public class ListComparer: EqualityComparer<List<object>>
         _valueComparerSelector = valueComparerSelector;
     }
     
-    public override bool Equals(List<object> x, List<object> y)
+    public bool Equals(List<object> x, List<object> y)
     {
         if (ReferenceEquals(x, y)) return true;
         if (ReferenceEquals(x, null)) return false;
@@ -33,7 +33,23 @@ public class ListComparer: EqualityComparer<List<object>>
         return true;
     }
 
-    public override int GetHashCode(List<object> obj)
+    public bool Equals(object x, object y)
+    {
+        if (ReferenceEquals(x, y)) return true;
+        if (ReferenceEquals(x, null)) return false;
+        if (ReferenceEquals(y, null)) return false;
+
+        if (x.GetType() != y.GetType()) return false;
+        
+        return Equals((List<object>)x, (List<object>)y);
+    }
+    
+    public int GetHashCode(List<object> obj)
+    {
+        throw new NotImplementedException();
+    }
+
+    public int GetHashCode(object obj)
     {
         throw new NotImplementedException();
     }

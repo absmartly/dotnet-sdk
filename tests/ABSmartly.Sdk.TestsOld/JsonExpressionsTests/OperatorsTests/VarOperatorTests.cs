@@ -1,11 +1,12 @@
-﻿using Moq;
+﻿using ABSmartly.JsonExpressions;
+using ABSmartly.JsonExpressions.Operators;
+using Moq;
 
 namespace ABSmartly.DotNet.Standard.UnitTests.JsonExpressionsTests.OperatorsTests;
 
 [TestFixture]
 public class VarOperatorTests : TestCases
 {
-#pragma warning disable CS8618
     private Mock<IEvaluator> evaluator;
     private VarOperator varOperator;
 #pragma warning restore CS8618
@@ -53,17 +54,14 @@ public class VarOperatorTests : TestCases
         var result = varOperator.Evaluate(evaluator.Object, parameter);
 
         var dict = (Dictionary<string, string>)parameter;
-        var expectedResult = Evaluator_ExtractVariable(dict[VarOperator.DictionaryKey]);
+        var expectedResult = Evaluator_ExtractVariable(dict["path"]);
 
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
     #region Helper
 
-    public static object Evaluator_ExtractVariable(string arg)
-    {
-        return arg;
-    }
+    private static object Evaluator_ExtractVariable(string arg) => arg;
 
     #endregion
 

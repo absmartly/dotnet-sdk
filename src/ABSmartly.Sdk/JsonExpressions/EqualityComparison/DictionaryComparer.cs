@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace ABSmartly.JsonExpressions.EqualityComparison;
 
-public class DictionaryComparer: EqualityComparer<Dictionary<string, object>>
+public class DictionaryComparer: IEqualityComparer<Dictionary<string, object>>, IEqualityComparer
 {
     private readonly Func<object, IEqualityComparer> _valueComparerSelector;
     private readonly IComparer<string> _keysComparer;
@@ -17,12 +17,12 @@ public class DictionaryComparer: EqualityComparer<Dictionary<string, object>>
         _keysComparer = keysComparer ?? Comparer<string>.Default;
     }
     
-    public override bool Equals(Dictionary<string, object> x, Dictionary<string, object> y)
+    public bool Equals(Dictionary<string, object> x, Dictionary<string, object> y)
     {
         if (ReferenceEquals(x, y)) return true;
         if (ReferenceEquals(x, null)) return false;
         if (ReferenceEquals(y, null)) return false;
-        
+
         if (x.Count != y.Count) return false;
 
         var xSorted = x.OrderBy(kv => kv.Key, _keysComparer);
@@ -41,7 +41,23 @@ public class DictionaryComparer: EqualityComparer<Dictionary<string, object>>
         return true;
     }
 
-    public override int GetHashCode(Dictionary<string, object> obj)
+    public bool Equals(object x, object y)
+    {
+        if (ReferenceEquals(x, y)) return true;
+        if (ReferenceEquals(x, null)) return false;
+        if (ReferenceEquals(y, null)) return false;
+
+        if (x.GetType() != y.GetType()) return false;
+        
+        return Equals((Dictionary<string, object>)x, (Dictionary<string, object>)y);
+    }
+    
+    public int GetHashCode(Dictionary<string, object> obj)
+    {
+        throw new NotImplementedException();
+    }
+    
+    public int GetHashCode(object obj)
     {
         throw new NotImplementedException();
     }
