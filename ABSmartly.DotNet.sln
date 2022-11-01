@@ -22,6 +22,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionItems", "SolutionIt
 		README.md = README.md
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ABSmartlyExamples.NETConsoleApp", "examples\NET\ABSmartlyExamples.NETConsoleApp\ABSmartlyExamples.NETConsoleApp.csproj", "{12D024CB-C457-4802-9308-4017B5C9F622}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -48,6 +50,10 @@ Global
 		{DB567D31-243E-448F-9043-83062A75DA63}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DB567D31-243E-448F-9043-83062A75DA63}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DB567D31-243E-448F-9043-83062A75DA63}.Release|Any CPU.Build.0 = Release|Any CPU
+		{12D024CB-C457-4802-9308-4017B5C9F622}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{12D024CB-C457-4802-9308-4017B5C9F622}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{12D024CB-C457-4802-9308-4017B5C9F622}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{12D024CB-C457-4802-9308-4017B5C9F622}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -55,6 +61,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{54B66373-B29C-44BD-BD5D-FBBE3D09C4BF} = {4B12CBE9-2387-4B0D-8676-A42FA4D07B3B}
 		{CD5E0CC0-AD26-4CE2-A199-688B79F80D8A} = {4B12CBE9-2387-4B0D-8676-A42FA4D07B3B}
+		{12D024CB-C457-4802-9308-4017B5C9F622} = {4B12CBE9-2387-4B0D-8676-A42FA4D07B3B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {FF916795-B173-4E25-95A9-A2693DB8F1FC}

@@ -46,8 +46,10 @@ else
             </div>
             break;
     }
-    
-    <table class="table">
+
+    if (_forecasts != null)
+    {
+        <table class="table">
         <thead>
         <tr>
             <th>Date</th>
@@ -72,6 +74,7 @@ else
     <div>
         <button class="btn btn-primary" @onclick="Book">Book It!</button>
     </div>
+    }
 }
 
 @code {

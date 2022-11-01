@@ -1,6 +1,5 @@
 using ABSmartly;
 using ABSmartly.DependencyInjection;
-using ABSmartlyExamples.SkiResortApp.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,7 +7,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMvc(options => options.EnableEndpointRouting = false);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
-builder.Services.AddSingleton<WeatherForecastService>();
 builder.Services.AddControllers();
 builder.Services.AddHttpClient();
 

@@ -1,4 +1,5 @@
 ﻿using ABSmartly;
+using ABSmartly.Models;
 using ABSmartlyExamples.SkiResortApp.Data;
 using Microsoft.AspNetCore.Mvc;
 
@@ -61,11 +62,11 @@ public class Test : ControllerBase
                 Summary = SummerSummaries.Select(s => s(temperatureC)).FirstOrDefault(x => x != null)
             };
         });
-        
-        var context = await _abSdk.CreateContextAsync();
-        context.SetUnit("user_id", userId);
 
-        var treatment = await context.GetTreatmentAsync("net_seasons");
+        var config = new ContextConfig().SetUnit("user_id", userId);
+        var context = await _abSdk.CreateContextAsync(config);
+
+        var treatment = context.GetTreatment("net_seasons");
 
         // show winter forecast for control group (treatment == 0,
         // and summer forecast for experiment group
@@ -78,14 +79,39 @@ public class Test : ControllerBase
     [Route("book/{userId}")]
     public async Task Book(string userId)
     {
-        var context = await _abSdk.CreateContextAsync();
-        context.SetUnit("user_id", userId);
+        var config = new ContextConfig().SetUnit("user_id", userId);
+        config.RefreshInterval = TimeSpan.FromHours(4);
+        var context = await _abSdk.CreateContextAsync(config);
 
-        await context.TrackAsync("booking", new Dictionary<string, object>
+        context.Track("booking", new Dictionary<string, object>
         {
             { "bookingTime", DateTime.Now }
         });
 
         await context.PublishAsync();
+    }
+
+    private class CustomEventLogger : IContextEventLogger
+    {
+        public void HandleEvent(Context context, EventType eventType, object data)
+        {
+            switch (eventType)
+            {
+                case EventType.Exposure when data is Exposure exposure:
+                    Console.WriteLine($"exposed to experiment: {exposure.Name}");
+                    break;
+                case EventType.Goal when data is GoalAchievement goal:
+                    Console.WriteLine($"goal tracked: {goal.Name}");
+                    break;
+                case EventType.Error:
+                    Console.WriteLine($"error: {data}");
+                    break;
+                case EventType.Close:
+                case EventType.Publish:
+                case EventType.Ready:
+                case EventType.Refresh:
+                    break;
+            }
+        }
     }
 }
