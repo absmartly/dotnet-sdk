@@ -1,7 +1,5 @@
 ﻿namespace ABSmartly.Models;
 
-//@JsonInclude(JsonInclude.Include.NON_NULL)
-//@JsonIgnoreProperties(ignoreUnknown = true)
 public class ExperimentApplication
 {
     public ExperimentApplication(string name)

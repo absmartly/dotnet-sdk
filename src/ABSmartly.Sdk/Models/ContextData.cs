@@ -1,12 +1,14 @@
 ﻿using ABSmartly.Extensions;
-using ABSmartlySdk.Json;
 
 namespace ABSmartly.Models;
 
-//@JsonInclude(JsonInclude.Include.NON_NULL)
-//@JsonIgnoreProperties(ignoreUnknown = true)
 public class ContextData
 {
+    public ContextData()
+    {
+        
+    }
+    
     public ContextData(Experiment[] experiments)
     {
         Experiments = experiments;

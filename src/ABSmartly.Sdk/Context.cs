@@ -11,7 +11,6 @@ using ABSmartly.Internal.Hashing;
 using ABSmartly.Models;
 using ABSmartly.Services;
 using ABSmartly.Time;
-using ABSmartlySdk.Json;
 using Microsoft.Extensions.Logging;
 using Attribute = ABSmartly.Models.Attribute;
 
@@ -67,23 +66,24 @@ public sealed class Context : IDisposable, IAsyncDisposable
 
     #region Constructor & Initialization
 
-    public Context(
-        ILoggerFactory loggerFactory,
+    public Context(ContextConfig config,
         ContextData data,
-        ContextConfig config,
         Clock clock,
         IContextDataProvider dataProvider,
         IContextEventHandler eventHandler,
         IContextEventLogger eventLogger,
         IVariableParser variableParser,
-        AudienceMatcher audienceMatcher)
+        AudienceMatcher audienceMatcher, 
+        ILoggerFactory loggerFactory)
     {
+        if (config == null) throw new ArgumentNullException(nameof(config));
+        
         _logger = loggerFactory.CreateLogger<Context>();
         _clock = clock;
-        _publishDelay = config.PublishDelay;
-        _refreshInterval = config.RefreshInterval;
+        _publishDelay = Convert.ToInt32(config.PublishDelay.TotalMilliseconds);
+        _refreshInterval = Convert.ToInt32(config.RefreshInterval.TotalMilliseconds);
         _eventHandler = eventHandler;
-        _eventLogger = eventLogger;
+        _eventLogger = config.ContextEventLogger ?? eventLogger;
         _dataProvider = dataProvider;
         _variableParser = variableParser;
         _audienceMatcher = audienceMatcher;
@@ -241,33 +241,17 @@ public sealed class Context : IDisposable, IAsyncDisposable
 
     #region Treatment
 
-    public int GetTreatment(string experimentName)
-    {
-        return AsyncHelpers.RunSync(async () => await GetTreatmentAsync(experimentName));
-    }
+    public int GetTreatment(string experimentName) => InternalGetTreatmentAsync(experimentName, true);
 
-    public async Task<int> GetTreatmentAsync(string experimentName)
-    {
-        return await InternalGetTreatmentAsync(experimentName, true);
-    }
+    public int PeekTreatment(string experimentName) => InternalGetTreatmentAsync(experimentName, false);
 
-    public int PeekTreatment(string experimentName)
-    {
-        return AsyncHelpers.RunSync(async () => await PeekTreatmentAsync(experimentName));
-    }
-
-    public async Task<int> PeekTreatmentAsync(string experimentName)
-    {
-        return await InternalGetTreatmentAsync(experimentName, false);
-    }
-
-    private async Task<int> InternalGetTreatmentAsync(string experimentName, bool doExposure)
+    private int InternalGetTreatmentAsync(string experimentName, bool doExposure)
     {
         CheckReady(true);
 
         var assignment = GetAssignment(experimentName);
         if (doExposure && assignment.Exposed == 0)
-            await QueueExposure(assignment).ConfigureUnboundContinuation();
+            QueueExposure(assignment);
 
         return assignment.Variant;
     }
@@ -329,34 +313,18 @@ public sealed class Context : IDisposable, IAsyncDisposable
         return variableKeys;
     }
 
-    public object GetVariableValue(string key, object defaultValue)
-    {
-        return AsyncHelpers.RunSync(async () => await GetVariableValueAsync(key, defaultValue));
-    }
+    public object GetVariableValue(string key, object defaultValue) => InternalGetVariableValueAsync(key, defaultValue, true);
 
-    public async Task<object> GetVariableValueAsync(string key, object defaultValue)
-    {
-        return await InternalGetVariableValueAsync(key, defaultValue, true);
-    }
+    public object PeekVariableValue(string key, object defaultValue) => InternalGetVariableValueAsync(key, defaultValue, false);
 
-    public object PeekVariableValue(string key, object defaultValue)
-    {
-        return AsyncHelpers.RunSync(async () => await PeekVariableValueAsync(key, defaultValue));
-    }
-
-    public async Task<object> PeekVariableValueAsync(string key, object defaultValue)
-    {
-        return await InternalGetVariableValueAsync(key, defaultValue, false);
-    }
-
-    private async Task<object> InternalGetVariableValueAsync(string key, object defaultValue, bool doExposure)
+    private object InternalGetVariableValueAsync(string key, object defaultValue, bool doExposure)
     {
         CheckReady(true);
 
         var assignment = GetVariableAssignment(key);
         if (assignment?.Variables is null) return defaultValue;
 
-        if (doExposure && assignment.Exposed == 0) await QueueExposure(assignment).ConfigureUnboundContinuation();
+        if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);
 
         return assignment.Variables.TryGetValue(key, out var variable) ? variable : defaultValue;
     }
@@ -364,7 +332,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
     #endregion
 
 
-    private async Task QueueExposure(Assignment assignment)
+    private void QueueExposure(Assignment assignment)
     {
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
@@ -442,11 +410,6 @@ public sealed class Context : IDisposable, IAsyncDisposable
     }
 
     public void Track(string goalName, Dictionary<string, object> properties)
-    {
-        AsyncHelpers.RunSync(async () => await TrackAsync(goalName, properties));
-    }
-
-    public async Task TrackAsync(string goalName, Dictionary<string, object> properties)
     {
         CheckNotClosed();
 
@@ -916,7 +879,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
             _dataLock.EnterWriteLock();
             _index = new Dictionary<string, ExperimentVariables>();
             _indexVariables = new DictionaryLockableAdapter<string, ExperimentVariables>(_dataLock);
-            _data = new ContextData(Array.Empty<Experiment>());
+            _data = new ContextData();
             _failed = true;
         }
         finally
@@ -944,12 +907,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
 
     #region Close & Dispose
 
-    public void Close()
-    {
-        AsyncHelpers.RunSync(async () => await CloseAsync());
-    }
-
-    public async Task CloseAsync()
+    private async Task CloseAsync()
     {
         if (_closed) return;
 

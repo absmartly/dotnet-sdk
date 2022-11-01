@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace ABSmartly;
 
@@ -11,8 +12,8 @@ public class ContextConfig
         Overrides = new Dictionary<string, int>();
         CustomAssignments = new Dictionary<string, int>();
 
-        PublishDelay = 100;
-        RefreshInterval = 0;
+        PublishDelay = TimeSpan.FromMilliseconds(100);
+        RefreshInterval = TimeSpan.FromMilliseconds(0);
     }
 
     public Dictionary<string, string> Units { get; }
@@ -20,9 +21,10 @@ public class ContextConfig
     public Dictionary<string, int> Overrides { get; }
     public Dictionary<string, int> CustomAssignments { get; }
 
-    public int PublishDelay { get; set; }
-    public int RefreshInterval { get; set; }
+    public TimeSpan PublishDelay { get; set; }
+    public TimeSpan RefreshInterval { get; set; }
 
+    public IContextEventLogger ContextEventLogger { get; set; }
 
     public ContextConfig SetUnit(string unitType, string uid)
     {

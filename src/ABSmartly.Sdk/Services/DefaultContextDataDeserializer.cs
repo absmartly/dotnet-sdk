@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO;
-using ABSmartly.Internal;
 using ABSmartly.Models;
+using ABSmartly.Services.Json;
 using Microsoft.Extensions.Logging;
 using JsonSerializer = System.Text.Json.JsonSerializer;
 
@@ -11,7 +11,7 @@ public class DefaultContextDataDeserializer : IContextDataDeserializer
 {
     private readonly ILogger<DefaultContextDataDeserializer> _logger;
 
-    public DefaultContextDataDeserializer(ILoggerFactory loggerFactory)
+    public DefaultContextDataDeserializer(ILoggerFactory loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger<DefaultContextDataDeserializer>();
     }
@@ -20,7 +20,7 @@ public class DefaultContextDataDeserializer : IContextDataDeserializer
     {
         try
         {
-            return JsonSerializer.Deserialize<ContextData>(stream, JsonOptionsProvider.Default());
+            return JsonSerializer.Deserialize<ContextData>(stream, JsonOptionsProvider.Default.SerializerOptions);
         }
         catch (Exception e)
         {
@@ -34,7 +34,7 @@ public class DefaultContextDataDeserializer : IContextDataDeserializer
         try
         {
             return JsonSerializer.Deserialize<ContextData>(new ReadOnlySpan<byte>(bytes, offset, length),
-                JsonOptionsProvider.Default());
+                JsonOptionsProvider.Default.SerializerOptions);
         }
         catch (Exception e)
         {

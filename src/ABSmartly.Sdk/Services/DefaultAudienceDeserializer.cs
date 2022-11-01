@@ -9,7 +9,7 @@ public class DefaultAudienceDeserializer : JsonParserBase, IAudienceDeserializer
 {
     private readonly ILogger<DefaultAudienceDeserializer> _logger;
 
-    public DefaultAudienceDeserializer(ILoggerFactory loggerFactory)
+    public DefaultAudienceDeserializer(ILoggerFactory loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger<DefaultAudienceDeserializer>();
     }
@@ -22,7 +22,7 @@ public class DefaultAudienceDeserializer : JsonParserBase, IAudienceDeserializer
         }
         catch (Exception e)
         {
-            _logger?.LogError(e.Message);
+            _logger?.LogError("{Message}", e.Message);
             return null;
         }
     }

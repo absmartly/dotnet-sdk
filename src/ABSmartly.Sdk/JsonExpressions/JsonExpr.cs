@@ -29,10 +29,4 @@ public static class JsonExpr
         
         return evaluator.BooleanConvert(evaluateResult);
     }
-
-    public static object EvaluateExpression(object expression, Dictionary<string, object> variables)
-    {
-        var evaluator = new ExprEvaluator(Operators, variables);
-        return evaluator.Evaluate(expression);
-    }
 }

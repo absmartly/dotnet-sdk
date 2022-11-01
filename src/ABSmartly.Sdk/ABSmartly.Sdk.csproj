@@ -7,6 +7,7 @@
         <TargetFrameworks>net5.0;netstandard2.0</TargetFrameworks>
         <AssemblyName>ABSmartly.Sdk</AssemblyName>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <PackageVersion>1.0.0</PackageVersion>
     </PropertyGroup>
 
     <ItemGroup>
@@ -24,7 +25,6 @@
         <PackageReference Include="murmurhash" Version="1.0.3" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
         <PackageReference Include="Polly" Version="7.2.3" />
-        <PackageReference Include="System.Net.Http.Json" Version="6.0.0" />
         <PackageReference Include="System.Text.Json" Version="6.0.5" />
     </ItemGroup>
 

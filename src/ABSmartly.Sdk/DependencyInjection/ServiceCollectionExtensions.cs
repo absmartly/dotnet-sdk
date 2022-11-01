@@ -2,6 +2,7 @@
 using System.Net.Http;
 using System.Security.Authentication;
 using ABSmartly.Services;
+using ABSmartly.Services.Json;
 using Microsoft.Extensions.Configuration;
 
 #if NETCOREAPP2_1_OR_GREATER || NETCOREAPP || NET
@@ -30,7 +31,7 @@ public static class ServiceCollectionExtensions
         if (httpClientConfig == null) throw new ArgumentNullException(nameof(httpClientConfig));
 
         services.Configure<ABSmartlyServiceConfiguration>(abSmartlyServiceConfiguration);
-        services.Configure(setupSdkOptions ?? (config => { }));
+        services.Configure(setupSdkOptions ?? (_ => { }));
 
         var builder = services.AddHttpClient(ABSdk.HttpClientName);
 
@@ -67,6 +68,7 @@ public static class ServiceCollectionExtensions
         builder.AddTransientHttpErrorPolicy(setupRetryPolicy ?? ConfigureDefaultPolicy(httpClientConfig));
 
         services.AddTransient<IABSdkHttpClientFactory, ABSdkHttpClientFactory>();
+        services.AddTransient<IJsonOptionsProvider, JsonOptionsProvider>();
 
         services.AddSingleton<ABSdk>();
     }

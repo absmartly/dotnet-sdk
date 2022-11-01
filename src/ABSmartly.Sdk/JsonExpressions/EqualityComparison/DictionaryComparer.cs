@@ -41,7 +41,7 @@ public class DictionaryComparer: IEqualityComparer<Dictionary<string, object>>, 
         return true;
     }
 
-    public bool Equals(object x, object y)
+    bool IEqualityComparer.Equals(object x, object y)
     {
         if (ReferenceEquals(x, y)) return true;
         if (ReferenceEquals(x, null)) return false;

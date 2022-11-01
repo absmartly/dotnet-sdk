@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using ABSmartly;
 using ABSmartly.Services;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace ABSmartlyExamples.NETFramework461
 {
@@ -16,14 +15,13 @@ namespace ABSmartlyExamples.NETFramework461
             var serviceProvider = new ServiceCollection().AddHttpClient().BuildServiceProvider();
             var httpClientFactory = serviceProvider.GetService<IHttpClientFactory>();
 
-            var abSdk = new ABSdk(new ABSdkHttpClientFactory(httpClientFactory), new LoggerFactory(), new ABSdkConfig(),
-                new ABSmartlyServiceConfiguration()
-                {
-                    Environment = "prod",
-                    Application = "www",
-                    Endpoint = "https://acme.absmartly.io/v1",
-                    ApiKey = ""
-                });
+            var abSdk = new ABSdk(new ABSdkHttpClientFactory(httpClientFactory), new ABSmartlyServiceConfiguration
+            {
+                Environment = "prod",
+                Application = "www",
+                Endpoint = "https://demo.absmartly.io/v1",
+                ApiKey = "x3ZyxmeKmb6n3VilTGs5I6-tBdaS9gYyr3i4YQXmUZcpPhH8nd8ev44NoEL_3yvA"
+            });
 
             var context = await abSdk.CreateContextAsync();
             context.SetUnit("user_id", "test_classic_dotnet_2");

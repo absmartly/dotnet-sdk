@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Text.Json;
-using ABSmartly.Internal;
 using ABSmartly.Models;
+using ABSmartly.Services.Json;
 using Microsoft.Extensions.Logging;
 
 namespace ABSmartly.Services;
@@ -10,7 +10,7 @@ public class DefaultContextEventSerializer : IContextEventSerializer
 {
     private readonly ILogger<DefaultContextEventSerializer> _logger;
 
-    public DefaultContextEventSerializer(ILoggerFactory loggerFactory)
+    public DefaultContextEventSerializer(ILoggerFactory loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger<DefaultContextEventSerializer>();
     }
@@ -22,11 +22,11 @@ public class DefaultContextEventSerializer : IContextEventSerializer
 
         try
         {
-            return JsonSerializer.SerializeToUtf8Bytes(publishEvent, JsonOptionsProvider.Default());
+            return JsonSerializer.SerializeToUtf8Bytes(publishEvent, JsonOptionsProvider.Default.SerializerOptions);
         }
         catch (Exception e)
         {
-            _logger?.LogError(e.Message);
+            _logger?.LogError("{Message}", e.Message);
             return null;
         }
     }

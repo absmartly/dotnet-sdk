@@ -29,29 +29,26 @@ public class ABSdk
     private IAudienceDeserializer _audienceDeserializer;
 
     [ActivatorUtilitiesConstructor]
-    public ABSdk(
-        IABSdkHttpClientFactory httpClientFactory,
-        ILoggerFactory loggerFactory,
+    public ABSdk(IABSdkHttpClientFactory httpClientFactory,
+        IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABSdkConfig> configOptions,
-        IOptions<ABSmartlyServiceConfiguration> serviceConfiguration)
+        ILoggerFactory loggerFactory)
     {
-        Init(serviceConfiguration.Value, httpClientFactory, loggerFactory, configOptions?.Value);
+        Init(httpClientFactory, serviceConfiguration.Value, configOptions?.Value, loggerFactory);
     }
 
-    public ABSdk(
-        IABSdkHttpClientFactory httpClientFactory,
-        ILoggerFactory loggerFactory,
-        ABSdkConfig config,
-        ABSmartlyServiceConfiguration serviceConfiguration)
+    public ABSdk(IABSdkHttpClientFactory httpClientFactory,
+        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABSdkConfig config = null,
+        ILoggerFactory loggerFactory = null)
     {
-        Init(serviceConfiguration, httpClientFactory, loggerFactory, config);
+        Init(httpClientFactory, serviceConfiguration, config, loggerFactory);
     }
     
-    private void Init(
+    private void Init(IABSdkHttpClientFactory httpClientFactory,
         ABSmartlyServiceConfiguration serviceConfiguration,
-        IABSdkHttpClientFactory httpClientFactory,
-        ILoggerFactory loggerFactory = null,
-        ABSdkConfig config = null)
+        ABSdkConfig config = null,
+        ILoggerFactory loggerFactory = null)
     {
         _loggerFactory = loggerFactory ?? new LoggerFactory();
         _httpClientFactory = httpClientFactory;
@@ -81,36 +78,28 @@ public class ABSdk
         return AsyncHelpers.RunSync(async () => await CreateContextAsync(config));
     }
 
-    public async Task<Context> CreateContextAsync(ContextConfig config = null)
+    public async Task<Context> CreateContextAsync(ContextConfig config)
     {
-        var context = new Context(
-            _loggerFactory,
+        var context = new Context(config ?? new ContextConfig(),
             await _contextDataProvider.GetContextDataAsync().ConfigureUnboundContinuation(),
-            config ?? new ContextConfig(),
             Clock.SystemUtc(),
             _contextDataProvider,
             _contextEventHandler,
             _contextEventLogger,
-            _variableParser,
-            new AudienceMatcher(_audienceDeserializer)
-        );
+            _variableParser, new AudienceMatcher(_audienceDeserializer), _loggerFactory);
 
         return context;
     }
 
-    public Context CreateContextWith(ContextData data, ContextConfig config = null)
+    public Context CreateContextWith(ContextConfig config, ContextData data)
     {
-        var context = new Context(
-            _loggerFactory,
+        var context = new Context(config,
             data,
-            config ?? new ContextConfig(),
             Clock.SystemUtc(),
             _contextDataProvider,
             _contextEventHandler,
             _contextEventLogger,
-            _variableParser,
-            new AudienceMatcher(_audienceDeserializer)
-        );
+            _variableParser, new AudienceMatcher(_audienceDeserializer), _loggerFactory);
 
         return context;
     }

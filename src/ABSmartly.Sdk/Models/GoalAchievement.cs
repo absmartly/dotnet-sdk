@@ -3,8 +3,6 @@ using System.Diagnostics;
 
 namespace ABSmartly.Models;
 
-//@JsonInclude(JsonInclude.Include.NON_NULL)
-//@JsonIgnoreProperties(ignoreUnknown = true)
 [DebuggerDisplay("{StringLook}")]
 public class GoalAchievement
 {

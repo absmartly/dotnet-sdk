@@ -1,7 +1,5 @@
-﻿namespace ABSmartlySdk.Json;
+﻿namespace ABSmartly.Models;
 
-//@JsonInclude(JsonInclude.Include.ALWAYS)
-//@JsonIgnoreProperties(ignoreUnknown = true)
 public sealed record Exposure(int Id, string Name, string Unit, int Variant, long ExposedAt, bool Assigned,
     bool Eligible,
     bool Overridden, bool FullOn, bool Custom, bool AudienceMismatch)
@@ -27,6 +25,25 @@ public sealed record Exposure(int Id, string Name, string Unit, int Variant, lon
                ExposedAt == other.ExposedAt && Assigned == other.Assigned && Eligible == other.Eligible &&
                Overridden == other.Overridden && FullOn == other.FullOn && Custom == other.Custom &&
                AudienceMismatch == other.AudienceMismatch;
+    }
+
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            var hashCode = Id;
+            hashCode = (hashCode * 397) ^ (Name != null ? Name.GetHashCode() : 0);
+            hashCode = (hashCode * 397) ^ (Unit != null ? Unit.GetHashCode() : 0);
+            hashCode = (hashCode * 397) ^ Variant;
+            hashCode = (hashCode * 397) ^ ExposedAt.GetHashCode();
+            hashCode = (hashCode * 397) ^ Assigned.GetHashCode();
+            hashCode = (hashCode * 397) ^ Eligible.GetHashCode();
+            hashCode = (hashCode * 397) ^ Overridden.GetHashCode();
+            hashCode = (hashCode * 397) ^ FullOn.GetHashCode();
+            hashCode = (hashCode * 397) ^ Custom.GetHashCode();
+            hashCode = (hashCode * 397) ^ AudienceMismatch.GetHashCode();
+            return hashCode;
+        }
     }
 
     #endregion

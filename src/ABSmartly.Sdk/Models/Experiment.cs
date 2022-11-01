@@ -1,31 +1,9 @@
 ﻿using ABSmartly.Extensions;
-using ABSmartlySdk.Json;
 
 namespace ABSmartly.Models;
 
 public class Experiment
 {
-    public Experiment(int id, string name, string unitType, int iteration, int seedHi, int seedLo, double[] split,
-        int trafficSeedHi, int trafficSeedLo, double[] trafficSplit, int fullOnVariant,
-        ExperimentApplication[] applications, ExperimentVariant[] variants, bool audienceStrict, string audience)
-    {
-        Id = id;
-        Name = name;
-        UnitType = unitType;
-        Iteration = iteration;
-        SeedHi = seedHi;
-        SeedLo = seedLo;
-        Split = split;
-        TrafficSeedHi = trafficSeedHi;
-        TrafficSeedLo = trafficSeedLo;
-        TrafficSplit = trafficSplit;
-        FullOnVariant = fullOnVariant;
-        Applications = applications;
-        Variants = variants;
-        AudienceStrict = audienceStrict;
-        Audience = audience;
-    }
-
     public int Id { get; set; }
     public string Name { get; set; }
     public string UnitType { get; set; }
@@ -68,20 +46,20 @@ public class Experiment
         unchecked
         {
             var hashCode = Id;
-            hashCode = (hashCode * 397) ^ (Name != null ? Name.GetHashCode() : 0);
-            hashCode = (hashCode * 397) ^ (UnitType != null ? UnitType.GetHashCode() : 0);
+            hashCode = (hashCode * 397) ^ (Name?.GetHashCode() ?? 0);
+            hashCode = (hashCode * 397) ^ (UnitType?.GetHashCode() ?? 0);
             hashCode = (hashCode * 397) ^ Iteration;
             hashCode = (hashCode * 397) ^ SeedHi;
             hashCode = (hashCode * 397) ^ SeedLo;
-            hashCode = (hashCode * 397) ^ (Split != null ? Split.GetHashCode() : 0);
+            hashCode = (hashCode * 397) ^ (Split?.GetHashCode() ?? 0);
             hashCode = (hashCode * 397) ^ TrafficSeedHi;
             hashCode = (hashCode * 397) ^ TrafficSeedLo;
-            hashCode = (hashCode * 397) ^ (TrafficSplit != null ? TrafficSplit.GetHashCode() : 0);
+            hashCode = (hashCode * 397) ^ (TrafficSplit?.GetHashCode() ?? 0);
             hashCode = (hashCode * 397) ^ FullOnVariant;
-            hashCode = (hashCode * 397) ^ (Applications != null ? Applications.GetHashCode() : 0);
-            hashCode = (hashCode * 397) ^ (Variants != null ? Variants.GetHashCode() : 0);
+            hashCode = (hashCode * 397) ^ (Applications?.GetHashCode() ?? 0);
+            hashCode = (hashCode * 397) ^ (Variants?.GetHashCode() ?? 0);
             hashCode = (hashCode * 397) ^ AudienceStrict.GetHashCode();
-            hashCode = (hashCode * 397) ^ (Audience != null ? Audience.GetHashCode() : 0);
+            hashCode = (hashCode * 397) ^ (Audience?.GetHashCode() ?? 0);
             return hashCode;
         }
     }
