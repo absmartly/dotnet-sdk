@@ -22,4 +22,9 @@
       <ProjectReference Include="..\..\src\ABSmartly.Sdk\ABSmartly.Sdk.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="Resources\context.json" />
+      <EmbeddedResource Include="Resources\context.json" />
+    </ItemGroup>
+
 </Project>

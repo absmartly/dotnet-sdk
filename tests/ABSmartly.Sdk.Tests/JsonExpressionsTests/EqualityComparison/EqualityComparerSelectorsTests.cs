@@ -11,48 +11,48 @@ public class EqualityComparerSelectorsTests
         var comparer = new DictionaryComparer(EqualityComparerSelectors.Default);
 
         comparer.Equals(
-                T.MapOf<string, object>("a", T.MapOf<string, object>("b", 1)), 
-                T.MapOf<string, object>("a", T.MapOf<string, object>("b", 1)))
+                T.MapOf("a", T.MapOf("b", 1)), 
+                T.MapOf("a", T.MapOf("b", 1)))
             .Should().Be(true);
         
         comparer.Equals(
-                T.MapOf<string, object>("a", T.ListOf<object>(1)), 
-                T.MapOf<string, object>("a", T.ListOf<object>(1)))
+                T.MapOf("a", T.ListOf(1)), 
+                T.MapOf("a", T.ListOf(1)))
             .Should().Be(true);
         
         comparer.Equals(
-                T.MapOf<string, object>("a", T.ListOf<object>(1)), 
-                T.MapOf<string, object>("a", T.ListOf<object>(2)))
+                T.MapOf("a", T.ListOf(1)), 
+                T.MapOf("a", T.ListOf(2)))
             .Should().Be(false);
         
         comparer.Equals(
-                T.MapOf<string, object>("a", T.MapOf<string, object>("b", 1)), 
-                T.MapOf<string, object>("a", T.MapOf<string, object>("c", 1)))
+                T.MapOf("a", T.MapOf("b", 1)), 
+                T.MapOf("a", T.MapOf("c", 1)))
             .Should().Be(false);
         
         comparer.Equals(
-                T.MapOf<string, object>("a", T.MapOf<string, object>("b", 1)), 
-                T.MapOf<string, object>("a", T.MapOf<string, object>("b", 2)))
+                T.MapOf("a", T.MapOf("b", 1)), 
+                T.MapOf("a", T.MapOf("b", 2)))
             .Should().Be(false);
         
         comparer.Equals(
-                T.MapOf<string, object>("a", T.MapOf<string, object>("b", 1)), 
-                T.MapOf<string, object>("a", T.ListOf<object>(2)))
+                T.MapOf("a", T.MapOf("b", 1)), 
+                T.MapOf("a", T.ListOf(2)))
             .Should().Be(false);
         
         comparer.Equals(
-                T.MapOf<string, object>("a", T.MapOf<string, object>("b", 1)), 
-                T.MapOf<string, object>("a", 1))
+                T.MapOf("a", T.MapOf("b", 1)), 
+                T.MapOf("a", 1))
             .Should().Be(false);
         
         comparer.Equals(
-                T.MapOf<string, object>("a", T.ListOf<object>(T.MapOf<string, object>("b", 1))), 
-                T.MapOf<string, object>("a", T.ListOf<object>(T.MapOf<string, object>("b", 1))))
+                T.MapOf("a", T.ListOf(T.MapOf("b", 1))), 
+                T.MapOf("a", T.ListOf(T.MapOf("b", 1))))
             .Should().Be(true);
         
         comparer.Equals(
-                T.MapOf<string, object>("a", T.ListOf<object>(T.MapOf<string, object>("b", 1))), 
-                T.MapOf<string, object>("a", T.ListOf<object>(T.MapOf<string, object>("b", 2))))
+                T.MapOf("a", T.ListOf(T.MapOf("b", 1))), 
+                T.MapOf("a", T.ListOf(T.MapOf("b", 2))))
             .Should().Be(false);
     }
     
@@ -62,48 +62,48 @@ public class EqualityComparerSelectorsTests
         var comparer = new ListComparer(EqualityComparerSelectors.Default);
 
         comparer.Equals(
-                T.ListOf<object>("a", T.ListOf<object>("b")), 
-                T.ListOf<object>("a", T.ListOf<object>("b")))
+                T.ListOf("a", T.ListOf("b")), 
+                T.ListOf("a", T.ListOf("b")))
             .Should().Be(true);
         
         comparer.Equals(
-                T.ListOf<object>("a", T.MapOf<string, object>("b", 1)), 
-                T.ListOf<object>("a", T.MapOf<string, object>("b", 1)))
+                T.ListOf("a", T.MapOf("b", 1)), 
+                T.ListOf("a", T.MapOf("b", 1)))
             .Should().Be(true);
         
         comparer.Equals(
-                T.ListOf<object>("a", T.ListOf<object>(1)), 
-                T.ListOf<object>("a", T.ListOf<object>(2)))
+                T.ListOf("a", T.ListOf(1)), 
+                T.ListOf("a", T.ListOf(2)))
             .Should().Be(false);
         
         comparer.Equals(
-                T.ListOf<object>("a", T.MapOf<string, object>("b", 1)), 
-                T.ListOf<object>("a", T.MapOf<string, object>("b", 2)))
+                T.ListOf("a", T.MapOf("b", 1)), 
+                T.ListOf("a", T.MapOf("b", 2)))
             .Should().Be(false);
         
         comparer.Equals(
-                T.ListOf<object>("a", T.ListOf<object>("b")), 
-                T.ListOf<object>("a", T.ListOf<object>("c")))
+                T.ListOf("a", T.ListOf("b")), 
+                T.ListOf("a", T.ListOf("c")))
             .Should().Be(false);
         
         comparer.Equals(
-                T.ListOf<object>("a", T.ListOf<object>(1)), 
-                T.ListOf<object>("a", T.MapOf<string, object>("b", 2)))
+                T.ListOf("a", T.ListOf(1)), 
+                T.ListOf("a", T.MapOf("b", 2)))
             .Should().Be(false);
         
         comparer.Equals(
-                T.ListOf<object>("a", T.ListOf<object>(1)), 
-                T.ListOf<object>("a", 1))
+                T.ListOf("a", T.ListOf(1)), 
+                T.ListOf("a", 1))
             .Should().Be(false);
         
         comparer.Equals(
-                T.ListOf<object>("a", T.MapOf<string, object>("b", T.ListOf<object>(1))), 
-                T.ListOf<object>("a", T.MapOf<string, object>("b", T.ListOf<object>(1))))
+                T.ListOf("a", T.MapOf("b", T.ListOf(1))), 
+                T.ListOf("a", T.MapOf("b", T.ListOf(1))))
             .Should().Be(true);
         
         comparer.Equals(
-                T.ListOf<object>("a", T.MapOf<string, object>("b", T.ListOf<object>(1))), 
-                T.ListOf<object>("a", T.MapOf<string, object>("b", T.ListOf<object>(2))))
+                T.ListOf("a", T.MapOf("b", T.ListOf(1))), 
+                T.ListOf("a", T.MapOf("b", T.ListOf(2))))
             .Should().Be(false);
     }
 }
