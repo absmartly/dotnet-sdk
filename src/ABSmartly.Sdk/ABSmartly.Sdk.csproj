@@ -8,6 +8,15 @@
         <AssemblyName>ABSmartly.Sdk</AssemblyName>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageVersion>1.0.0</PackageVersion>
+        <Title>A/B Smartly DotNet SDK</Title>
+        <Authors>A/B Smartly</Authors>
+        <Description>The A/B Smartly DotNet SDK is a client SDK for A/B Smartly service </Description>
+        <Copyright>Copyright 2022 - A/B Smartly</Copyright>
+        <PackageProjectUrl>https://www.absmartly.com/</PackageProjectUrl>
+        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/absmartly/dotnet-sdk</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageTags>a/b,ab,testing,experiment,metrics,analytics</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>
