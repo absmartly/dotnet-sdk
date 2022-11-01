@@ -1,15 +1,17 @@
-# A/B Smartly SDK
+# A/B Smartly DotNet SDK
 
-A/B Smartly - DotNet SDK
+Latest stable: [![NuGet stable](https://img.shields.io/nuget/v/ABSmartly.Sdk?style=flat-square)](https://www.nuget.org/packages/ABSmartly.Sdk)
 
-## Compatibility
-
-The A/B Smartly DotNet SDK targets .NET Standard 2.0 and .NET 5.
-
+Current prerelease: [![NuGet pre](https://img.shields.io/nuget/vpre/ABSmartly.Sdk?style=flat-square)](https://www.nuget.org/packages/ABSmartly.Sdk)
 
 ## Installation
 
-Install the A/B Smartly DotNet SDK from Nuget.
+Install the A/B Smartly DotNet SDK from Nuget
+```shell
+dotnet add package ABSmartly.Sdk --version 1.0.0
+```
+
+SDK targets .NET Standard 2.0 and .NET 5.
 
 ## Getting Started
 
