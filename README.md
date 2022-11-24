@@ -99,8 +99,11 @@ var abSdk = new ABSdk(new ABSdkHttpClientFactory(httpClientFactory), new ABSmart
 SDK uses IHttpClientFactory abstraction to effectively manage HTTP connections pool. This factory is
 injected using IABSdkHttpClientFactory as seen in the example above.
 In case custom behavior or implementation is required, inject own implementation of either
-IHttpClientFactory or IABSdkHttpClientFactory.  
-In case of injecting IABSdkHttpClientFactory implementation make sure it creates named IHttpClient
+IHttpClientFactory or IABSdkHttpClientFactory.
+In case of injecting IABSdkHttpClientFactory implementation make sure it creates instances of IABSdkHttpClient
+interface, which is a wrapper on top of HttpClient. SDK already has implementation that can be used for this, 
+see `ABSmartly.Services.ABSdkHttpClientFactory.HttpClientWrapper` class.
+In case of injecting IHttpClientFactory implementation make sure it creates named IHttpClient
 instances with name `ABSmartlySDK.HttpClient` (you can use static field in ABSdk class, `ABSdk.HttpClientName`).
 
 #### Creating a new Context synchronously
