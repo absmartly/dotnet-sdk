@@ -2,6 +2,8 @@
 
 public class LessThanOrEqualOperator : BinaryOperator
 {
-    protected override object Binary(IEvaluator evaluator, object lhs, object rhs) =>
-        evaluator.Compare(lhs, rhs) is { } result ? result <= 0 : null;
+    protected override object Binary(IEvaluator evaluator, object lhs, object rhs)
+    {
+        return evaluator.Compare(lhs, rhs) is { } result ? result <= 0 : null;
+    }
 }

@@ -2,7 +2,7 @@
 
 namespace ABSmartly.Concurrency;
 
-internal class LockableCollectionSlimLock: ILockableCollectionSlimLock
+internal class LockableCollectionSlimLock : ILockableCollectionSlimLock
 {
     private readonly ReaderWriterLockSlim _lockSlim;
 
@@ -10,12 +10,24 @@ internal class LockableCollectionSlimLock: ILockableCollectionSlimLock
     {
         _lockSlim = lockSlim;
     }
-    
-    public void EnterReadLock() => _lockSlim.EnterReadLock();
 
-    public void ExitReadLock() => _lockSlim.ExitReadLock();
+    public void EnterReadLock()
+    {
+        _lockSlim.EnterReadLock();
+    }
 
-    public void EnterWriteLock() => _lockSlim.EnterWriteLock();
+    public void ExitReadLock()
+    {
+        _lockSlim.ExitReadLock();
+    }
 
-    public void ExitWriteLock() => _lockSlim.ExitWriteLock();
+    public void EnterWriteLock()
+    {
+        _lockSlim.EnterWriteLock();
+    }
+
+    public void ExitWriteLock()
+    {
+        _lockSlim.ExitWriteLock();
+    }
 }

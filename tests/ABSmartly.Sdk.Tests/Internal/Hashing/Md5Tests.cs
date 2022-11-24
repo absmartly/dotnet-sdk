@@ -18,8 +18,9 @@ public class Md5Tests
     [TestCase("special characters açb↓c", "4PIrO7lKtTxOcj2eMYlG7A")]
     [TestCase("The quick brown fox jumps over the lazy dog", "nhB9nTcrtoJr2B01QqQZ1g")]
     [TestCase("The quick brown fox jumps over the lazy dog and eats a pie", "iM-8ECRrLUQzixl436y96A")]
-    [TestCase("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
-    "24m7XOq4f5wPzCqzbBicLA")]
+    [TestCase(
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+        "24m7XOq4f5wPzCqzbBicLA")]
     public void TestDigestBase64Url(string actualString, string expectedHash)
     {
         var actualStringHash = Md5.Hash(actualString);

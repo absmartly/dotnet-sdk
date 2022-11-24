@@ -15,7 +15,7 @@ public class DefaultContextDataProviderTests
 
         Mock.Get(client).Verify(x => x.GetContextDataAsync(), Times.Once);
     }
-    
+
     [Test]
     public async Task TestThrowsIfServiceClientThrows()
     {
@@ -27,7 +27,7 @@ public class DefaultContextDataProviderTests
         var act = async () => await provider.GetContextDataAsync();
 
         await act.Should().ThrowExactlyAsync<Exception>();
-        
+
         Mock.Get(client).Verify(x => x.GetContextDataAsync(), Times.Once);
     }
 }

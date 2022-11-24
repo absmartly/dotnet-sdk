@@ -4,12 +4,15 @@ using Murmur;
 namespace ABSmartly.Internal.Hashing;
 
 /// <summary>
-/// Wrapper around the MurMur package
-/// https://github.com/darrenkopp/murmurhash-net
+///     Wrapper around the MurMur package
+///     https://github.com/darrenkopp/murmurhash-net
 /// </summary>
 public static class MurMur3
 {
-    public static uint HashToUInt32(byte[] buffer, uint seed = 0) => HashToUInt32(buffer, 0, buffer.Length, seed);
+    public static uint HashToUInt32(byte[] buffer, uint seed = 0)
+    {
+        return HashToUInt32(buffer, 0, buffer.Length, seed);
+    }
 
     public static uint HashToUInt32(byte[] buffer, int offset, int len, uint seed = 0)
     {

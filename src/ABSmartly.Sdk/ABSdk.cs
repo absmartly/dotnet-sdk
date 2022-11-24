@@ -15,19 +15,19 @@ public class ABSdk
 {
     public const string HttpClientName = "ABSmartlySDK.HttpClient";
 
-    private ILoggerFactory _loggerFactory;
-    private IABSdkHttpClientFactory _httpClientFactory;
+    private IAudienceDeserializer _audienceDeserializer;
 
     private IABSmartlyServiceClient _client;
+
+    private IContextDataDeserializer _contextDataDeserializer;
     private IContextDataProvider _contextDataProvider;
     private IContextEventHandler _contextEventHandler;
     private IContextEventLogger _contextEventLogger;
-    private IVariableParser _variableParser;
-
-    private IContextDataDeserializer _contextDataDeserializer;
     private IContextEventSerializer _contextEventSerializer;
+    private IABSdkHttpClientFactory _httpClientFactory;
 
-    private IAudienceDeserializer _audienceDeserializer;
+    private ILoggerFactory _loggerFactory;
+    private IVariableParser _variableParser;
 
     [ActivatorUtilitiesConstructor]
     public ABSdk(IABSdkHttpClientFactory httpClientFactory,
@@ -45,7 +45,7 @@ public class ABSdk
     {
         Init(httpClientFactory, serviceConfiguration, config, loggerFactory);
     }
-    
+
     private void Init(IABSdkHttpClientFactory httpClientFactory,
         ABSmartlyServiceConfiguration serviceConfiguration,
         ABSdkConfig config = null,
@@ -88,7 +88,7 @@ public class ABSdk
             _contextDataProvider,
             _contextEventHandler,
             _contextEventLogger,
-            _variableParser, 
+            _variableParser,
             new AudienceMatcher(_audienceDeserializer),
             _loggerFactory);
 
@@ -103,8 +103,8 @@ public class ABSdk
             _contextDataProvider,
             _contextEventHandler,
             _contextEventLogger,
-            _variableParser, 
-            new AudienceMatcher(_audienceDeserializer), 
+            _variableParser,
+            new AudienceMatcher(_audienceDeserializer),
             _loggerFactory);
 
         return context;

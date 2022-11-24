@@ -24,7 +24,8 @@ public class DictionaryLockableAdapter<TKey, TValue> : Dictionary<TKey, TValue>
         _lockSlim = lockSlim ?? throw new ArgumentNullException(nameof(lockSlim), "Lock is required");
     }
 
-    public DictionaryLockableAdapter(ILockableCollectionSlimLock lockSlim, IEqualityComparer<TKey> comparer) : base(comparer)
+    public DictionaryLockableAdapter(ILockableCollectionSlimLock lockSlim, IEqualityComparer<TKey> comparer) :
+        base(comparer)
     {
         _lockSlim = lockSlim ?? throw new ArgumentNullException(nameof(lockSlim), "Lock is required");
     }

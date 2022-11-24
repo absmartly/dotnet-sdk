@@ -3,7 +3,7 @@
 namespace ABSmartly.Sdk.Tests.JsonExpressionsTests.Operators;
 
 [TestFixture]
-public class ValueOperatorTests: OperatorTestBase
+public class ValueOperatorTests : OperatorTestBase
 {
     private readonly ValueOperator _operator = new();
 
@@ -17,9 +17,10 @@ public class ValueOperatorTests: OperatorTestBase
         _operator.Evaluate(Evaluator, "").Should().Be("");
         _operator.Evaluate(Evaluator, "abc").Should().Be("abc");
         _operator.Evaluate(Evaluator, new List<object>()).Should().BeEquivalentTo(new List<object>());
-        _operator.Evaluate(Evaluator,  new Dictionary<string, object>()).Should().BeEquivalentTo(new Dictionary<string, object>());
-        _operator.Evaluate(Evaluator,  null).Should().BeNull();
-        
+        _operator.Evaluate(Evaluator, new Dictionary<string, object>()).Should()
+            .BeEquivalentTo(new Dictionary<string, object>());
+        _operator.Evaluate(Evaluator, null).Should().BeNull();
+
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Never);
     }
 }

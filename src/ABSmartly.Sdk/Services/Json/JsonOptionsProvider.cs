@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace ABSmartly.Services.Json;
 
-public class JsonOptionsProvider: IJsonOptionsProvider
+public class JsonOptionsProvider : IJsonOptionsProvider
 {
     private static IJsonOptionsProvider defaultOptions;
 
@@ -16,8 +16,8 @@ public class JsonOptionsProvider: IJsonOptionsProvider
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
                 PropertyNameCaseInsensitive = true
-            },
+            }
         };
 
-    public JsonSerializerOptions SerializerOptions { get; private set;  }
+    public JsonSerializerOptions SerializerOptions { get; private set; }
 }

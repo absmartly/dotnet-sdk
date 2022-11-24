@@ -17,20 +17,30 @@ public sealed class Exposure
     public bool Custom { get; set; }
     public bool AudienceMismatch { get; set; }
 
+    private string DebugView =>
+        $"Exposure{{id={Id}, name={Name}, unit={Unit}, variant={Variant}, exposedAt={ExposedAt}, assigned={Assigned}, eligible={Eligible}, overridden={Overridden}, fullOn={FullOn}, custom={Custom}, audienceMismatch={AudienceMismatch}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
     #region Equality members
 
-    private bool Equals(Exposure other) =>
-        Id == other.Id && 
-        Name == other.Name && 
-        Unit == other.Unit && 
-        Variant == other.Variant && 
-        ExposedAt == other.ExposedAt && 
-        Assigned == other.Assigned && 
-        Eligible == other.Eligible && 
-        Overridden == other.Overridden && 
-        FullOn == other.FullOn && 
-        Custom == other.Custom && 
-        AudienceMismatch == other.AudienceMismatch;
+    private bool Equals(Exposure other)
+    {
+        return Id == other.Id &&
+               Name == other.Name &&
+               Unit == other.Unit &&
+               Variant == other.Variant &&
+               ExposedAt == other.ExposedAt &&
+               Assigned == other.Assigned &&
+               Eligible == other.Eligible &&
+               Overridden == other.Overridden &&
+               FullOn == other.FullOn &&
+               Custom == other.Custom &&
+               AudienceMismatch == other.AudienceMismatch;
+    }
 
     public override bool Equals(object obj)
     {
@@ -60,8 +70,4 @@ public sealed class Exposure
     }
 
     #endregion
-
-    private string DebugView =>
-        $"Exposure{{id={Id}, name={Name}, unit={Unit}, variant={Variant}, exposedAt={ExposedAt}, assigned={Assigned}, eligible={Eligible}, overridden={Overridden}, fullOn={FullOn}, custom={Custom}, audienceMismatch={AudienceMismatch}}}";
-    public override string ToString() => DebugView;
 }

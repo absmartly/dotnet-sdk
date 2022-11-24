@@ -8,12 +8,21 @@ public class ExperimentVariant
     public string Name { get; set; }
     public string Config { get; set; }
 
+    private string DebugView => $"ExperimentVariant{{name={Name}, config={Config}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
 
     #region Equality members
 
-    protected bool Equals(ExperimentVariant other) => 
-        Name == other.Name && 
-        Config == other.Config;
+    protected bool Equals(ExperimentVariant other)
+    {
+        return Name == other.Name &&
+               Config == other.Config;
+    }
 
     public override bool Equals(object obj)
     {
@@ -30,9 +39,6 @@ public class ExperimentVariant
             return ((Name?.GetHashCode() ?? 0) * 397) ^ (Config?.GetHashCode() ?? 0);
         }
     }
-    
-    #endregion
 
-    private string DebugView => $"ExperimentVariant{{name={Name}, config={Config}}}";
-    public override string ToString() => DebugView;
+    #endregion
 }

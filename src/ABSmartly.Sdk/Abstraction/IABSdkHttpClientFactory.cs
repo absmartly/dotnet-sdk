@@ -10,7 +10,7 @@ public interface IABSdkHttpClientFactory
     IABSdkHttpClient CreateClient();
 }
 
-public interface IABSdkHttpClient: IDisposable
+public interface IABSdkHttpClient : IDisposable
 {
     Task<HttpResponseMessage> GetAsync(string? requestUri);
     Task<HttpResponseMessage> PutAsync(string? requestUri, HttpContent content);

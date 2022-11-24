@@ -7,12 +7,13 @@ namespace ABSmartly.Sdk.Tests.Services;
 public class DefaultVariableParserTests
 {
     private readonly DefaultVariableParser _parser = new();
-    
+
     [Test]
     public void TestParse()
     {
         var context = Mock.Of<IContext>();
-        using var jsonStream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.variables.json");
+        using var jsonStream =
+            GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.variables.json");
         using var streamReader = new StreamReader(jsonStream!, Encoding.UTF8);
         var configValue = streamReader.ReadToEnd();
 
@@ -35,7 +36,7 @@ public class DefaultVariableParserTests
 
         actual.Should().BeEquivalentTo(expected);
     }
-    
+
     [Test]
     public void TestParseDoesNotThrow()
     {

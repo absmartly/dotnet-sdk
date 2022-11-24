@@ -19,51 +19,49 @@ namespace ABSmartly;
 
 public class Context : IContext, IDisposable, IAsyncDisposable
 {
-    private readonly Clock _clock;
-    private readonly int _publishDelay;
-    private readonly int _refreshInterval;
-    private readonly IContextEventHandler _eventHandler;
-    private readonly IContextEventLogger _eventLogger;
-    private readonly IContextDataProvider _dataProvider;
-    private readonly IVariableParser _variableParser;
-    private readonly AudienceMatcher _audienceMatcher;
-    private readonly Dictionary<string, string> _units;
-
-    private readonly ReaderWriterLockSlim _dataLock = new(LockRecursionPolicy.SupportsRecursion);
-    private readonly ReaderWriterLockSlim _contextLock = new(LockRecursionPolicy.SupportsRecursion);
-
-    private ContextData _data;
-    private Dictionary<string, ExperimentVariables> _index;
-    private DictionaryLockableAdapter<string, ExperimentVariables> _indexVariables;
-
-
-    private readonly DictionaryLockableAdapter<string, byte[]> _hashedUnits;
+    private readonly List<GoalAchievement> _achievements = new();
     private readonly DictionaryLockableAdapter<string, VariantAssigner> _assigners;
     private readonly Dictionary<string, Assignment> _assignmentCache = new();
 
-    private readonly List<Exposure> _exposures = new();
-    private readonly List<GoalAchievement> _achievements = new();
-
     private readonly ListLockableAdapter<Attribute> _attributes;
-    private readonly DictionaryLockableAdapter<string, int?> _overrides;
+    private readonly AudienceMatcher _audienceMatcher;
+    private readonly Clock _clock;
+    private readonly ReaderWriterLockSlim _contextLock = new(LockRecursionPolicy.SupportsRecursion);
     private readonly DictionaryLockableAdapter<string, int?> _customAssignments;
 
-    private volatile int _pendingCount;
+    private readonly ReaderWriterLockSlim _dataLock = new(LockRecursionPolicy.SupportsRecursion);
+    private readonly IContextDataProvider _dataProvider;
+    private readonly IContextEventHandler _eventHandler;
+    private readonly object _eventLock = new();
+    private readonly IContextEventLogger _eventLogger;
 
-    public int PendingCount => _pendingCount;
+    private readonly List<Exposure> _exposures = new();
 
-    private bool _failed;
-    private bool _closed;
-    private int _closing;
-    private int _refreshing;
+
+    private readonly DictionaryLockableAdapter<string, byte[]> _hashedUnits;
+    private readonly ILogger<Context> _logger;
+    private readonly DictionaryLockableAdapter<string, int?> _overrides;
+    private readonly int _publishDelay;
+    private readonly int _refreshInterval;
 
     private readonly object _refreshTimerLock = new();
     private readonly object _timeoutLock = new();
-    private readonly object _eventLock = new();
+    private readonly Dictionary<string, string> _units;
+    private readonly IVariableParser _variableParser;
+    private bool _closed;
+    private int _closing;
+
+    private ContextData _data;
+
+    private bool _failed;
+    private Dictionary<string, ExperimentVariables> _index;
+    private DictionaryLockableAdapter<string, ExperimentVariables> _indexVariables;
+
+    private volatile int _pendingCount;
+    private int _refreshing;
+    private volatile CancellationTokenSource _refreshTimer;
 
     private volatile CancellationTokenSource _timeout;
-    private volatile CancellationTokenSource _refreshTimer;
-    private readonly ILogger<Context> _logger;
 
     #region Constructor & Initialization
 
@@ -74,11 +72,11 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         IContextEventHandler eventHandler,
         IContextEventLogger eventLogger,
         IVariableParser variableParser,
-        AudienceMatcher audienceMatcher, 
+        AudienceMatcher audienceMatcher,
         ILoggerFactory loggerFactory)
     {
         if (config == null) throw new ArgumentNullException(nameof(config), "Context configuration is required");
-        
+
         _logger = loggerFactory.CreateLogger<Context>();
         _clock = clock;
         _publishDelay = Convert.ToInt32(config.PublishDelay.TotalMilliseconds);
@@ -94,19 +92,24 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         if (config.Units != null)
             SetUnits(config.Units);
 
-        _assigners = new DictionaryLockableAdapter<string, VariantAssigner>(new LockableCollectionSlimLock(_contextLock), _units.Count);
-        _hashedUnits = new DictionaryLockableAdapter<string, byte[]>(new LockableCollectionSlimLock(_contextLock), _units.Count);
+        _assigners =
+            new DictionaryLockableAdapter<string, VariantAssigner>(new LockableCollectionSlimLock(_contextLock),
+                _units.Count);
+        _hashedUnits =
+            new DictionaryLockableAdapter<string, byte[]>(new LockableCollectionSlimLock(_contextLock), _units.Count);
 
         _attributes = new ListLockableAdapter<Attribute>(new LockableCollectionSlimLock(_contextLock));
         if (config.Attributes != null)
             SetAttributes(config.Attributes);
 
         _overrides = config.Overrides != null
-            ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock), config.Overrides)
+            ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock),
+                config.Overrides)
             : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
 
         _customAssignments = config.CustomAssignments != null
-            ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock), config.CustomAssignments)
+            ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock),
+                config.CustomAssignments)
             : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
 
         if (data != null)
@@ -127,30 +130,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     #endregion
 
-
-    #region Status
-
-    public bool IsReady()
-    {
-        return _data != null;
-    }
-
-    public bool IsFailed()
-    {
-        return _failed;
-    }
-
-    public bool IsClosed()
-    {
-        return _closed;
-    }
-
-    public bool IsClosing()
-    {
-        return !_closed && _closing > 0;
-    }
-
-    #endregion
+    public int PendingCount => _pendingCount;
 
 
     public string[] GetExperiments()
@@ -184,158 +164,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     }
 
 
-    #region Attribute
-
-    public void SetAttribute(string name, object value)
-    {
-        CheckNotClosed();
-
-        var attribute = new Attribute { Name = name, Value = value, SetAt = _clock.Millis() };
-        _attributes.ConcurrentAdd(attribute);
-    }
-
-    public void SetAttributes(Dictionary<string, object> attributes)
-    {
-        foreach (var kvp in attributes) SetAttribute(kvp.Key, kvp.Value);
-    }
-
-    #endregion
-
-    #region CustomAssignment
-
-    public void SetCustomAssignment(string experimentName, int variant)
-    {
-        CheckNotClosed();
-
-        _customAssignments.ConcurrentSet(experimentName, variant);
-    }
-
-    public int? GetCustomAssignment(string experimentName) => 
-        _customAssignments.ConcurrentGetValueOrDefault(experimentName);
-
-    public void SetCustomAssignments(Dictionary<string, int> customAssignments)
-    {
-        foreach (var kvp in customAssignments) SetCustomAssignment(kvp.Key, kvp.Value);
-    }
-
-    #endregion
-
-    #region Override
-
-    public void SetOverride(string experimentName, int variant)
-    {
-        CheckNotClosed();
-        _overrides.ConcurrentSet(experimentName, variant);
-    }
-
-    public int? GetOverride(string experimentName) => 
-        _overrides.ConcurrentGetValueOrDefault(experimentName);
-
-    public void SetOverrides(Dictionary<string, int> overrides)
-    {
-        foreach (var kvp in overrides) SetOverride(kvp.Key, kvp.Value);
-    }
-
-    #endregion
-
-    #region Treatment
-
-    public int GetTreatment(string experimentName) => InternalGetTreatmentAsync(experimentName, true) ?? 0;
-
-    public int PeekTreatment(string experimentName) => InternalGetTreatmentAsync(experimentName, false) ?? 0;
-
-    private int? InternalGetTreatmentAsync(string experimentName, bool doExposure)
-    {
-        CheckReady(true);
-
-        var assignment = GetAssignment(experimentName);
-        if (doExposure && assignment.Exposed == 0)
-            QueueExposure(assignment);
-
-        return assignment.Variant;
-    }
-
-    #endregion
-
-    #region Unit
-
-    public void SetUnit(string unitType, string uid)
-    {
-        CheckNotClosed();
-
-        var uidTrimmed = uid.Trim();
-        if (string.IsNullOrEmpty(uidTrimmed))
-            throw new ArgumentException($"Unit '{unitType}' UID must not be blank.");
-        
-        try
-        {
-            _contextLock.EnterWriteLock();
-
-            var previous = _units.TryGetValue(unitType, out var u) ? u : null;
-            if (previous != null && !previous.Equals(uidTrimmed))
-                throw new ArgumentException($"Unit '{unitType}' already set.");
-
-            _units.Add(unitType, uidTrimmed);
-        }
-        finally
-        {
-            _contextLock.ExitWriteLock();
-        }
-    }
-
-    public void SetUnits(Dictionary<string, string> units)
-    {
-        foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
-    }
-
-    #endregion
-
-    #region Variable
-
-    public Dictionary<string, string> GetVariableKeys()
-    {
-        CheckReady(true);
-
-        var variableKeys = new Dictionary<string, string>(_indexVariables.Count);
-
-        try
-        {
-            _dataLock.EnterReadLock();
-
-            foreach (var kv in _indexVariables) variableKeys.Add(kv.Key, kv.Value.Data.Name);
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
-
-        return variableKeys;
-    }
-
-    public object GetVariableValue(string key, object defaultValue) => InternalGetVariableValueAsync(key, defaultValue, true);
-
-    public object PeekVariableValue(string key, object defaultValue) => InternalGetVariableValueAsync(key, defaultValue, false);
-
-    private object InternalGetVariableValueAsync(string key, object defaultValue, bool doExposure)
-    {
-        CheckReady(true);
-
-        var assignment = GetVariableAssignment(key);
-        if (assignment?.Variables is null) return defaultValue;
-
-        if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);
-
-        return assignment.Variables.TryGetValue(key, out var variable) ? variable : defaultValue;
-    }
-
-    #endregion
-
-
     private void QueueExposure(Assignment assignment)
     {
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
-            var exposure = new Exposure{
+            var exposure = new Exposure
+            {
                 Id = assignment.Id,
                 Name = assignment.Name,
                 Unit = assignment.UnitType,
@@ -365,78 +199,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             SetTimeout();
         }
     }
-
-
-    #region Public Control Functions - Publish / Refresh / Track
-
-    public void Publish()
-    {
-        AsyncHelpers.RunSync(async () => await PublishAsync());
-    }
-
-    public async Task PublishAsync()
-    {
-        CheckNotClosed();
-
-        await Flush().ConfigureUnboundContinuation();
-    }
-
-    public void Refresh()
-    {
-        AsyncHelpers.RunSync(async () => await RefreshAsync());
-    }
-
-    public async Task RefreshAsync()
-    {
-        CheckNotClosed();
-
-        if (Interlocked.CompareExchange(ref _refreshing, 1, 0) == 0)
-        {
-            try
-            {
-                var data = await _dataProvider.GetContextDataAsync().ConfigureUnboundContinuation();
-                SetData(data);
-                LogEvent(EventType.Refresh, data);
-            }
-            catch (Exception e)
-            {
-                LogError(e);
-                throw;
-            }
-            finally
-            {
-                Interlocked.Exchange(ref _refreshing, 0);
-            }
-        }
-    }
-
-    public void Track(string goalName, Dictionary<string, object> properties)
-    {
-        CheckNotClosed();
-
-        var achievement = new GoalAchievement{
-            AchievedAt = _clock.Millis(),
-            Name = goalName,
-            Properties = properties == null ? null : new SortedDictionary<string, object>(properties)
-        };
-
-        try
-        {
-            Monitor.Enter(_eventLock);
-            Interlocked.Increment(ref _pendingCount);
-            _achievements.Add(achievement);
-        }
-        finally
-        {
-            Monitor.Exit(_eventLock);
-        }
-
-        LogEvent(EventType.Goal, achievement);
-
-        SetTimeout();
-    }
-
-    #endregion
 
 
     private async Task Flush()
@@ -488,7 +250,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                             Units = _units
                                 .Select(kv => new Unit
                                 {
-                                    Type = kv.Key, 
+                                    Type = kv.Key,
                                     Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
                                 })
                                 .ToArray(),
@@ -529,23 +291,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         return _hashedUnits.ConcurrentGetOrAdd(unitType, _ => Md5.HashToUtf8Bytes(unitUid));
     }
-
-
-    #region Checks
-
-    private void CheckNotClosed()
-    {
-        if (_closed) throw new InvalidOperationException("ABSmartly Context is closed");
-        if (_closing > 0) throw new InvalidOperationException("ABSmartly Context is closing");
-    }
-
-    private void CheckReady(bool expectNotClosed)
-    {
-        if (!IsReady()) throw new Exception("ABSmartly Context is not yet ready");
-        if (expectNotClosed) CheckNotClosed();
-    }
-
-    #endregion
 
 
     private Assignment GetAssignment(string experimentName)
@@ -716,11 +461,291 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
-    private ExperimentVariables GetVariableExperiment(string key) => 
-        _indexVariables.ConcurrentGetValueOrDefault(key);
+    private ExperimentVariables GetVariableExperiment(string key)
+    {
+        return _indexVariables.ConcurrentGetValueOrDefault(key);
+    }
 
-    private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash) => 
-        _assigners.ConcurrentGetOrAdd(unitType, _ => new VariantAssigner(unitHash));
+    private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash)
+    {
+        return _assigners.ConcurrentGetOrAdd(unitType, _ => new VariantAssigner(unitHash));
+    }
+
+
+    #region Status
+
+    public bool IsReady()
+    {
+        return _data != null;
+    }
+
+    public bool IsFailed()
+    {
+        return _failed;
+    }
+
+    public bool IsClosed()
+    {
+        return _closed;
+    }
+
+    public bool IsClosing()
+    {
+        return !_closed && _closing > 0;
+    }
+
+    #endregion
+
+
+    #region Attribute
+
+    public void SetAttribute(string name, object value)
+    {
+        CheckNotClosed();
+
+        var attribute = new Attribute { Name = name, Value = value, SetAt = _clock.Millis() };
+        _attributes.ConcurrentAdd(attribute);
+    }
+
+    public void SetAttributes(Dictionary<string, object> attributes)
+    {
+        foreach (var kvp in attributes) SetAttribute(kvp.Key, kvp.Value);
+    }
+
+    #endregion
+
+    #region CustomAssignment
+
+    public void SetCustomAssignment(string experimentName, int variant)
+    {
+        CheckNotClosed();
+
+        _customAssignments.ConcurrentSet(experimentName, variant);
+    }
+
+    public int? GetCustomAssignment(string experimentName)
+    {
+        return _customAssignments.ConcurrentGetValueOrDefault(experimentName);
+    }
+
+    public void SetCustomAssignments(Dictionary<string, int> customAssignments)
+    {
+        foreach (var kvp in customAssignments) SetCustomAssignment(kvp.Key, kvp.Value);
+    }
+
+    #endregion
+
+    #region Override
+
+    public void SetOverride(string experimentName, int variant)
+    {
+        CheckNotClosed();
+        _overrides.ConcurrentSet(experimentName, variant);
+    }
+
+    public int? GetOverride(string experimentName)
+    {
+        return _overrides.ConcurrentGetValueOrDefault(experimentName);
+    }
+
+    public void SetOverrides(Dictionary<string, int> overrides)
+    {
+        foreach (var kvp in overrides) SetOverride(kvp.Key, kvp.Value);
+    }
+
+    #endregion
+
+    #region Treatment
+
+    public int GetTreatment(string experimentName)
+    {
+        return InternalGetTreatmentAsync(experimentName, true) ?? 0;
+    }
+
+    public int PeekTreatment(string experimentName)
+    {
+        return InternalGetTreatmentAsync(experimentName, false) ?? 0;
+    }
+
+    private int? InternalGetTreatmentAsync(string experimentName, bool doExposure)
+    {
+        CheckReady(true);
+
+        var assignment = GetAssignment(experimentName);
+        if (doExposure && assignment.Exposed == 0)
+            QueueExposure(assignment);
+
+        return assignment.Variant;
+    }
+
+    #endregion
+
+    #region Unit
+
+    public void SetUnit(string unitType, string uid)
+    {
+        CheckNotClosed();
+
+        var uidTrimmed = uid.Trim();
+        if (string.IsNullOrEmpty(uidTrimmed))
+            throw new ArgumentException($"Unit '{unitType}' UID must not be blank.");
+
+        try
+        {
+            _contextLock.EnterWriteLock();
+
+            var previous = _units.TryGetValue(unitType, out var u) ? u : null;
+            if (previous != null && !previous.Equals(uidTrimmed))
+                throw new ArgumentException($"Unit '{unitType}' already set.");
+
+            _units.Add(unitType, uidTrimmed);
+        }
+        finally
+        {
+            _contextLock.ExitWriteLock();
+        }
+    }
+
+    public void SetUnits(Dictionary<string, string> units)
+    {
+        foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
+    }
+
+    #endregion
+
+    #region Variable
+
+    public Dictionary<string, string> GetVariableKeys()
+    {
+        CheckReady(true);
+
+        var variableKeys = new Dictionary<string, string>(_indexVariables.Count);
+
+        try
+        {
+            _dataLock.EnterReadLock();
+
+            foreach (var kv in _indexVariables) variableKeys.Add(kv.Key, kv.Value.Data.Name);
+        }
+        finally
+        {
+            _dataLock.ExitReadLock();
+        }
+
+        return variableKeys;
+    }
+
+    public object GetVariableValue(string key, object defaultValue)
+    {
+        return InternalGetVariableValueAsync(key, defaultValue, true);
+    }
+
+    public object PeekVariableValue(string key, object defaultValue)
+    {
+        return InternalGetVariableValueAsync(key, defaultValue, false);
+    }
+
+    private object InternalGetVariableValueAsync(string key, object defaultValue, bool doExposure)
+    {
+        CheckReady(true);
+
+        var assignment = GetVariableAssignment(key);
+        if (assignment?.Variables is null) return defaultValue;
+
+        if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);
+
+        return assignment.Variables.TryGetValue(key, out var variable) ? variable : defaultValue;
+    }
+
+    #endregion
+
+
+    #region Public Control Functions - Publish / Refresh / Track
+
+    public void Publish()
+    {
+        AsyncHelpers.RunSync(async () => await PublishAsync());
+    }
+
+    public async Task PublishAsync()
+    {
+        CheckNotClosed();
+
+        await Flush().ConfigureUnboundContinuation();
+    }
+
+    public void Refresh()
+    {
+        AsyncHelpers.RunSync(async () => await RefreshAsync());
+    }
+
+    public async Task RefreshAsync()
+    {
+        CheckNotClosed();
+
+        if (Interlocked.CompareExchange(ref _refreshing, 1, 0) == 0)
+            try
+            {
+                var data = await _dataProvider.GetContextDataAsync().ConfigureUnboundContinuation();
+                SetData(data);
+                LogEvent(EventType.Refresh, data);
+            }
+            catch (Exception e)
+            {
+                LogError(e);
+                throw;
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _refreshing, 0);
+            }
+    }
+
+    public void Track(string goalName, Dictionary<string, object> properties)
+    {
+        CheckNotClosed();
+
+        var achievement = new GoalAchievement
+        {
+            AchievedAt = _clock.Millis(),
+            Name = goalName,
+            Properties = properties == null ? null : new SortedDictionary<string, object>(properties)
+        };
+
+        try
+        {
+            Monitor.Enter(_eventLock);
+            Interlocked.Increment(ref _pendingCount);
+            _achievements.Add(achievement);
+        }
+        finally
+        {
+            Monitor.Exit(_eventLock);
+        }
+
+        LogEvent(EventType.Goal, achievement);
+
+        SetTimeout();
+    }
+
+    #endregion
+
+
+    #region Checks
+
+    private void CheckNotClosed()
+    {
+        if (_closed) throw new InvalidOperationException("ABSmartly Context is closed");
+        if (_closing > 0) throw new InvalidOperationException("ABSmartly Context is closing");
+    }
+
+    private void CheckReady(bool expectNotClosed)
+    {
+        if (!IsReady()) throw new Exception("ABSmartly Context is not yet ready");
+        if (expectNotClosed) CheckNotClosed();
+    }
+
+    #endregion
 
 
     #region Timeout
@@ -860,7 +885,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _dataLock.EnterWriteLock();
 
             _index = index;
-            _indexVariables = new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock), indexVariables);
+            _indexVariables =
+                new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock),
+                    indexVariables);
             _data = data;
 
             SetRefreshTimer();
@@ -877,7 +904,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         {
             _dataLock.EnterWriteLock();
             _index = new Dictionary<string, ExperimentVariables>();
-            _indexVariables = new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock));
+            _indexVariables =
+                new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock));
             _data = new ContextData();
             _failed = true;
         }
@@ -973,6 +1001,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     public class Assignment
     {
+        public int Exposed;
+
+        public Dictionary<string, object> Variables = new();
         public int Id { get; set; }
         public int Iteration { get; set; }
         public int FullOnVariant { get; set; }
@@ -987,10 +1018,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         public bool Custom { get; set; }
 
         public bool AudienceMismatch { get; set; }
-
-        public Dictionary<string, object> Variables = new();
-
-        public int Exposed;
     }
 
     #endregion

@@ -38,8 +38,10 @@ public class ContextConfig
         return this;
     }
 
-    public string GetUnit(string unitType) => 
-        Units.TryGetValue(unitType, out var u) ? u : null;
+    public string GetUnit(string unitType)
+    {
+        return Units.TryGetValue(unitType, out var u) ? u : null;
+    }
 
     public ContextConfig SetAttribute(string name, object value)
     {
@@ -54,9 +56,11 @@ public class ContextConfig
         return this;
     }
 
-    public object GetAttribute(string name) => 
-        Attributes.TryGetValue(name, out var v) ? v : null;
-    
+    public object GetAttribute(string name)
+    {
+        return Attributes.TryGetValue(name, out var v) ? v : null;
+    }
+
     public ContextConfig SetOverride(string experimentName, int variant)
     {
         Overrides.Add(experimentName, variant);
@@ -70,8 +74,10 @@ public class ContextConfig
         return this;
     }
 
-    public object GetOverride(string experimentName) => 
-        Overrides.TryGetValue(experimentName, out var e) ? e : null;
+    public object GetOverride(string experimentName)
+    {
+        return Overrides.TryGetValue(experimentName, out var e) ? e : null;
+    }
 
     public ContextConfig SetCustomAssignment(string experimentName, int variant)
     {
@@ -86,6 +92,8 @@ public class ContextConfig
         return this;
     }
 
-    public object GetCustomAssignment(string experimentName) =>
-        CustomAssignments.TryGetValue(experimentName, out var c) ? c : null;
+    public object GetCustomAssignment(string experimentName)
+    {
+        return CustomAssignments.TryGetValue(experimentName, out var c) ? c : null;
+    }
 }

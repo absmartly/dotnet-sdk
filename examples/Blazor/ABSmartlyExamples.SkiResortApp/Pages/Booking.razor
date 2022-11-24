@@ -1,13 +1,17 @@
 ﻿@page "/booking"
+@using ABSmartlyExamples.SkiResortApp.Data
+@using System.Text.Json
+@using System.Text.Json.Serialization
 @inject IHttpClientFactory ClientFactory
 
 <PageTitle>Book apartments</PageTitle>
 
-@using ABSmartlyExamples.SkiResortApp.Data
-@using System.Text.Json
-@using System.Text.Json.Serialization
-
-<h1>Book your apartments - <button class="btn btn-outline-secondary" @onclick="GetData"><span class="oi oi-reload" aria-hidden="true"></span></button></h1>
+<h1>
+    Book your apartments -
+    <button class="btn btn-outline-secondary" @onclick="GetData">
+        <span class="oi oi-reload" aria-hidden="true"></span>
+    </button>
+</h1>
 
 <p>Check the weather forecast for upcoming days and book you apartments instantly!</p>
 
@@ -50,30 +54,30 @@ else
     if (_forecasts != null)
     {
         <table class="table">
-        <thead>
-        <tr>
-            <th>Date</th>
-            <th>Temp. (C)</th>
-            <th>Temp. (F)</th>
-            <th>Summary</th>
-        </tr>
-        </thead>
-        <tbody>
-        @foreach (var forecast in _forecasts)
-        {
+            <thead>
             <tr>
-                <td>@forecast.Date.ToShortDateString()</td>
-                <td>@forecast.TemperatureC</td>
-                <td>@forecast.TemperatureF</td>
-                <td>@forecast.Summary</td>
+                <th>Date</th>
+                <th>Temp. (C)</th>
+                <th>Temp. (F)</th>
+                <th>Summary</th>
             </tr>
-        }
-        </tbody>
-    </table>
-    
-    <div>
-        <button class="btn btn-primary" @onclick="Book">Book It!</button>
-    </div>
+            </thead>
+            <tbody>
+            @foreach (var forecast in _forecasts)
+            {
+                <tr>
+                    <td>@forecast.Date.ToShortDateString()</td>
+                    <td>@forecast.TemperatureC</td>
+                    <td>@forecast.TemperatureF</td>
+                    <td>@forecast.Summary</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+
+        <div>
+            <button class="btn btn-primary" @onclick="Book">Book It!</button>
+        </div>
     }
 }
 
@@ -94,7 +98,7 @@ else
         _bookStatus = null;
         _forecasts = null;
         _userId = null;
-        
+
         var request = new HttpRequestMessage(HttpMethod.Get,
             "https://localhost:7255/Test");
         request.Headers.Add("Accept", "application/json");
@@ -122,11 +126,11 @@ else
             _gotForecastError = true;
         }
     }
-    
+
     private async Task Book()
     {
         _bookStatus = null;
-        
+
         var request = new HttpRequestMessage(HttpMethod.Post,
             $"https://localhost:7255/Test/Book/{_userId}");
         request.Headers.Add("User-Agent", "ABSmartlyExamples-BlazorApp");
@@ -143,4 +147,5 @@ else
         Booked,
         Error
     }
+
 }

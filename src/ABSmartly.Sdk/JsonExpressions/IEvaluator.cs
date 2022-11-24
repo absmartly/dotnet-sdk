@@ -13,7 +13,7 @@ public interface IEvaluator
     object ExtractVariable(string path);
 
     /// <summary>
-    /// returns -1 -> lesser, 0 -> equals, 1 -> greater, null -> undefined comparison
+    ///     returns -1 -> lesser, 0 -> equals, 1 -> greater, null -> undefined comparison
     /// </summary>
     int? Compare(object lhs, object rhs);
 }

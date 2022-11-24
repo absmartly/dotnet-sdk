@@ -4,20 +4,20 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using ABSmartly.Models;
-using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Logging;
 
 namespace ABSmartly;
 
 public class ABSmartlyService : IABSmartlyServiceClient
 {
-    private readonly string _url;
     private readonly ABSmartlyServiceConfiguration _config;
-    private readonly IABSdkHttpClientFactory _httpClientFactory;
 
     private readonly IContextDataDeserializer _dataDeserializer;
     private readonly IContextEventSerializer _eventSerializer;
+    private readonly IABSdkHttpClientFactory _httpClientFactory;
     private readonly ILogger<ABSmartlyService> _logger;
+    private readonly string _url;
 
     public ABSmartlyService(ABSmartlyServiceConfiguration config,
         IABSdkHttpClientFactory httpClientFactory,
@@ -27,11 +27,11 @@ public class ABSmartlyService : IABSmartlyServiceClient
     {
         _config = config ??
                   throw new ArgumentNullException(nameof(config), $"{nameof(ABSmartlyService)} config is required");
-        
+
         _httpClientFactory = httpClientFactory ??
                              throw new ArgumentNullException(nameof(httpClientFactory),
                                  "HTTP client factory is required");
-        
+
         _dataDeserializer = dataDeserializer ??
                             throw new ArgumentNullException(nameof(dataDeserializer), "Data deserializer is required");
         _eventSerializer = eventSerializer ??
@@ -83,10 +83,10 @@ public class ABSmartlyService : IABSmartlyServiceClient
             SetupDefaultHeaders(httpClient);
 
             var serializedEvent = _eventSerializer.Serialize(publishEvent);
-            
+
             var content = new ByteArrayContent(serializedEvent);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-            
+
             var result = await httpClient.PutAsync(_url, content);
 
             if (!result.IsSuccessStatusCode)
@@ -117,7 +117,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
 
     private Dictionary<string, string> GetDefaultQueryParameters()
     {
-        return new()
+        return new Dictionary<string, string>
         {
             ["application"] = _config.Application,
             ["environment"] = _config.Environment

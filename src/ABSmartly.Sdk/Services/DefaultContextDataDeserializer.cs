@@ -1,9 +1,9 @@
 ﻿using System;
 using System.IO;
+using System.Text.Json;
 using ABSmartly.Models;
 using ABSmartly.Services.Json;
 using Microsoft.Extensions.Logging;
-using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace ABSmartly.Services;
 

@@ -6,7 +6,7 @@ namespace ABSmartly.Sdk.Tests.Services;
 public class AudienceMatcherTests
 {
     private readonly AudienceMatcher _matcher = new(new DefaultAudienceDeserializer());
-    
+
     [Test]
     public void EvaluateReturnsNullOnEmptyAudience()
     {
@@ -14,7 +14,7 @@ public class AudienceMatcherTests
         _matcher.Evaluate("{}", null).Should().BeNull();
         _matcher.Evaluate("null", null).Should().BeNull();
     }
-    
+
     [Test]
     public void EvaluateReturnsNullIfFilterIsNotDictionaryOrList()
     {
@@ -23,7 +23,7 @@ public class AudienceMatcherTests
         _matcher.Evaluate(@"{""filter"": 5}", null).Should().BeNull();
         _matcher.Evaluate(@"{""filter"": ""a""}", null).Should().BeNull();
     }
-    
+
     [Test]
     public void EvaluateReturnsBoolean()
     {
@@ -37,7 +37,7 @@ public class AudienceMatcherTests
         _matcher.Evaluate(
             @"{""filter"": [{""not"": {""var"": ""returning""}}]}",
             T.MapOf("returning", true)).Should().Be(false);
-        
+
         _matcher.Evaluate(
             @"{""filter"": [{""not"": {""var"": ""returning""}}]}",
             T.MapOf("returning", false)).Should().Be(true);

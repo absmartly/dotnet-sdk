@@ -8,11 +8,20 @@ public class Unit
     public string Type { get; set; }
     public string Uid { get; set; }
 
+    private string DebugView => $"Unit{{type={Type}, uid={Uid}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
     #region Equality members
 
-    protected bool Equals(Unit other) => 
-        Type == other.Type && 
-        Uid == other.Uid;
+    protected bool Equals(Unit other)
+    {
+        return Type == other.Type &&
+               Uid == other.Uid;
+    }
 
     public override bool Equals(object obj)
     {
@@ -31,7 +40,4 @@ public class Unit
     }
 
     #endregion
-
-    private string DebugView => $"Unit{{type={Type}, uid={Uid}}}";
-    public override string ToString() => DebugView;
 }

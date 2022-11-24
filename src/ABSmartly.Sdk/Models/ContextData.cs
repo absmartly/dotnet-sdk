@@ -9,9 +9,8 @@ public class ContextData
 {
     public ContextData()
     {
-        
     }
-    
+
     public ContextData(Experiment[] experiments)
     {
         Experiments = experiments;
@@ -19,11 +18,20 @@ public class ContextData
 
     public Experiment[] Experiments { get; set; }
 
+    private string DebugView => $"ContextData{{experiments={Experiments.ToArrayString()}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
 
     #region Equality members
 
-    protected bool Equals(ContextData other) => 
-        ArrayEquality.Equals(Experiments, other.Experiments);
+    protected bool Equals(ContextData other)
+    {
+        return ArrayEquality.Equals(Experiments, other.Experiments);
+    }
 
     public override bool Equals(object obj)
     {
@@ -39,7 +47,4 @@ public class ContextData
     }
 
     #endregion
-    
-    private string DebugView => $"ContextData{{experiments={Experiments.ToArrayString()}}}";
-    public override string ToString() => DebugView;
 }

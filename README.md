@@ -1,12 +1,15 @@
 # A/B Smartly DotNet SDK
 
-Latest stable: [![NuGet stable](https://img.shields.io/nuget/v/ABSmartly.Sdk?style=flat-square)](https://www.nuget.org/packages/ABSmartly.Sdk)
+Latest
+stable: [![NuGet stable](https://img.shields.io/nuget/v/ABSmartly.Sdk?style=flat-square)](https://www.nuget.org/packages/ABSmartly.Sdk)
 
-Current prerelease: [![NuGet pre](https://img.shields.io/nuget/vpre/ABSmartly.Sdk?style=flat-square)](https://www.nuget.org/packages/ABSmartly.Sdk)
+Current
+prerelease: [![NuGet pre](https://img.shields.io/nuget/vpre/ABSmartly.Sdk?style=flat-square)](https://www.nuget.org/packages/ABSmartly.Sdk)
 
 ## Installation
 
 Install the A/B Smartly DotNet SDK from Nuget
+
 ```shell
 dotnet add package ABSmartly.Sdk --version 1.0.0
 ```
@@ -16,11 +19,14 @@ SDK targets .NET Standard 2.0 and .NET 5.
 ## Getting Started
 
 #### Initialization
-Following examples assume an Api Key, an Application, and an Environment have been created in the A/B Smartly web console.
+
+Following examples assume an Api Key, an Application, and an Environment have been created in the A/B Smartly web
+console.
 
 Given that project uses .NET dependency injection, the default setup for the SDK can be used:
 
 Startup code:
+
 ```csharp
 using ABSmartly;
 using ABSmartly.DependencyInjection;
@@ -35,6 +41,7 @@ builder.Services.AddABSmartly(builder.Configuration.GetSection("ABSmartly"), Htt
 ```
 
 appsettings.json:
+
 ```json
 {
   "ABSmartly": {
@@ -47,6 +54,7 @@ appsettings.json:
 ```
 
 ABSdk instance is added as a singleton then, and can be injected at usage places:
+
 ```csharp
 using ABSmartly;
 using Microsoft.AspNetCore.Mvc;
@@ -64,12 +72,11 @@ public class Test : ControllerBase
 }
 ```
 
-AddABSmartly extension method allows to configure SDK settings, HTTP connection settings, inject custom 
-implementation if context-specific services, and also configure additional HTTP requests policies using Polly.  
+AddABSmartly extension method allows to configure SDK settings, HTTP connection settings, inject custom
+implementation if context-specific services, and also configure additional HTTP requests policies using Polly.
 
+Alternatively, SDK instance can be created manually like in the following example.
 
-
-Alternatively, SDK instance can be created manually like in the following example. 
 ```csharp
 using ABSmartly;
 using ABSmartly.Services;
@@ -89,15 +96,15 @@ var abSdk = new ABSdk(new ABSdkHttpClientFactory(httpClientFactory), new ABSmart
 ...
 ```
 
-SDK uses IHttpClientFactory abstraction to effectively manage HTTP connections pool. This factory is 
+SDK uses IHttpClientFactory abstraction to effectively manage HTTP connections pool. This factory is
 injected using IABSdkHttpClientFactory as seen in the example above.
-In case custom behavior or implementation is required, inject own implementation of either 
+In case custom behavior or implementation is required, inject own implementation of either
 IHttpClientFactory or IABSdkHttpClientFactory.  
-In case of injecting IABSdkHttpClientFactory implementation make sure it creates named IHttpClient 
+In case of injecting IABSdkHttpClientFactory implementation make sure it creates named IHttpClient
 instances with name `ABSmartlySDK.HttpClient` (you can use static field in ABSdk class, `ABSdk.HttpClientName`).
 
-
 #### Creating a new Context synchronously
+
 ```csharp
     // define a new context request
     var config = new ContextConfig()
@@ -106,6 +113,7 @@ instances with name `ABSmartlySDK.HttpClient` (you can use static field in ABSdk
 ```
 
 #### Creating a new Context asynchronously
+
 ```csharp
     // define a new context request
     var config = new ContextConfig()
@@ -114,6 +122,7 @@ instances with name `ABSmartlySDK.HttpClient` (you can use static field in ABSdk
 ```
 
 #### Creating a new Context with pre-fetched data
+
 Creating a context involves a round-trip to the A/B Smartly event collector.
 We can avoid repeating the round-trip on the client-side by re-using data previously retrieved.
 
@@ -129,9 +138,12 @@ We can avoid repeating the round-trip on the client-side by re-using data previo
 ```
 
 #### Setting extra units for a context
+
 You can add additional units to a context by calling the `SetUnit()` or the `SetUnits()` method.
-This method may be used for example, when a user logs in to your application, and you want to use the new unit type to the context.
-Please note that **you cannot override an already set unit type** as that would be a change of identity, and will throw an exception. In this case, you must create a new context instead.
+This method may be used for example, when a user logs in to your application, and you want to use the new unit type to
+the context.
+Please note that **you cannot override an already set unit type** as that would be a change of identity, and will throw
+an exception. In this case, you must create a new context instead.
 The `SetUnit()` and `SetUnits()` methods can be called before the context is ready.
 
 ```csharp
@@ -143,7 +155,9 @@ The `SetUnit()` and `SetUnits()` methods can be called before the context is rea
 ```
 
 #### Setting context attributes
+
 The `SetAttribute()` and `SetAttributes()` methods can be called before the context is ready.
+
 ```csharp
     context.SetAttribute('user_agent', Request.Headers["User-Agent"]);
     
@@ -153,6 +167,7 @@ The `SetAttribute()` and `SetAttributes()` methods can be called before the cont
 ```
 
 #### Selecting a treatment
+
 ```csharp
     if (context.GetTreament("exp_test_experiment") == 0) {
         // user is in control group (variant 0)
@@ -162,12 +177,15 @@ The `SetAttribute()` and `SetAttributes()` methods can be called before the cont
 ```
 
 #### Selecting a treatment variable
+
 ```csharp
     var variable = context.GetVariableValue("my_variable");
 ```
 
 #### Tracking a goal achievement
+
 Goals are created in the A/B Smartly web console.
+
 ```csharp
     context.Track("payment", new Dictionary<string, object>() {
         { "item_count", 1 },
@@ -176,25 +194,30 @@ Goals are created in the A/B Smartly web console.
 ```
 
 #### Publishing pending data
+
 Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector, before proceeding.
 You can explicitly call the `Publish()` or `PublishAsync()` methods.
+
 ```csharp
     context.Publish();
 ```
 
 #### Disposing
-Context implements IDisposable and IAsyncDisposable interfaces to ensure all events have been published to the A/B 
-Smartly collector, like `Publish()`, and will also "seal" the context, throwing an error if any method that could 
+
+Context implements IDisposable and IAsyncDisposable interfaces to ensure all events have been published to the A/B
+Smartly collector, like `Publish()`, and will also "seal" the context, throwing an error if any method that could
 generate an event is called.
 
-Instead calling `Publish()` directly, `using` pattern can be used. 
+Instead calling `Publish()` directly, `using` pattern can be used.
+
 ```csharp
     using var context = _abSdk.CreateContext(config);
 ```
 
 #### Refreshing the context with fresh experiment data
+
 Sometimes for long-running contexts, the context is usually created once when the application is first started.
-However, any experiments being tracked in your production code, but started after the context was created, will 
+However, any experiments being tracked in your production code, but started after the context was created, will
 not be triggered.
 To mitigate this, we can use the `RefreshInterval` property on the context config.
 
@@ -205,8 +228,9 @@ To mitigate this, we can use the `RefreshInterval` property on the context confi
 ```
 
 Alternatively, the `Refresh()` method can be called manually.
-The `Refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently 
+The `Refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently
 started experiments when `GetTreatment()` is called again.
+
 ```csharp
     context.Refresh();
     // or
@@ -214,8 +238,10 @@ started experiments when `GetTreatment()` is called again.
 ```
 
 #### Using a custom Event Logger
+
 The A/B Smartly SDK can be instantiated with an event logger used for all contexts.
 In addition, an event logger can be specified when creating a particular context, in the `ContextConfig`.
+
 ```csharp
     // example implementation
     public class CustomEventLogger : IContextEventLogger
@@ -278,9 +304,9 @@ Currently, the SDK logs the following events:
 | `Goal` | `Context.Track()` method succeeds                               | `GoalAchievement` enqueued for publishing              |
 | `Close` | `Context` disposal succeeds               | `null`                                                 |
 
-
 #### Peek at treatment variants
-Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering 
+
+Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering
 an exposure.
 The A/B Smartly SDK provides a `PeekTreatment()` method for that.
 
@@ -293,14 +319,17 @@ The A/B Smartly SDK provides a `PeekTreatment()` method for that.
 ```
 
 ##### Peeking at variables
+
 ```csharp
     var variable = context.PeekVariableValue("my_variable");
 ```
 
 #### Overriding treatment variants
-During development, for example, it is useful to force a treatment for an experiment. This can be achieved with 
+
+During development, for example, it is useful to force a treatment for an experiment. This can be achieved with
 the `SetOverride()` and/or `SetOverrides()` methods.
 The `SetOverride()` and `SetOverrides()` methods can be called before the context is ready.
+
 ```csharp
     context.SetOverride("exp_test_experiment", 1); // force variant 1 of treatment
     context.SetOverrides(new Dictionary<string, int>() {
@@ -310,10 +339,14 @@ The `SetOverride()` and `SetOverrides()` methods can be called before the contex
 ```
 
 ## About A/B Smartly
-**A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
-A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.
+
+**A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for
+engineering and product teams that want to confidently deploy features as fast as they can develop them.
+A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer
+experience without breaking or degrading performance and/or business metrics.
 
 ### Have a look at our growing list of clients and SDKs:
+
 - [Java SDK](https://www.github.com/absmartly/java-sdk)
 - [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk)
 - [PHP SDK](https://www.github.com/absmartly/php-sdk)

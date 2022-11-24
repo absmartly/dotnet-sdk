@@ -7,10 +7,19 @@ public class ExperimentApplication
 {
     public string Name { get; set; }
 
+    private string DebugView => $"ExperimentApplication{{name={Name}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
     #region Equality members
 
-    protected bool Equals(ExperimentApplication other) => 
-        Name == other.Name;
+    protected bool Equals(ExperimentApplication other)
+    {
+        return Name == other.Name;
+    }
 
     public override bool Equals(object obj)
     {
@@ -26,7 +35,4 @@ public class ExperimentApplication
     }
 
     #endregion
-
-    private string DebugView => $"ExperimentApplication{{name={Name}}}";
-    public override string ToString() => DebugView;
 }

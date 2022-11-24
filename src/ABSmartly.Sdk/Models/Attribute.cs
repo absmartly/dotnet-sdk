@@ -9,12 +9,21 @@ public class Attribute
     public object Value { get; set; }
     public long SetAt { get; set; }
 
+    private string DebugView => $"Attribute{{name={Name}, value={Value}, setAt={SetAt}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
     #region Equality members
 
-    protected bool Equals(Attribute other) => 
-        Name == other.Name && 
-        Equals(Value, other.Value) && 
-        SetAt == other.SetAt;
+    protected bool Equals(Attribute other)
+    {
+        return Name == other.Name &&
+               Equals(Value, other.Value) &&
+               SetAt == other.SetAt;
+    }
 
     public override bool Equals(object obj)
     {
@@ -36,7 +45,4 @@ public class Attribute
     }
 
     #endregion
-    
-    private string DebugView => $"Attribute{{name={Name}, value={Value}, setAt={SetAt}}}";
-    public override string ToString() => DebugView;
 }

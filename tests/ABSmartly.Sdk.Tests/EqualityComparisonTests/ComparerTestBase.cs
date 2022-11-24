@@ -19,7 +19,7 @@ public abstract class ComparerTestBase
                 return false;
             });
     }
-    
+
     protected IEqualityComparer ValueComparerSelectorFn(object x)
     {
         return ValueComparer;

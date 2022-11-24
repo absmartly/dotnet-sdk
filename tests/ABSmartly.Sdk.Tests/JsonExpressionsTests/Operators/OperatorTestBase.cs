@@ -4,7 +4,7 @@ namespace ABSmartly.Sdk.Tests.JsonExpressionsTests.Operators;
 
 public abstract class OperatorTestBase
 {
-    protected IEvaluator Evaluator;
+    protected IEvaluator Evaluator = null!;
 
     [SetUp]
     public void SetUp()
@@ -12,9 +12,11 @@ public abstract class OperatorTestBase
         Evaluator = Mock.Of<IEvaluator>();
 
         Mock.Get(Evaluator).Setup(e => e.Evaluate(It.IsAny<object>())).Returns<object>(x => x);
-        Mock.Get(Evaluator).Setup(e => e.BooleanConvert(It.IsAny<object>())).Returns<object>(x => x != null && Convert.ToBoolean(x));
+        Mock.Get(Evaluator).Setup(e => e.BooleanConvert(It.IsAny<object>()))
+            .Returns<object>(x => x != null && Convert.ToBoolean(x));
         Mock.Get(Evaluator).Setup(e => e.NumberConvert(It.IsAny<object>())).Returns<object>(x => Convert.ToDouble(x));
-        Mock.Get(Evaluator).Setup(e => e.StringConvert(It.IsAny<object>())).Returns<object>(x => x.ToString() ?? string.Empty);
+        Mock.Get(Evaluator).Setup(e => e.StringConvert(It.IsAny<object>()))
+            .Returns<object>(x => x.ToString() ?? string.Empty);
         Mock.Get(Evaluator).Setup(e => e.ExtractVariable("a/b/c")).Returns("abc");
         Mock.Get(Evaluator).Setup(e => e.Compare(It.IsAny<object>(), It.IsAny<object>())).Returns<object, object>(
             (lhs, rhs) =>

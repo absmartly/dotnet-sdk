@@ -23,15 +23,16 @@ namespace ABSmartlyExamples.NETFramework461
                 ApiKey = "x3ZyxmeKmb6n3VilTGs5I6-tBdaS9gYyr3i4YQXmUZcpPhH8nd8ev44NoEL_3yvA"
             });
 
-            var config = new ContextConfig().SetUnit("user_id", "test_classic_dotnet_2");;
+            var config = new ContextConfig().SetUnit("user_id", "test_classic_dotnet_2");
+
             var context = await abSdk.CreateContextAsync(config);
 
             var treatment = context.GetTreatment("net_seasons");
-            
+
             context.Track("booking", new Dictionary<string, object>
             {
                 { "bookingTime", DateTime.Now },
-                { "selectedTreatment", treatment },
+                { "selectedTreatment", treatment }
             });
 
             await context.PublishAsync();

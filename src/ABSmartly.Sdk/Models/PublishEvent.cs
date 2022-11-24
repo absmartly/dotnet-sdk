@@ -14,15 +14,25 @@ public class PublishEvent
     public GoalAchievement[] Goals { get; set; }
     public Attribute[] Attributes { get; set; }
 
+    private string DebugView =>
+        $"PublishEvent{{hashedUnits={Hashed}, units={Units.ToArrayString()}, publishedAt={PublishedAt}, exposures={Exposures.ToArrayString()}, goals={Goals.ToArrayString()}, attributes={Attributes.ToArrayString()}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
     #region Equality members
 
-    protected bool Equals(PublishEvent other) =>
-        Hashed == other.Hashed && 
-        PublishedAt == other.PublishedAt &&
-        ArrayEquality.Equals(Units, other.Units) && 
-        ArrayEquality.Equals(Exposures, other.Exposures) && 
-        ArrayEquality.Equals(Goals, other.Goals) && 
-        ArrayEquality.Equals(Attributes, other.Attributes);
+    protected bool Equals(PublishEvent other)
+    {
+        return Hashed == other.Hashed &&
+               PublishedAt == other.PublishedAt &&
+               ArrayEquality.Equals(Units, other.Units) &&
+               ArrayEquality.Equals(Exposures, other.Exposures) &&
+               ArrayEquality.Equals(Goals, other.Goals) &&
+               ArrayEquality.Equals(Attributes, other.Attributes);
+    }
 
     public override bool Equals(object obj)
     {
@@ -47,9 +57,4 @@ public class PublishEvent
     }
 
     #endregion
-    
-    private string DebugView =>
-        $"PublishEvent{{hashedUnits={Hashed}, units={Units.ToArrayString()}, publishedAt={PublishedAt}, exposures={Exposures.ToArrayString()}, goals={Goals.ToArrayString()}, attributes={Attributes.ToArrayString()}}}";
-
-    public override string ToString() => DebugView;
 }

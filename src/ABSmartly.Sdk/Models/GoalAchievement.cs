@@ -11,12 +11,21 @@ public class GoalAchievement
     public long AchievedAt { get; set; }
     public IDictionary<string, object> Properties { get; set; }
 
+    private string DebugView => $"GoalAchievement{{name={Name}, achievedAt={AchievedAt}, properties={Properties}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
     #region Equality members
 
-    protected bool Equals(GoalAchievement other) =>
-        Name == other.Name && 
-        AchievedAt == other.AchievedAt &&
-        new DictionaryComparer(EqualityComparerSelectors.Default).Equals(Properties, other.Properties);
+    protected bool Equals(GoalAchievement other)
+    {
+        return Name == other.Name &&
+               AchievedAt == other.AchievedAt &&
+               new DictionaryComparer(EqualityComparerSelectors.Default).Equals(Properties, other.Properties);
+    }
 
     public override bool Equals(object obj)
     {
@@ -38,7 +47,4 @@ public class GoalAchievement
     }
 
     #endregion
-
-    private string DebugView => $"GoalAchievement{{name={Name}, achievedAt={AchievedAt}, properties={Properties}}}";
-    public override string ToString() => DebugView;
 }
