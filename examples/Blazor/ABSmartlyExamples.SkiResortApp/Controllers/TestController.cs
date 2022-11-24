@@ -93,7 +93,7 @@ public class Test : ControllerBase
 
     private class CustomEventLogger : IContextEventLogger
     {
-        public void HandleEvent(Context context, EventType eventType, object data)
+        public void HandleEvent(IContext context, EventType eventType, object data)
         {
             switch (eventType)
             {

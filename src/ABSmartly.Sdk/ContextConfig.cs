@@ -9,8 +9,8 @@ public class ContextConfig
     {
         Units = new Dictionary<string, string>();
         Attributes = new Dictionary<string, object>();
-        Overrides = new Dictionary<string, int>();
-        CustomAssignments = new Dictionary<string, int>();
+        Overrides = new Dictionary<string, int?>();
+        CustomAssignments = new Dictionary<string, int?>();
 
         PublishDelay = TimeSpan.FromMilliseconds(100);
         RefreshInterval = TimeSpan.FromMilliseconds(0);
@@ -18,8 +18,8 @@ public class ContextConfig
 
     public Dictionary<string, string> Units { get; }
     public Dictionary<string, object> Attributes { get; }
-    public Dictionary<string, int> Overrides { get; }
-    public Dictionary<string, int> CustomAssignments { get; }
+    public Dictionary<string, int?> Overrides { get; }
+    public Dictionary<string, int?> CustomAssignments { get; }
 
     public TimeSpan PublishDelay { get; set; }
     public TimeSpan RefreshInterval { get; set; }
@@ -35,7 +35,6 @@ public class ContextConfig
     public ContextConfig SetUnits(Dictionary<string, string> units)
     {
         foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
-
         return this;
     }
 
@@ -55,6 +54,11 @@ public class ContextConfig
         foreach (var kvp in attributes) Attributes.Add(kvp.Key, kvp.Value);
 
         return this;
+    }
+
+    public object GetAttribute(string name)
+    {
+        return Attributes.TryGetValue(name, out var v) ? v : null;
     }
 
     public ContextConfig SetOverride(string experimentName, int variant)

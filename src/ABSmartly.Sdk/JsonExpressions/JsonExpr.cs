@@ -26,7 +26,7 @@ public static class JsonExpr
     {
         var evaluator = new ExprEvaluator(Operators, variables);
         var evaluateResult = evaluator.Evaluate(expression);
-        
+
         return evaluator.BooleanConvert(evaluateResult);
     }
 }

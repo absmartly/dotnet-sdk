@@ -11,8 +11,9 @@ namespace ABSmartly.Concurrency;
 internal static class AsyncHelpers
 {
     /// <summary>
-    /// Executes a task synchronously on the calling thread by installing a temporary synchronization context that queues continuations
-    ///  </summary>
+    ///     Executes a task synchronously on the calling thread by installing a temporary synchronization context that queues
+    ///     continuations
+    /// </summary>
     public static void RunSync(Func<Task> task)
     {
         var currentContext = SynchronizationContext.Current;
@@ -38,13 +39,13 @@ internal static class AsyncHelpers
     }
 
     /// <summary>
-    /// Synchronization context that can be "pumped" in order to have it execute continuations posted back to it
+    ///     Synchronization context that can be "pumped" in order to have it execute continuations posted back to it
     /// </summary>
     private class CustomSynchronizationContext : SynchronizationContext
     {
         private readonly ConcurrentQueue<Tuple<SendOrPostCallback, object>> _items = new();
-        private readonly AutoResetEvent _workItemsWaiting = new(false);
         private readonly Func<Task> _task;
+        private readonly AutoResetEvent _workItemsWaiting = new(false);
 
         private ExceptionDispatchInfo _caughtException;
 
@@ -63,7 +64,7 @@ internal static class AsyncHelpers
         }
 
         /// <summary>
-        /// Enqueues the function to be executed and executes all resulting continuations until it is completely done
+        ///     Enqueues the function to be executed and executes all resulting continuations until it is completely done
         /// </summary>
         public void Run()
         {

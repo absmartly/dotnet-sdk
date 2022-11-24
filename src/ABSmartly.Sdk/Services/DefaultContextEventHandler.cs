@@ -12,7 +12,7 @@ public class DefaultContextEventHandler : IContextEventHandler
         _client = client;
     }
 
-    public async Task PublishAsync(Context context, PublishEvent publishEvent)
+    public async Task PublishAsync(IContext context, PublishEvent publishEvent)
     {
         await _client.PublishAsync(publishEvent);
     }

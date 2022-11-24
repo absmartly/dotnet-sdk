@@ -4,14 +4,12 @@ using System.Security.Authentication;
 using ABSmartly.Services;
 using ABSmartly.Services.Json;
 using Microsoft.Extensions.Configuration;
-
-#if NETCOREAPP2_1_OR_GREATER || NETCOREAPP || NET
-using System.Net.Security;
-#endif
-
 using Microsoft.Extensions.DependencyInjection;
 using Polly;
 using Polly.Retry;
+#if NETCOREAPP2_1_OR_GREATER || NETCOREAPP || NET
+using System.Net.Security;
+#endif
 
 namespace ABSmartly.DependencyInjection;
 
@@ -36,7 +34,6 @@ public static class ServiceCollectionExtensions
         var builder = services.AddHttpClient(ABSdk.HttpClientName);
 
 #if NETCOREAPP2_1_OR_GREATER || NETCOREAPP || NET
-
         builder = builder
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {

@@ -14,7 +14,7 @@ public class DefaultVariableParser : JsonParserBase, IVariableParser
         _logger = loggerFactory?.CreateLogger<DefaultVariableParser>();
     }
 
-    public Dictionary<string, object> Parse(Context context, string experimentName, string variantName,
+    public Dictionary<string, object> Parse(IContext context, string experimentName, string variantName,
         string config)
     {
         try

@@ -1,15 +1,13 @@
-﻿using System;
-using System.Threading;
+﻿using System.Threading;
 using ABSmartly.Internal.Hashing;
 
 namespace ABSmartly.Internal;
 
 internal class VariantAssigner
 {
-    private readonly int _unitHash;
-
     private const double Normalizer = 1.0 / 0xffffffffL;
     private static readonly ThreadLocal<byte[]> ThreadBuffer = new(() => new byte[12]);
+    private readonly int _unitHash;
 
     public VariantAssigner(byte[] unitHash)
     {

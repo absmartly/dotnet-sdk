@@ -1,9 +1,10 @@
 ﻿using System.Diagnostics;
+using ABSmartly.EqualityComparison;
 using ABSmartly.Extensions;
 
 namespace ABSmartly.Models;
 
-[DebuggerDisplay("{StringLook}")]
+[DebuggerDisplay("{DebugView},nq")]
 public class PublishEvent
 {
     public bool Hashed { get; set; }
@@ -13,12 +14,24 @@ public class PublishEvent
     public GoalAchievement[] Goals { get; set; }
     public Attribute[] Attributes { get; set; }
 
-    #region Overrides - Equality / Hash / ToString
+    private string DebugView =>
+        $"PublishEvent{{hashedUnits={Hashed}, units={Units.ToArrayString()}, publishedAt={PublishedAt}, exposures={Exposures.ToArrayString()}, goals={Goals.ToArrayString()}, attributes={Attributes.ToArrayString()}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
+    #region Equality members
 
     protected bool Equals(PublishEvent other)
     {
-        return Hashed == other.Hashed && Equals(Units, other.Units) && PublishedAt == other.PublishedAt &&
-               Equals(Exposures, other.Exposures) && Equals(Goals, other.Goals) && Equals(Attributes, other.Attributes);
+        return Hashed == other.Hashed &&
+               PublishedAt == other.PublishedAt &&
+               ArrayEquality.Equals(Units, other.Units) &&
+               ArrayEquality.Equals(Exposures, other.Exposures) &&
+               ArrayEquality.Equals(Goals, other.Goals) &&
+               ArrayEquality.Equals(Attributes, other.Attributes);
     }
 
     public override bool Equals(object obj)
@@ -42,21 +55,6 @@ public class PublishEvent
             return hashCode;
         }
     }
-
-    public override string ToString()
-    {
-        return StringLook;
-    }
-
-    private string StringLook =>
-        "PublishEvent{" +
-        "hashedUnits=" + Hashed +
-        ", units=" + Units.ToArrayString() +
-        ", publishedAt=" + PublishedAt +
-        ", exposures=" + Exposures.ToArrayString() +
-        ", goals=" + Goals.ToArrayString() +
-        ", attributes=" + Attributes.ToArrayString() +
-        '}';
 
     #endregion
 }

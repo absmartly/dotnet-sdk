@@ -1,4 +1,5 @@
 ﻿using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace ABSmartly.Services;
 
@@ -11,8 +12,38 @@ public class ABSdkHttpClientFactory : IABSdkHttpClientFactory
         _httpClientFactory = httpClientFactory;
     }
 
-    public HttpClient CreateClient()
+    public IABSdkHttpClient CreateClient()
     {
-        return _httpClientFactory.CreateClient(ABSdk.HttpClientName);
+        return new HttpClientWrapper(_httpClientFactory.CreateClient(ABSdk.HttpClientName));
+    }
+
+    public class HttpClientWrapper : IABSdkHttpClient
+    {
+        private readonly HttpClient _client;
+
+        public HttpClientWrapper(HttpClient client)
+        {
+            _client = client;
+        }
+
+        public Task<HttpResponseMessage> GetAsync(string requestUri)
+        {
+            return _client.GetAsync(requestUri);
+        }
+
+        public Task<HttpResponseMessage> PutAsync(string requestUri, HttpContent content)
+        {
+            return _client.PutAsync(requestUri, content);
+        }
+
+        public void AddHeader(string name, string value)
+        {
+            _client.DefaultRequestHeaders.Add(name, value);
+        }
+
+        public void Dispose()
+        {
+            _client?.Dispose();
+        }
     }
 }

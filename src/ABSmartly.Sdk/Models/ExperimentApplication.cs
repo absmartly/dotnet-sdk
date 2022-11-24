@@ -1,15 +1,20 @@
-﻿namespace ABSmartly.Models;
+﻿using System.Diagnostics;
 
+namespace ABSmartly.Models;
+
+[DebuggerDisplay("{DebugView},nq")]
 public class ExperimentApplication
 {
-    public ExperimentApplication(string name)
-    {
-        Name = name;
-    }
-
     public string Name { get; set; }
 
-    #region Overrides - Equality / Hash / ToString
+    private string DebugView => $"ExperimentApplication{{name={Name}}}";
+
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
+    #region Equality members
 
     protected bool Equals(ExperimentApplication other)
     {
@@ -26,14 +31,7 @@ public class ExperimentApplication
 
     public override int GetHashCode()
     {
-        return Name != null ? Name.GetHashCode() : 0;
-    }
-
-    public override string ToString()
-    {
-        return "ExperimentApplication{" +
-               "name='" + Name + '\'' +
-               '}';
+        return Name?.GetHashCode() ?? 0;
     }
 
     #endregion

@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using ABSmartly.Concurrency;
 using ABSmartly.Extensions;
 using ABSmartly.Models;
@@ -14,19 +15,19 @@ public class ABSdk
 {
     public const string HttpClientName = "ABSmartlySDK.HttpClient";
 
-    private ILoggerFactory _loggerFactory;
-    private IABSdkHttpClientFactory _httpClientFactory;
+    private IAudienceDeserializer _audienceDeserializer;
 
     private IABSmartlyServiceClient _client;
+
+    private IContextDataDeserializer _contextDataDeserializer;
     private IContextDataProvider _contextDataProvider;
     private IContextEventHandler _contextEventHandler;
     private IContextEventLogger _contextEventLogger;
-    private IVariableParser _variableParser;
-
-    private IContextDataDeserializer _contextDataDeserializer;
     private IContextEventSerializer _contextEventSerializer;
+    private IABSdkHttpClientFactory _httpClientFactory;
 
-    private IAudienceDeserializer _audienceDeserializer;
+    private ILoggerFactory _loggerFactory;
+    private IVariableParser _variableParser;
 
     [ActivatorUtilitiesConstructor]
     public ABSdk(IABSdkHttpClientFactory httpClientFactory,
@@ -44,14 +45,16 @@ public class ABSdk
     {
         Init(httpClientFactory, serviceConfiguration, config, loggerFactory);
     }
-    
+
     private void Init(IABSdkHttpClientFactory httpClientFactory,
         ABSmartlyServiceConfiguration serviceConfiguration,
         ABSdkConfig config = null,
         ILoggerFactory loggerFactory = null)
     {
         _loggerFactory = loggerFactory ?? new LoggerFactory();
-        _httpClientFactory = httpClientFactory;
+        _httpClientFactory = httpClientFactory ??
+                             throw new ArgumentNullException(nameof(httpClientFactory),
+                                 "Missing HTTP client factory configuration");
 
         _contextDataDeserializer =
             config?.ContextDataDeserializer ?? new DefaultContextDataDeserializer(_loggerFactory);
@@ -60,10 +63,9 @@ public class ABSdk
         _client = new ABSmartlyService(
             serviceConfiguration,
             _httpClientFactory,
-            _loggerFactory,
             _contextDataDeserializer,
-            _contextEventSerializer
-        );
+            _contextEventSerializer,
+            _loggerFactory);
 
         _contextDataProvider = config?.ContextDataProvider ?? new DefaultContextDataProvider(_client);
         _contextEventHandler = config?.ContextEventHandler ?? new DefaultContextEventHandler(_client);
@@ -73,25 +75,27 @@ public class ABSdk
         _audienceDeserializer = config?.AudienceDeserializer ?? new DefaultAudienceDeserializer(_loggerFactory);
     }
 
-    public Context CreateContext(ContextConfig config = null)
+    public IContext CreateContext(ContextConfig config)
     {
         return AsyncHelpers.RunSync(async () => await CreateContextAsync(config));
     }
 
-    public async Task<Context> CreateContextAsync(ContextConfig config)
+    public async Task<IContext> CreateContextAsync(ContextConfig config)
     {
-        var context = new Context(config ?? new ContextConfig(),
+        var context = new Context(config,
             await _contextDataProvider.GetContextDataAsync().ConfigureUnboundContinuation(),
             Clock.SystemUtc(),
             _contextDataProvider,
             _contextEventHandler,
             _contextEventLogger,
-            _variableParser, new AudienceMatcher(_audienceDeserializer), _loggerFactory);
+            _variableParser,
+            new AudienceMatcher(_audienceDeserializer),
+            _loggerFactory);
 
         return context;
     }
 
-    public Context CreateContextWith(ContextConfig config, ContextData data)
+    public IContext CreateContextWith(ContextConfig config, ContextData data)
     {
         var context = new Context(config,
             data,
@@ -99,7 +103,9 @@ public class ABSdk
             _contextDataProvider,
             _contextEventHandler,
             _contextEventLogger,
-            _variableParser, new AudienceMatcher(_audienceDeserializer), _loggerFactory);
+            _variableParser,
+            new AudienceMatcher(_audienceDeserializer),
+            _loggerFactory);
 
         return context;
     }

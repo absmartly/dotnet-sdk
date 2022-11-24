@@ -1,23 +1,27 @@
-﻿namespace ABSmartly.Models;
+﻿using System.Diagnostics;
 
+namespace ABSmartly.Models;
+
+[DebuggerDisplay("{DebugView},nq")]
 public class ExperimentVariant
 {
-    public ExperimentVariant(string name, string config)
-    {
-        Name = name;
-        Config = config;
-    }
-
     public string Name { get; set; }
-
     public string Config { get; set; }
 
+    private string DebugView => $"ExperimentVariant{{name={Name}, config={Config}}}";
 
-    #region Overrides - Equality / Hash / ToString
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
+
+    #region Equality members
 
     protected bool Equals(ExperimentVariant other)
     {
-        return Name == other.Name && Config == other.Config;
+        return Name == other.Name &&
+               Config == other.Config;
     }
 
     public override bool Equals(object obj)
@@ -32,16 +36,8 @@ public class ExperimentVariant
     {
         unchecked
         {
-            return ((Name != null ? Name.GetHashCode() : 0) * 397) ^ (Config != null ? Config.GetHashCode() : 0);
+            return ((Name?.GetHashCode() ?? 0) * 397) ^ (Config?.GetHashCode() ?? 0);
         }
-    }
-
-    public override string ToString()
-    {
-        return "ExperimentVariant{" +
-               "name='" + Name + '\'' +
-               ", config='" + Config + '\'' +
-               '}';
     }
 
     #endregion

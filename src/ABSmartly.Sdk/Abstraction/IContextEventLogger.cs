@@ -2,5 +2,5 @@
 
 public interface IContextEventLogger
 {
-    void HandleEvent(Context context, EventType eventType, object data);
+    void HandleEvent(IContext context, EventType eventType, object data);
 }

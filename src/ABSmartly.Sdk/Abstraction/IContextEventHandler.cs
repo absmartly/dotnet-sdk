@@ -5,5 +5,5 @@ namespace ABSmartly;
 
 public interface IContextEventHandler
 {
-    Task PublishAsync(Context context, PublishEvent publishEvent);
+    Task PublishAsync(IContext context, PublishEvent publishEvent);
 }

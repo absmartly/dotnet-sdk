@@ -2,5 +2,8 @@
 
 public class NullOperator : UnaryOperator
 {
-    protected override object Unary(IEvaluator evaluator, object arg) => arg == null;
+    protected override object Unary(IEvaluator evaluator, object arg)
+    {
+        return arg == null;
+    }
 }

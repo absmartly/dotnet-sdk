@@ -17,9 +17,6 @@ public class DefaultContextEventSerializer : IContextEventSerializer
 
     public byte[] Serialize(PublishEvent publishEvent)
     {
-        if (publishEvent is null)
-            throw new ArgumentNullException(nameof(publishEvent));
-
         try
         {
             return JsonSerializer.SerializeToUtf8Bytes(publishEvent, JsonOptionsProvider.Default.SerializerOptions);

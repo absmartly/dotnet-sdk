@@ -3,7 +3,7 @@ namespace ABSmartlyExamples.SkiResortApp.Data;
 public class WeatherForecast
 {
     public string? UserId { get; set; }
-    
+
     public DateTime Date { get; set; }
 
     public int TemperatureC { get; set; }

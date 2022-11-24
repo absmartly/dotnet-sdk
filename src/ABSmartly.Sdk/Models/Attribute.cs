@@ -1,24 +1,28 @@
-﻿namespace ABSmartly.Models;
+﻿using System.Diagnostics;
 
+namespace ABSmartly.Models;
+
+[DebuggerDisplay("{DebugView},nq")]
 public class Attribute
 {
-    public Attribute(string name, object value, long setAt)
-    {
-        Name = name;
-        Value = value;
-        SetAt = setAt;
-    }
-
     public string Name { get; set; }
     public object Value { get; set; }
     public long SetAt { get; set; }
 
+    private string DebugView => $"Attribute{{name={Name}, value={Value}, setAt={SetAt}}}";
 
-    #region Overrides - Equality / Hash / ToString
+    public override string ToString()
+    {
+        return DebugView;
+    }
+
+    #region Equality members
 
     protected bool Equals(Attribute other)
     {
-        return Name == other.Name && Equals(Value, other.Value) && SetAt == other.SetAt;
+        return Name == other.Name &&
+               Equals(Value, other.Value) &&
+               SetAt == other.SetAt;
     }
 
     public override bool Equals(object obj)
@@ -33,20 +37,11 @@ public class Attribute
     {
         unchecked
         {
-            var hashCode = Name != null ? Name.GetHashCode() : 0;
-            hashCode = (hashCode * 397) ^ (Value != null ? Value.GetHashCode() : 0);
+            var hashCode = Name?.GetHashCode() ?? 0;
+            hashCode = (hashCode * 397) ^ (Value?.GetHashCode() ?? 0);
             hashCode = (hashCode * 397) ^ SetAt.GetHashCode();
             return hashCode;
         }
-    }
-
-    public override string ToString()
-    {
-        return "Attribute{" +
-               "name='" + Name + '\'' +
-               ", value=" + Value +
-               ", setAt=" + SetAt +
-               '}';
     }
 
     #endregion

@@ -2,16 +2,16 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
-using ABSmartly.JsonExpressions.EqualityComparison;
+using ABSmartly.EqualityComparison;
 
 namespace ABSmartly.JsonExpressions;
 
 public class ExprEvaluator : IEvaluator
 {
-    private readonly Dictionary<string, object> _vars;
+    private readonly DictionaryComparer _dictComparer = new(EqualityComparerSelectors.Default);
+    private readonly ListComparer _listComparer = new(EqualityComparerSelectors.Default);
     private readonly Dictionary<string, IOperator> _operators;
-    private readonly DictionaryComparer _dictComparer = new (EqualityComparerSelectors.Default);
-    private readonly ListComparer _listComparer = new (EqualityComparerSelectors.Default);
+    private readonly Dictionary<string, object> _vars;
 
     public ExprEvaluator(Dictionary<string, IOperator> operators, Dictionary<string, object> vars)
     {
@@ -24,14 +24,16 @@ public class ExprEvaluator : IEvaluator
         switch (expression)
         {
             case IList:
-                return _operators.TryGetValue("and", out var andOperator) ? andOperator.Evaluate(this, expression) : null;
+                return _operators.TryGetValue("and", out var andOperator)
+                    ? andOperator.Evaluate(this, expression)
+                    : null;
             case Dictionary<string, object> exprDictionary:
             {
                 foreach (var kvp in exprDictionary)
                 {
                     if (_operators.TryGetValue(kvp.Key, out var op))
                         return op.Evaluate(this, kvp.Value);
-                    
+
                     break;
                 }
 
@@ -42,8 +44,9 @@ public class ExprEvaluator : IEvaluator
         return null;
     }
 
-    public bool? BooleanConvert(object x) =>
-        x switch
+    public bool? BooleanConvert(object x)
+    {
+        return x switch
         {
             bool boolValue => boolValue,
             string stringValue => !stringValue.ToLower().Equals("false") && !stringValue.Equals("0") &&
@@ -51,9 +54,11 @@ public class ExprEvaluator : IEvaluator
             { } when GetNumber(x) is { } doubleValue => doubleValue != 0,
             _ => x != null
         };
+    }
 
-    public double? NumberConvert(object x) =>
-        x switch
+    public double? NumberConvert(object x)
+    {
+        return x switch
         {
             bool boolValue => boolValue ? 1 : 0,
             string stringValue when double.TryParse(stringValue, NumberStyles.Number, CultureInfo.InvariantCulture,
@@ -61,9 +66,11 @@ public class ExprEvaluator : IEvaluator
             { } when GetNumber(x) is { } doubleValue => doubleValue,
             _ => null
         };
+    }
 
-    public string StringConvert(object x) =>
-        x switch
+    public string StringConvert(object x)
+    {
+        return x switch
         {
             bool boolValue => boolValue.ToString().ToLowerInvariant(),
             string stringValue => stringValue,
@@ -71,6 +78,7 @@ public class ExprEvaluator : IEvaluator
                 new NumberFormatInfo { NumberDecimalSeparator = "." }),
             _ => null
         };
+    }
 
     public object ExtractVariable(string path)
     {
@@ -87,9 +95,9 @@ public class ExprEvaluator : IEvaluator
                     => v,
                 _ => null
             };
-                
+
             if (value is null) return null;
-            
+
             target = value;
         }
 
@@ -103,7 +111,7 @@ public class ExprEvaluator : IEvaluator
 
         if (rhs is null) return null;
 
-        if (GetNumber(lhs) is {} lhsDoubleValue)
+        if (GetNumber(lhs) is { } lhsDoubleValue)
         {
             var rhsDoubleValue = NumberConvert(rhs);
             if (rhsDoubleValue is null) return null;
@@ -115,7 +123,7 @@ public class ExprEvaluator : IEvaluator
         {
             var rhsStringValue = StringConvert(rhs);
             if (rhsStringValue is null) return null;
-            
+
             return string.Compare(lhsStringValue, rhsStringValue, StringComparison.Ordinal);
         }
 
@@ -127,7 +135,6 @@ public class ExprEvaluator : IEvaluator
         }
 
         if (lhs.GetType() == rhs.GetType())
-        {
             return lhs switch
             {
                 Dictionary<string, object> lhsDictionary => _dictComparer.Equals(lhsDictionary,
@@ -137,15 +144,16 @@ public class ExprEvaluator : IEvaluator
                 List<object> lhsList => _listComparer.Equals(lhsList, (List<object>)rhs) ? 0 : null,
                 _ => lhs.Equals(rhs) ? 0 : null
             };
-        }
 
         return null;
     }
 
-    private static double? GetNumber(object input) =>
-        input switch
+    private static double? GetNumber(object input)
+    {
+        return input switch
         {
             double d => d,
+            float f => f,
             byte => Convert.ToDouble(input),
             decimal => Convert.ToDouble(input),
             short => Convert.ToDouble(input),
@@ -156,4 +164,5 @@ public class ExprEvaluator : IEvaluator
             ulong => Convert.ToDouble(input),
             _ => null
         };
+    }
 }

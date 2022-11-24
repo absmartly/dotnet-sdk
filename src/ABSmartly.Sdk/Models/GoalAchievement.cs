@@ -1,27 +1,30 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics;
+using ABSmartly.EqualityComparison;
 
 namespace ABSmartly.Models;
 
-[DebuggerDisplay("{StringLook}")]
+[DebuggerDisplay("{DebugView},nq")]
 public class GoalAchievement
 {
-    public GoalAchievement(string name, long achievedAt, IDictionary<string, object> properties)
+    public string Name { get; set; }
+    public long AchievedAt { get; set; }
+    public IDictionary<string, object> Properties { get; set; }
+
+    private string DebugView => $"GoalAchievement{{name={Name}, achievedAt={AchievedAt}, properties={Properties}}}";
+
+    public override string ToString()
     {
-        Name = name;
-        AchievedAt = achievedAt;
-        Properties = properties;
+        return DebugView;
     }
 
-    public string Name { get; }
-    public long AchievedAt { get; }
-    public IDictionary<string, object> Properties { get; }
-
-    #region Overrides - Equality / Hash / ToString
+    #region Equality members
 
     protected bool Equals(GoalAchievement other)
     {
-        return Name == other.Name && AchievedAt == other.AchievedAt && Equals(Properties, other.Properties);
+        return Name == other.Name &&
+               AchievedAt == other.AchievedAt &&
+               new DictionaryComparer(EqualityComparerSelectors.Default).Equals(Properties, other.Properties);
     }
 
     public override bool Equals(object obj)
@@ -38,17 +41,10 @@ public class GoalAchievement
         {
             var hashCode = Name != null ? Name.GetHashCode() : 0;
             hashCode = (hashCode * 397) ^ AchievedAt.GetHashCode();
-            hashCode = (hashCode * 397) ^ (Properties != null ? Properties.GetHashCode() : 0);
+            hashCode = (hashCode * 397) ^ (Properties?.GetHashCode() ?? 0);
             return hashCode;
         }
     }
-
-    public override string ToString()
-    {
-        return StringLook;
-    }
-
-    private string StringLook => $"GoalAchievement{{name='{Name}', achievedAt={AchievedAt}, properties={Properties}}}";
 
     #endregion
 }
