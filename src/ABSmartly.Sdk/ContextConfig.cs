@@ -9,8 +9,8 @@ public class ContextConfig
     {
         Units = new Dictionary<string, string>();
         Attributes = new Dictionary<string, object>();
-        Overrides = new Dictionary<string, int>();
-        CustomAssignments = new Dictionary<string, int>();
+        Overrides = new Dictionary<string, int?>();
+        CustomAssignments = new Dictionary<string, int?>();
 
         PublishDelay = TimeSpan.FromMilliseconds(100);
         RefreshInterval = TimeSpan.FromMilliseconds(0);
@@ -18,8 +18,8 @@ public class ContextConfig
 
     public Dictionary<string, string> Units { get; }
     public Dictionary<string, object> Attributes { get; }
-    public Dictionary<string, int> Overrides { get; }
-    public Dictionary<string, int> CustomAssignments { get; }
+    public Dictionary<string, int?> Overrides { get; }
+    public Dictionary<string, int?> CustomAssignments { get; }
 
     public TimeSpan PublishDelay { get; set; }
     public TimeSpan RefreshInterval { get; set; }
@@ -35,14 +35,11 @@ public class ContextConfig
     public ContextConfig SetUnits(Dictionary<string, string> units)
     {
         foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
-
         return this;
     }
 
-    public string GetUnit(string unitType)
-    {
-        return Units.TryGetValue(unitType, out var u) ? u : null;
-    }
+    public string GetUnit(string unitType) => 
+        Units.TryGetValue(unitType, out var u) ? u : null;
 
     public ContextConfig SetAttribute(string name, object value)
     {
@@ -57,6 +54,9 @@ public class ContextConfig
         return this;
     }
 
+    public object GetAttribute(string name) => 
+        Attributes.TryGetValue(name, out var v) ? v : null;
+    
     public ContextConfig SetOverride(string experimentName, int variant)
     {
         Overrides.Add(experimentName, variant);
@@ -70,10 +70,8 @@ public class ContextConfig
         return this;
     }
 
-    public object GetOverride(string experimentName)
-    {
-        return Overrides.TryGetValue(experimentName, out var e) ? e : null;
-    }
+    public object GetOverride(string experimentName) => 
+        Overrides.TryGetValue(experimentName, out var e) ? e : null;
 
     public ContextConfig SetCustomAssignment(string experimentName, int variant)
     {
@@ -88,8 +86,6 @@ public class ContextConfig
         return this;
     }
 
-    public object GetCustomAssignment(string experimentName)
-    {
-        return CustomAssignments.TryGetValue(experimentName, out var c) ? c : null;
-    }
+    public object GetCustomAssignment(string experimentName) =>
+        CustomAssignments.TryGetValue(experimentName, out var c) ? c : null;
 }

@@ -1,7 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 
-namespace ABSmartly.JsonExpressions.EqualityComparison;
+namespace ABSmartly.EqualityComparison;
 
 public static class EqualityComparerSelectors
 {

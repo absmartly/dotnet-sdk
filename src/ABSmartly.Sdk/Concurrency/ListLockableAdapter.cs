@@ -1,34 +1,24 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Threading;
 
 namespace ABSmartly.Concurrency;
 
 public class ListLockableAdapter<T> : List<T>
 {
-    private readonly ReaderWriterLockSlim _lockSlim;
+    private readonly ILockableCollectionSlimLock _lockSlim;
 
-    public ListLockableAdapter(ReaderWriterLockSlim lockSlim)
+    public ListLockableAdapter(ILockableCollectionSlimLock lockSlim)
     {
-        _lockSlim = lockSlim;
+        _lockSlim = lockSlim ?? throw new ArgumentNullException(nameof(lockSlim), "Lock is required");
     }
 
-    public ListLockableAdapter(ReaderWriterLockSlim lockSlim, IEnumerable<T> collection) : base(collection)
+    public ListLockableAdapter(ILockableCollectionSlimLock lockSlim, IEnumerable<T> collection) : base(collection)
     {
-        _lockSlim = lockSlim;
-    }
-
-    private void EnsureLock()
-    {
-        if (_lockSlim == null)
-            throw new InvalidOperationException(
-                "Cannot perform synchronized operation because lock is missing. Use constructor with ReaderWriterLockSlim parameter.");
+        _lockSlim = lockSlim ?? throw new ArgumentNullException(nameof(lockSlim), "Lock is required");
     }
 
     public void ConcurrentAdd(T value)
     {
-        EnsureLock();
-
         try
         {
             _lockSlim.EnterWriteLock();

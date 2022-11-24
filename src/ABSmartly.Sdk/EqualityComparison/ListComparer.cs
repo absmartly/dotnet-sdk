@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ABSmartly.JsonExpressions.EqualityComparison;
+namespace ABSmartly.EqualityComparison;
 
 public class ListComparer: IEqualityComparer<List<object>>, IEqualityComparer
 {
@@ -33,7 +33,9 @@ public class ListComparer: IEqualityComparer<List<object>>, IEqualityComparer
         return true;
     }
 
-    bool IEqualityComparer.Equals(object x, object y)
+#pragma warning disable CS0108, CS0114
+    public bool Equals(object x, object y)
+#pragma warning restore CS0108, CS0114
     {
         if (ReferenceEquals(x, y)) return true;
         if (ReferenceEquals(x, null)) return false;

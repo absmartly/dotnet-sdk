@@ -9,10 +9,13 @@ namespace ABSmartly.Internal.Hashing;
 /// </summary>
 public static class MurMur3
 {
-    public static uint HashToUInt32(byte[] buffer)
+    public static uint HashToUInt32(byte[] buffer, uint seed = 0) => HashToUInt32(buffer, 0, buffer.Length, seed);
+
+    public static uint HashToUInt32(byte[] buffer, int offset, int len, uint seed = 0)
     {
-        using var murmur3 = MurmurHash.Create32(0);
-        var hashedBytes = murmur3.ComputeHash(buffer);
+        var span = new Span<byte>(buffer, offset, len);
+        using var murmur3 = MurmurHash.Create32(seed);
+        var hashedBytes = murmur3.ComputeHash(span.ToArray());
         var hashedValue = BitConverter.ToUInt32(hashedBytes, 0);
         return hashedValue;
     }

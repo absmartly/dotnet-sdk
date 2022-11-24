@@ -1,7 +1,10 @@
-﻿using ABSmartly.Extensions;
+﻿using System.Diagnostics;
+using ABSmartly.EqualityComparison;
+using ABSmartly.Extensions;
 
 namespace ABSmartly.Models;
 
+[DebuggerDisplay("{DebugView},nq")]
 public class Experiment
 {
     public int Id { get; set; }
@@ -21,17 +24,24 @@ public class Experiment
     public string Audience { get; set; }
 
 
-    #region Overrides - Equality / Hash / ToString
+    #region Equality members
 
-    protected bool Equals(Experiment other)
-    {
-        return Id == other.Id && Name == other.Name && UnitType == other.UnitType && Iteration == other.Iteration &&
-               SeedHi == other.SeedHi && SeedLo == other.SeedLo && Equals(Split, other.Split) &&
-               TrafficSeedHi == other.TrafficSeedHi && TrafficSeedLo == other.TrafficSeedLo &&
-               Equals(TrafficSplit, other.TrafficSplit) && FullOnVariant == other.FullOnVariant &&
-               Equals(Applications, other.Applications) && Equals(Variants, other.Variants) &&
-               AudienceStrict == other.AudienceStrict && Audience == other.Audience;
-    }
+    protected bool Equals(Experiment other) =>
+        Id == other.Id &&
+        Name == other.Name &&
+        UnitType == other.UnitType &&
+        Iteration == other.Iteration &&
+        SeedHi == other.SeedHi &&
+        SeedLo == other.SeedLo &&
+        TrafficSeedHi == other.TrafficSeedHi &&
+        TrafficSeedLo == other.TrafficSeedLo &&
+        FullOnVariant == other.FullOnVariant &&
+        AudienceStrict == other.AudienceStrict &&
+        Audience == other.Audience &&
+        ArrayEquality.Equals(Split, other.Split) &&
+        ArrayEquality.Equals(TrafficSplit, other.TrafficSplit) &&
+        ArrayEquality.Equals(Applications, other.Applications) &&
+        ArrayEquality.Equals(Variants, other.Variants);
 
     public override bool Equals(object obj)
     {
@@ -63,27 +73,9 @@ public class Experiment
             return hashCode;
         }
     }
-
-    public override string ToString()
-    {
-        return "ContextExperiment{" +
-               "id=" + Id +
-               ", name='" + Name + '\'' +
-               ", unitType='" + UnitType + '\'' +
-               ", iteration=" + Iteration +
-               ", seedHi=" + SeedHi +
-               ", seedLo=" + SeedLo +
-               ", split=" + Split.ToArrayString() +
-               ", trafficSeedHi=" + TrafficSeedHi +
-               ", trafficSeedLo=" + TrafficSeedLo +
-               ", trafficSplit=" + TrafficSplit.ToArrayString() +
-               ", fullOnVariant=" + FullOnVariant +
-               ", applications=" + Applications.ToArrayString() +
-               ", variants=" + Variants.ToArrayString() +
-               ", audienceStrict=" + AudienceStrict +
-               ", audience='" + Audience + '\'' +
-               '}';
-    }
-
     #endregion
+
+    private string DebugView =>
+        $"ContextExperiment{{id={Id}, name={Name}, unitType={UnitType}, iteration={Iteration}, seedHi={SeedHi}, seedLo={SeedLo}, split={Split.ToArrayString()}, trafficSeedHi={TrafficSeedHi}, trafficSeedLo={TrafficSeedLo}, trafficSplit={TrafficSplit.ToArrayString()}, fullOnVariant={FullOnVariant}, applications={Applications.ToArrayString()}, variants={Variants.ToArrayString()}, audienceStrict={AudienceStrict}, audience={Audience}}}";
+    public override string ToString() => DebugView;
 }

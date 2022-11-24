@@ -1,7 +1,10 @@
-﻿using ABSmartly.Extensions;
+﻿using System.Diagnostics;
+using ABSmartly.EqualityComparison;
+using ABSmartly.Extensions;
 
 namespace ABSmartly.Models;
 
+[DebuggerDisplay("{DebugView},nq")]
 public class ContextData
 {
     public ContextData()
@@ -17,12 +20,10 @@ public class ContextData
     public Experiment[] Experiments { get; set; }
 
 
-    #region Overrides - Equality / Hash / ToString
+    #region Equality members
 
-    protected bool Equals(ContextData other)
-    {
-        return Equals(Experiments, other.Experiments);
-    }
+    protected bool Equals(ContextData other) => 
+        ArrayEquality.Equals(Experiments, other.Experiments);
 
     public override bool Equals(object obj)
     {
@@ -34,15 +35,11 @@ public class ContextData
 
     public override int GetHashCode()
     {
-        return Experiments != null ? Experiments.GetHashCode() : 0;
-    }
-
-    public override string ToString()
-    {
-        return "ContextData{" +
-               "experiments=" + Experiments.ToArrayString() +
-               '}';
+        return Experiments?.GetHashCode() ?? 0;
     }
 
     #endregion
+    
+    private string DebugView => $"ContextData{{experiments={Experiments.ToArrayString()}}}";
+    public override string ToString() => DebugView;
 }

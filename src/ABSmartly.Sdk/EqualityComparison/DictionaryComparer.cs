@@ -3,9 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace ABSmartly.JsonExpressions.EqualityComparison;
+namespace ABSmartly.EqualityComparison;
 
-public class DictionaryComparer: IEqualityComparer<Dictionary<string, object>>, IEqualityComparer
+public class DictionaryComparer: IEqualityComparer<IDictionary<string, object>>, IEqualityComparer
 {
     private readonly Func<object, IEqualityComparer> _valueComparerSelector;
     private readonly IComparer<string> _keysComparer;
@@ -17,7 +17,7 @@ public class DictionaryComparer: IEqualityComparer<Dictionary<string, object>>, 
         _keysComparer = keysComparer ?? Comparer<string>.Default;
     }
     
-    public bool Equals(Dictionary<string, object> x, Dictionary<string, object> y)
+    public bool Equals(IDictionary<string, object> x, IDictionary<string, object> y)
     {
         if (ReferenceEquals(x, y)) return true;
         if (ReferenceEquals(x, null)) return false;
@@ -41,7 +41,9 @@ public class DictionaryComparer: IEqualityComparer<Dictionary<string, object>>, 
         return true;
     }
 
-    bool IEqualityComparer.Equals(object x, object y)
+#pragma warning disable CS0108, CS0114
+    public bool Equals(object x, object y)
+#pragma warning restore CS0108, CS0114
     {
         if (ReferenceEquals(x, y)) return true;
         if (ReferenceEquals(x, null)) return false;
@@ -52,7 +54,7 @@ public class DictionaryComparer: IEqualityComparer<Dictionary<string, object>>, 
         return Equals((Dictionary<string, object>)x, (Dictionary<string, object>)y);
     }
     
-    public int GetHashCode(Dictionary<string, object> obj)
+    public int GetHashCode(IDictionary<string, object> obj)
     {
         throw new NotImplementedException();
     }

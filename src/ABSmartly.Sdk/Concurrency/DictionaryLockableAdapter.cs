@@ -1,51 +1,41 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Threading;
 
 namespace ABSmartly.Concurrency;
 
 public class DictionaryLockableAdapter<TKey, TValue> : Dictionary<TKey, TValue>
 {
-    private readonly ReaderWriterLockSlim _lockSlim;
+    private readonly ILockableCollectionSlimLock _lockSlim;
 
-    public DictionaryLockableAdapter(ReaderWriterLockSlim lockSlim)
+    public DictionaryLockableAdapter(ILockableCollectionSlimLock lockSlim)
     {
-        _lockSlim = lockSlim;
+        _lockSlim = lockSlim ?? throw new ArgumentNullException(nameof(lockSlim), "Lock is required");
     }
 
-    public DictionaryLockableAdapter(ReaderWriterLockSlim lockSlim, IDictionary<TKey, TValue> dictionary) :
+    public DictionaryLockableAdapter(ILockableCollectionSlimLock lockSlim, IDictionary<TKey, TValue> dictionary) :
         base(dictionary)
     {
-        _lockSlim = lockSlim;
+        _lockSlim = lockSlim ?? throw new ArgumentNullException(nameof(lockSlim), "Lock is required");
     }
 
-    public DictionaryLockableAdapter(ReaderWriterLockSlim lockSlim, IDictionary<TKey, TValue> dictionary,
+    public DictionaryLockableAdapter(ILockableCollectionSlimLock lockSlim, IDictionary<TKey, TValue> dictionary,
         IEqualityComparer<TKey> comparer) : base(dictionary, comparer)
     {
-        _lockSlim = lockSlim;
+        _lockSlim = lockSlim ?? throw new ArgumentNullException(nameof(lockSlim), "Lock is required");
     }
 
-    public DictionaryLockableAdapter(ReaderWriterLockSlim lockSlim, IEqualityComparer<TKey> comparer) : base(comparer)
+    public DictionaryLockableAdapter(ILockableCollectionSlimLock lockSlim, IEqualityComparer<TKey> comparer) : base(comparer)
     {
-        _lockSlim = lockSlim;
+        _lockSlim = lockSlim ?? throw new ArgumentNullException(nameof(lockSlim), "Lock is required");
     }
 
-    public DictionaryLockableAdapter(ReaderWriterLockSlim lockSlim, int capacity) : base(capacity)
+    public DictionaryLockableAdapter(ILockableCollectionSlimLock lockSlim, int capacity) : base(capacity)
     {
-        _lockSlim = lockSlim;
+        _lockSlim = lockSlim ?? throw new ArgumentNullException(nameof(lockSlim), "Lock is required");
     }
 
-    private void EnsureLock()
+    public TValue ConcurrentGetOrAdd(TKey key, Func<TKey, TValue> computeFn)
     {
-        if (_lockSlim == null)
-            throw new InvalidOperationException(
-                "Cannot perform synchronized operation because lock is missing. Use constructor with ReaderWriterLockSlim parameter.");
-    }
-
-    public TValue ConcurrentGetOrAdd(TKey key, Func<TValue> computeFn)
-    {
-        EnsureLock();
-
         try
         {
             _lockSlim.EnterReadLock();
@@ -65,7 +55,7 @@ public class DictionaryLockableAdapter<TKey, TValue> : Dictionary<TKey, TValue>
             if (ContainsKey(key))
                 return this[key];
 
-            var newValue = computeFn();
+            var newValue = computeFn(key);
             Add(key, newValue);
             return newValue;
         }
@@ -77,8 +67,6 @@ public class DictionaryLockableAdapter<TKey, TValue> : Dictionary<TKey, TValue>
 
     public TValue ConcurrentGetValueOrDefault(TKey key)
     {
-        EnsureLock();
-
         try
         {
             _lockSlim.EnterReadLock();
@@ -93,13 +81,11 @@ public class DictionaryLockableAdapter<TKey, TValue> : Dictionary<TKey, TValue>
 
     public TValue ConcurrentSet(TKey key, TValue value)
     {
-        EnsureLock();
-
         try
         {
             _lockSlim.EnterWriteLock();
 
-            Add(key, value);
+            this[key] = value;
             return this[key];
         }
         finally

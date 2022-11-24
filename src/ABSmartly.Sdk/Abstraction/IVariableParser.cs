@@ -4,6 +4,6 @@ namespace ABSmartly;
 
 public interface IVariableParser
 {
-    Dictionary<string, object> Parse(Context context, string experimentName, string variantName,
+    Dictionary<string, object> Parse(IContext context, string experimentName, string variantName,
         string variableValue);
 }

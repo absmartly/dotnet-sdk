@@ -2,7 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
-using ABSmartly.JsonExpressions.EqualityComparison;
+using ABSmartly.EqualityComparison;
 
 namespace ABSmartly.JsonExpressions;
 
@@ -146,6 +146,7 @@ public class ExprEvaluator : IEvaluator
         input switch
         {
             double d => d,
+            float f => f,
             byte => Convert.ToDouble(input),
             decimal => Convert.ToDouble(input),
             short => Convert.ToDouble(input),

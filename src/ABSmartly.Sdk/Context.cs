@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ABSmartly.Concurrency;
+using ABSmartly.EqualityComparison;
 using ABSmartly.Extensions;
 using ABSmartly.Internal;
 using ABSmartly.Internal.Hashing;
@@ -16,7 +17,7 @@ using Attribute = ABSmartly.Models.Attribute;
 
 namespace ABSmartly;
 
-public sealed class Context : IDisposable, IAsyncDisposable
+public class Context : IContext, IDisposable, IAsyncDisposable
 {
     private readonly Clock _clock;
     private readonly int _publishDelay;
@@ -44,8 +45,8 @@ public sealed class Context : IDisposable, IAsyncDisposable
     private readonly List<GoalAchievement> _achievements = new();
 
     private readonly ListLockableAdapter<Attribute> _attributes;
-    private readonly DictionaryLockableAdapter<string, int> _overrides;
-    private readonly DictionaryLockableAdapter<string, int> _customAssignments;
+    private readonly DictionaryLockableAdapter<string, int?> _overrides;
+    private readonly DictionaryLockableAdapter<string, int?> _customAssignments;
 
     private volatile int _pendingCount;
 
@@ -53,8 +54,8 @@ public sealed class Context : IDisposable, IAsyncDisposable
 
     private bool _failed;
     private bool _closed;
-    private int _refreshing;
     private int _closing;
+    private int _refreshing;
 
     private readonly object _refreshTimerLock = new();
     private readonly object _timeoutLock = new();
@@ -76,7 +77,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
         AudienceMatcher audienceMatcher, 
         ILoggerFactory loggerFactory)
     {
-        if (config == null) throw new ArgumentNullException(nameof(config));
+        if (config == null) throw new ArgumentNullException(nameof(config), "Context configuration is required");
         
         _logger = loggerFactory.CreateLogger<Context>();
         _clock = clock;
@@ -90,22 +91,23 @@ public sealed class Context : IDisposable, IAsyncDisposable
 
         _units = new Dictionary<string, string>();
 
-        SetUnits(config.Units);
+        if (config.Units != null)
+            SetUnits(config.Units);
 
-        _assigners = new DictionaryLockableAdapter<string, VariantAssigner>(_contextLock, _units.Count);
-        _hashedUnits = new DictionaryLockableAdapter<string, byte[]>(_contextLock, _units.Count);
+        _assigners = new DictionaryLockableAdapter<string, VariantAssigner>(new LockableCollectionSlimLock(_contextLock), _units.Count);
+        _hashedUnits = new DictionaryLockableAdapter<string, byte[]>(new LockableCollectionSlimLock(_contextLock), _units.Count);
 
-        _attributes = new ListLockableAdapter<Attribute>(_contextLock);
+        _attributes = new ListLockableAdapter<Attribute>(new LockableCollectionSlimLock(_contextLock));
         if (config.Attributes != null)
             SetAttributes(config.Attributes);
 
         _overrides = config.Overrides != null
-            ? new DictionaryLockableAdapter<string, int>(_contextLock, config.Overrides)
-            : new DictionaryLockableAdapter<string, int>(_contextLock);
+            ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock), config.Overrides)
+            : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
 
         _customAssignments = config.CustomAssignments != null
-            ? new DictionaryLockableAdapter<string, int>(_contextLock, config.CustomAssignments)
-            : new DictionaryLockableAdapter<string, int>(_contextLock);
+            ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock), config.CustomAssignments)
+            : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
 
         if (data != null)
         {
@@ -188,7 +190,8 @@ public sealed class Context : IDisposable, IAsyncDisposable
     {
         CheckNotClosed();
 
-        _attributes.ConcurrentAdd(new Attribute(name, value, _clock.Millis()));
+        var attribute = new Attribute { Name = name, Value = value, SetAt = _clock.Millis() };
+        _attributes.ConcurrentAdd(attribute);
     }
 
     public void SetAttributes(Dictionary<string, object> attributes)
@@ -207,10 +210,8 @@ public sealed class Context : IDisposable, IAsyncDisposable
         _customAssignments.ConcurrentSet(experimentName, variant);
     }
 
-    public int GetCustomAssignment(string experimentName)
-    {
-        return _customAssignments.ConcurrentGetValueOrDefault(experimentName);
-    }
+    public int? GetCustomAssignment(string experimentName) => 
+        _customAssignments.ConcurrentGetValueOrDefault(experimentName);
 
     public void SetCustomAssignments(Dictionary<string, int> customAssignments)
     {
@@ -227,10 +228,8 @@ public sealed class Context : IDisposable, IAsyncDisposable
         _overrides.ConcurrentSet(experimentName, variant);
     }
 
-    public int GetOverride(string experimentName)
-    {
-        return _overrides.ConcurrentGetValueOrDefault(experimentName);
-    }
+    public int? GetOverride(string experimentName) => 
+        _overrides.ConcurrentGetValueOrDefault(experimentName);
 
     public void SetOverrides(Dictionary<string, int> overrides)
     {
@@ -241,11 +240,11 @@ public sealed class Context : IDisposable, IAsyncDisposable
 
     #region Treatment
 
-    public int GetTreatment(string experimentName) => InternalGetTreatmentAsync(experimentName, true);
+    public int GetTreatment(string experimentName) => InternalGetTreatmentAsync(experimentName, true) ?? 0;
 
-    public int PeekTreatment(string experimentName) => InternalGetTreatmentAsync(experimentName, false);
+    public int PeekTreatment(string experimentName) => InternalGetTreatmentAsync(experimentName, false) ?? 0;
 
-    private int InternalGetTreatmentAsync(string experimentName, bool doExposure)
+    private int? InternalGetTreatmentAsync(string experimentName, bool doExposure)
     {
         CheckReady(true);
 
@@ -264,12 +263,12 @@ public sealed class Context : IDisposable, IAsyncDisposable
     {
         CheckNotClosed();
 
+        var uidTrimmed = uid.Trim();
+        if (string.IsNullOrEmpty(uidTrimmed))
+            throw new ArgumentException($"Unit '{unitType}' UID must not be blank.");
+        
         try
         {
-            var uidTrimmed = uid.Trim();
-            if (string.IsNullOrEmpty(uidTrimmed))
-                throw new ArgumentException($"Unit '{unitType}' UID must not be blank.");
-
             _contextLock.EnterWriteLock();
 
             var previous = _units.TryGetValue(unitType, out var u) ? u : null;
@@ -336,19 +335,19 @@ public sealed class Context : IDisposable, IAsyncDisposable
     {
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
-            var exposure = new Exposure(
-                assignment.Id,
-                assignment.Name,
-                assignment.UnitType,
-                assignment.Variant,
-                _clock.Millis(),
-                assignment.Assigned,
-                assignment.Eligible,
-                assignment.Overridden,
-                assignment.FullOn,
-                assignment.Custom,
-                assignment.AudienceMismatch
-            );
+            var exposure = new Exposure{
+                Id = assignment.Id,
+                Name = assignment.Name,
+                Unit = assignment.UnitType,
+                Variant = assignment.Variant,
+                ExposedAt = _clock.Millis(),
+                Assigned = assignment.Assigned,
+                Eligible = assignment.Eligible,
+                Overridden = assignment.Overridden,
+                FullOn = assignment.FullOn,
+                Custom = assignment.Custom,
+                AudienceMismatch = assignment.AudienceMismatch
+            };
 
             try
             {
@@ -392,6 +391,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
         CheckNotClosed();
 
         if (Interlocked.CompareExchange(ref _refreshing, 1, 0) == 0)
+        {
             try
             {
                 var data = await _dataProvider.GetContextDataAsync().ConfigureUnboundContinuation();
@@ -407,17 +407,18 @@ public sealed class Context : IDisposable, IAsyncDisposable
             {
                 Interlocked.Exchange(ref _refreshing, 0);
             }
+        }
     }
 
     public void Track(string goalName, Dictionary<string, object> properties)
     {
         CheckNotClosed();
 
-        var achievement = new GoalAchievement(
-            achievedAt: _clock.Millis(),
-            name: goalName,
-            properties: properties == null ? null : new SortedDictionary<string, object>(properties)
-        );
+        var achievement = new GoalAchievement{
+            AchievedAt = _clock.Millis(),
+            Name = goalName,
+            Properties = properties == null ? null : new SortedDictionary<string, object>(properties)
+        };
 
         try
         {
@@ -485,8 +486,11 @@ public sealed class Context : IDisposable, IAsyncDisposable
                             Hashed = true,
                             PublishedAt = _clock.Millis(),
                             Units = _units
-                                .Select(kv =>
-                                    new Unit(kv.Key, Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))))
+                                .Select(kv => new Unit
+                                {
+                                    Type = kv.Key, 
+                                    Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
+                                })
                                 .ToArray(),
                             Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
                             Exposures = exposures,
@@ -523,7 +527,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
 
     private byte[] GetUnitHash(string unitType, string unitUid)
     {
-        return _hashedUnits.ConcurrentGetOrAdd(unitType, () => Md5.HashToUtf8Bytes(unitUid));
+        return _hashedUnits.ConcurrentGetOrAdd(unitType, _ => Md5.HashToUtf8Bytes(unitUid));
     }
 
 
@@ -531,8 +535,8 @@ public sealed class Context : IDisposable, IAsyncDisposable
 
     private void CheckNotClosed()
     {
-        if (_closed) throw new Exception("ABSmartly Context is closed");
-        if (_closing > 0) throw new Exception("ABSmartly Context is closing");
+        if (_closed) throw new InvalidOperationException("ABSmartly Context is closed");
+        if (_closing > 0) throw new InvalidOperationException("ABSmartly Context is closing");
     }
 
     private void CheckReady(bool expectNotClosed)
@@ -594,7 +598,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
                 Eligible = true
             };
 
-            if (_overrides.TryGetValue(experimentName, out var @override))
+            if (_overrides.TryGetValue(experimentName, out var @override) && @override != null)
             {
                 if (experiment != null)
                 {
@@ -603,7 +607,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
                 }
 
                 assignment.Overridden = true;
-                assignment.Variant = @override;
+                assignment.Variant = (int)@override;
             }
             else
             {
@@ -635,9 +639,9 @@ public sealed class Context : IDisposable, IAsyncDisposable
                                 experiment.Data.TrafficSeedLo) == 1;
                             if (eligible)
                             {
-                                if (_customAssignments.TryGetValue(experimentName, out var custom))
+                                if (_customAssignments.TryGetValue(experimentName, out var custom) && custom != null)
                                 {
-                                    assignment.Variant = custom;
+                                    assignment.Variant = (int)custom;
                                     assignment.Custom = true;
                                 }
                                 else
@@ -686,18 +690,17 @@ public sealed class Context : IDisposable, IAsyncDisposable
         static bool ExperimentMatches(Experiment experiment, Assignment assignment)
         {
             return experiment.Id == assignment.Id &&
-                   experiment.UnitType.Equals(assignment.UnitType) &&
+                   string.Equals(experiment.UnitType, assignment.UnitType) &&
                    experiment.Iteration == assignment.Iteration &&
                    experiment.FullOnVariant == assignment.FullOnVariant &&
-                   Equals(experiment.TrafficSplit, assignment.TrafficSplit);
+                   ArrayEquality.Equals(experiment.TrafficSplit, assignment.TrafficSplit);
         }
     }
 
     private Assignment GetVariableAssignment(string key)
     {
         var experiment = GetVariableExperiment(key);
-        if (experiment != null) return GetAssignment(experiment.Data.Name);
-        return null;
+        return experiment != null ? GetAssignment(experiment.Data.Name) : null;
     }
 
     private ExperimentVariables GetExperiment(string experimentName)
@@ -713,15 +716,11 @@ public sealed class Context : IDisposable, IAsyncDisposable
         }
     }
 
-    private ExperimentVariables GetVariableExperiment(string key)
-    {
-        return _indexVariables.ConcurrentGetValueOrDefault(key);
-    }
+    private ExperimentVariables GetVariableExperiment(string key) => 
+        _indexVariables.ConcurrentGetValueOrDefault(key);
 
-    private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash)
-    {
-        return _assigners.ConcurrentGetOrAdd(unitType, () => new VariantAssigner(unitHash));
-    }
+    private VariantAssigner GetVariantAssigner(string unitType, byte[] unitHash) => 
+        _assigners.ConcurrentGetOrAdd(unitType, _ => new VariantAssigner(unitHash));
 
 
     #region Timeout
@@ -799,7 +798,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
         }
         finally
         {
-            Monitor.Exit(_timeoutLock);
+            Monitor.Exit(_refreshTimerLock);
         }
     }
 
@@ -861,7 +860,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
             _dataLock.EnterWriteLock();
 
             _index = index;
-            _indexVariables = new DictionaryLockableAdapter<string, ExperimentVariables>(_dataLock, indexVariables);
+            _indexVariables = new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock), indexVariables);
             _data = data;
 
             SetRefreshTimer();
@@ -878,7 +877,7 @@ public sealed class Context : IDisposable, IAsyncDisposable
         {
             _dataLock.EnterWriteLock();
             _index = new Dictionary<string, ExperimentVariables>();
-            _indexVariables = new DictionaryLockableAdapter<string, ExperimentVariables>(_dataLock);
+            _indexVariables = new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock));
             _data = new ContextData();
             _failed = true;
         }

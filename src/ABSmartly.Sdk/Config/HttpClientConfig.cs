@@ -7,7 +7,6 @@ public class HttpClientConfig
     {
     }
 
-    // ReSharper disable once UnusedMember.Global
     public static HttpClientConfig CreateDefault()
     {
         return new()

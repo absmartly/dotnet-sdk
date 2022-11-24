@@ -19,19 +19,23 @@ public class ABSmartlyService : IABSmartlyServiceClient
     private readonly IContextEventSerializer _eventSerializer;
     private readonly ILogger<ABSmartlyService> _logger;
 
-    public ABSmartlyService(
-        ABSmartlyServiceConfiguration config,
+    public ABSmartlyService(ABSmartlyServiceConfiguration config,
         IABSdkHttpClientFactory httpClientFactory,
-        ILoggerFactory loggerFactory,
         IContextDataDeserializer dataDeserializer,
-        IContextEventSerializer eventSerializer)
+        IContextEventSerializer eventSerializer,
+        ILoggerFactory loggerFactory = null)
     {
         _config = config ??
-                  throw new ArgumentNullException(nameof(config), $"{nameof(ABSmartlyService)} config is required.");
+                  throw new ArgumentNullException(nameof(config), $"{nameof(ABSmartlyService)} config is required");
+        
+        _httpClientFactory = httpClientFactory ??
+                             throw new ArgumentNullException(nameof(httpClientFactory),
+                                 "HTTP client factory is required");
+        
         _dataDeserializer = dataDeserializer ??
-                            throw new ArgumentNullException(nameof(dataDeserializer), "Data deserializer is required.");
+                            throw new ArgumentNullException(nameof(dataDeserializer), "Data deserializer is required");
         _eventSerializer = eventSerializer ??
-                           throw new ArgumentNullException(nameof(eventSerializer), "Event serializer is required.");
+                           throw new ArgumentNullException(nameof(eventSerializer), "Event serializer is required");
 
         if (string.IsNullOrWhiteSpace(_config.Endpoint))
             throw new ArgumentNullException(nameof(_config.Endpoint), "Missing Endpoint configuration");
@@ -49,8 +53,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
         _eventSerializer = eventSerializer;
 
         _url = config.Endpoint + "/context";
-        _httpClientFactory = httpClientFactory;
-        _logger = loggerFactory.CreateLogger<ABSmartlyService>();
+        _logger = loggerFactory?.CreateLogger<ABSmartlyService>();
     }
 
     public async Task<ContextData> GetContextDataAsync()
@@ -67,7 +70,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
         }
         catch (Exception e)
         {
-            _logger.LogError("Fetch context data: {EMessage}", e.Message);
+            _logger?.LogError("Fetch context data: {EMessage}", e.Message);
             return null;
         }
     }
@@ -88,27 +91,28 @@ public class ABSmartlyService : IABSmartlyServiceClient
 
             if (!result.IsSuccessStatusCode)
             {
-                _logger.LogError(
+                _logger?.LogError(
                     "Publish event unsuccessful request: reason '{ReasonPhrase}', response content = '{S}'",
                     result.ReasonPhrase, await result.Content.ReadAsStringAsync());
+                return false;
             }
 
             return true;
         }
         catch (Exception e)
         {
-            _logger.LogError("Exception when Publish event: {E}", e);
+            _logger?.LogError("Exception when Publish event: {E}", e);
             return false;
         }
     }
 
-    private void SetupDefaultHeaders(HttpClient client)
+    private void SetupDefaultHeaders(IABSdkHttpClient client)
     {
-        client.DefaultRequestHeaders.Add("X-API-Key", _config.ApiKey);
-        client.DefaultRequestHeaders.Add("X-Application", _config.Application);
-        client.DefaultRequestHeaders.Add("X-Environment", _config.Environment);
-        client.DefaultRequestHeaders.Add("X-Application-Version", "0");
-        client.DefaultRequestHeaders.Add("X-Agent", "absmartly-dotnet-sdk");
+        client.AddHeader("X-API-Key", _config.ApiKey);
+        client.AddHeader("X-Application", _config.Application);
+        client.AddHeader("X-Environment", _config.Environment);
+        client.AddHeader("X-Application-Version", "0");
+        client.AddHeader("X-Agent", "absmartly-dotnet-sdk");
     }
 
     private Dictionary<string, string> GetDefaultQueryParameters()
