@@ -791,7 +791,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             {
                 while (!token.IsCancellationRequested)
                 {
-                    await Task.Delay(_publishDelay, token).ConfigureUnboundContinuation();
+                    await Task.Delay(_refreshInterval, token).ConfigureUnboundContinuation();
                     await RefreshAsync();
                 }
             }, token);
