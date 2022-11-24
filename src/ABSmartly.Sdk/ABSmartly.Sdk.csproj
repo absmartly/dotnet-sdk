@@ -6,7 +6,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <AssemblyName>ABSmartly.Sdk</AssemblyName>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <PackageVersion>1.0.0</PackageVersion>
+        <PackageVersion>1.1.0</PackageVersion>
         <Title>A/B Smartly DotNet SDK</Title>
         <Authors>A/B Smartly</Authors>
         <Description>The A/B Smartly DotNet SDK is a client SDK for A/B Smartly service</Description>
@@ -17,6 +17,8 @@
         <RepositoryType>git</RepositoryType>
         <PackageTags>a/b,ab,testing,experiment,metrics,analytics</PackageTags>
         <TargetFrameworks>net5.0;netstandard2.0</TargetFrameworks>
+        <AssemblyVersion>1.1.0</AssemblyVersion>
+        <FileVersion>1.1.0.77</FileVersion>
     </PropertyGroup>
 
     <ItemGroup>
