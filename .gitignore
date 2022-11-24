@@ -352,3 +352,5 @@ MigrationBackup/
 # JB
 .idea
 *.csproj.DotSettings
+dotCover.Output
+dotCover.output.*
