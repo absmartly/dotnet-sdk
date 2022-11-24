@@ -1411,7 +1411,7 @@ public class ContextTests
 
         manualResetEvent.Set();
 
-        Thread.Sleep(1000);
+        Thread.Sleep(3000);
 
         Mock.Get(_eventHandler).Verify(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()), Times.Once);
 
