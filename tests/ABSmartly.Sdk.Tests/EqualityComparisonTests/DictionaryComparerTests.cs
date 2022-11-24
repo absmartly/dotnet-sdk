@@ -1,7 +1,7 @@
-﻿using System.Collections;
-using ABSmartly.JsonExpressions.EqualityComparison;
+﻿using ABSmartly.Concurrency;
+using ABSmartly.EqualityComparison;
 
-namespace ABSmartly.Sdk.Tests.JsonExpressionsTests.EqualityComparison;
+namespace ABSmartly.Sdk.Tests.EqualityComparisonTests;
 
 [TestFixture]
 public class DictionaryComparerTests: ComparerTestBase
@@ -26,6 +26,10 @@ public class DictionaryComparerTests: ComparerTestBase
         var dict7 = new Dictionary<string, object> { ["a"] = 0, ["b"] = 2 };
 
         _comparer.Equals(emptyDict, emptyDict).Should().Be(true);
+        
+        _comparer.Equals((object)dict1, (object)dict1).Should().Be(true);
+        _comparer.Equals(null, (object)dict1).Should().Be(false);
+        _comparer.Equals((object)dict1, null).Should().Be(false);
         
         _comparer.Equals(dict1, dict1).Should().Be(true);
         _comparer.Equals(dict1, null).Should().Be(false);
@@ -103,5 +107,26 @@ public class DictionaryComparerTests: ComparerTestBase
         comparer.Equals(dict1, dict5).Should().Be(false);
         Mock.Get(keyComparer).Verify(x => x.Compare(It.IsAny<string>(), It.IsAny<string>()), Times.AtLeastOnce);
         Mock.Get(keyComparer).Verify(x => x.Compare("a", "b"), Times.AtLeastOnce);
+    }
+
+    [Test]
+    public void TestConstructorMissingLock()
+    {
+        Func<DictionaryLockableAdapter<int, int>> act;
+
+        act = () => new DictionaryLockableAdapter<int, int>(null);
+        act.Should().Throw<ArgumentNullException>().WithMessage("Lock is required (Parameter 'lockSlim')");
+        
+        act = () => new DictionaryLockableAdapter<int, int>(null, new Dictionary<int, int>());
+        act.Should().Throw<ArgumentNullException>().WithMessage("Lock is required (Parameter 'lockSlim')");
+        
+        act = () => new DictionaryLockableAdapter<int, int>(null, new Dictionary<int, int>(), EqualityComparer<int>.Default);
+        act.Should().Throw<ArgumentNullException>().WithMessage("Lock is required (Parameter 'lockSlim')");
+        
+        act = () => new DictionaryLockableAdapter<int, int>(null, EqualityComparer<int>.Default);
+        act.Should().Throw<ArgumentNullException>().WithMessage("Lock is required (Parameter 'lockSlim')");
+        
+        act = () => new DictionaryLockableAdapter<int, int>(null, 5);
+        act.Should().Throw<ArgumentNullException>().WithMessage("Lock is required (Parameter 'lockSlim')");
     }
 }

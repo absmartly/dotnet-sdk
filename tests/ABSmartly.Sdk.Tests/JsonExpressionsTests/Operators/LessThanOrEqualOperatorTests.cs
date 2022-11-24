@@ -30,7 +30,7 @@ public class LessThanOrEqualOperatorTests: OperatorTestBase
         Mock.Get(Evaluator).Verify(x => x.Compare(0.0, 1.0), Times.Once);
         
         Mock.Get(Evaluator).Invocations.Clear();
-        _operator.Evaluate(Evaluator,  T.ListOf<object>(null, null)).Should().BeNull();
+        _operator.Evaluate(Evaluator,  T.ListOf(null, null)).Should().BeNull();
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.Compare(It.IsAny<object>(), It.IsAny<object>()), Times.Never);
     }

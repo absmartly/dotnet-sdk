@@ -1,8 +1,7 @@
 ﻿using ABSmartly.Internal;
 using ABSmartly.Internal.Hashing;
-using ABSmartlySdk.Internal;
 
-namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests;
+namespace ABSmartly.Sdk.Tests.Internal;
 
 [TestFixture]
 public class VariantAssignerTests
@@ -38,7 +37,7 @@ public class VariantAssignerTests
     [TestCase(1, new[]{0.0, 1.0}, 1.0)]
     public void ChooseVariant(int expected, double[] split, double probability)
     {
-        Assert.That(VariantAssigner.ChooseVariant(split, probability), Is.EqualTo(expected));
+        VariantAssigner.ChooseVariant(split, probability).Should().Be(expected);
     }
 
 
@@ -46,20 +45,28 @@ public class VariantAssignerTests
     [TestCase(123456789, new[] { 1, 0, 1, 1, 1, 0, 0, 2, 1, 2, 2, 2, 0, 0 })]
     [TestCase("bleh@absmartly.com", new[] { 0, 1, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 1, 1 })]
     [TestCase("e791e240fcd3df7d238cfc285f475e8152fcc0ec", new[] { 1, 0, 1, 1, 0, 0, 0, 2, 0, 2, 1, 0, 0, 1 })]
-    public void AssignmentsMatch(object unitUID, int[] expectedVariants)
+    public void AssignmentsMatch(object unitUid, int[] expectedVariants)
     {
-        var splits = new List<List<double>>()
+        var splits = new List<List<double>>
         {
-            new() { 0.5, 0.5 }, new() { 0.5, 0.5 }, new() { 0.5, 0.5 }, 
-            new() { 0.5, 0.5 }, new() { 0.5, 0.5 }, 
-            new() { 0.5, 0.5 }, new() { 0.5, 0.5 },
-            new() { 0.33, 0.33, 0.34 }, new() { 0.33, 0.33, 0.34 }, 
-            new() { 0.33, 0.33, 0.34 }, new() { 0.33, 0.33, 0.34 }, 
-            new() { 0.33, 0.33, 0.34 }, new() { 0.33, 0.33, 0.34 },
+            new() { 0.5, 0.5 },
+            new() { 0.5, 0.5 },
+            new() { 0.5, 0.5 },
+            new() { 0.5, 0.5 },
+            new() { 0.5, 0.5 },
+            new() { 0.5, 0.5 },
+            new() { 0.5, 0.5 },
+            new() { 0.33, 0.33, 0.34 },
+            new() { 0.33, 0.33, 0.34 },
+            new() { 0.33, 0.33, 0.34 },
+            new() { 0.33, 0.33, 0.34 },
+            new() { 0.33, 0.33, 0.34 },
+            new() { 0.33, 0.33, 0.34 },
             new() { 0.33, 0.33, 0.34 }
         };
 
-        var seeds = new List<List<uint>>()
+        
+        var seeds = new List<List<uint>>
         {
             new() { 0x00000000, 0x00000000 },
             new() { 0x00000000, 0x00000001 },
@@ -77,15 +84,15 @@ public class VariantAssignerTests
             new() { 0x27d1dc86, 0x845461b9 },
         };
 
-        var unitHashBytes = Md5.HashToUtf8Bytes(unitUID.ToString());
+        var unitHashBytes = Md5.HashToUtf8Bytes(unitUid.ToString());
         var assigner = new VariantAssigner(unitHashBytes);
 
         for (var i = 0; i < seeds.Count; i++)
         {
             var frags = seeds[i];
             var split = splits[i].ToArray();
-            var variant = assigner.Assign(split, frags[0], frags[1]);
-            Assert.That(variant, Is.EqualTo(expectedVariants[i]));
+            var variant = assigner.Assign(split, (int)frags[0], (int)frags[1]);
+            variant.Should().Be(expectedVariants[i]);
         }
     }
 }

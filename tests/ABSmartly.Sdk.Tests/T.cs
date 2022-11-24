@@ -2,7 +2,6 @@
 
 public static class T
 {
-    public static List<TItem> ListOf<TItem>(params TItem?[] values) => new(values!);
     public static List<object> ListOf(params object?[] values) => new(values!);
 
     public static Dictionary<string, object> MapOf(string k1, object v1)=> new()

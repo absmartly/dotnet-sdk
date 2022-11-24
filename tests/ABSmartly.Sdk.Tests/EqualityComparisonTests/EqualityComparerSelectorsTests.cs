@@ -1,6 +1,6 @@
-﻿using ABSmartly.JsonExpressions.EqualityComparison;
+﻿using ABSmartly.EqualityComparison;
 
-namespace ABSmartly.Sdk.Tests.JsonExpressionsTests.EqualityComparison;
+namespace ABSmartly.Sdk.Tests.EqualityComparisonTests;
 
 [TestFixture]
 public class EqualityComparerSelectorsTests

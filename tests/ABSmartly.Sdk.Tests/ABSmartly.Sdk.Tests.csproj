@@ -25,6 +25,16 @@
     <ItemGroup>
       <None Remove="Resources\context.json" />
       <EmbeddedResource Include="Resources\context.json" />
+      <None Remove="Resources\publishEvent.json" />
+      <EmbeddedResource Include="Resources\publishEvent.json" />
+      <None Remove="Resources\variables.json" />
+      <EmbeddedResource Include="Resources\variables.json" />
+      <None Remove="Resources\refreshed.json" />
+      <EmbeddedResource Include="Resources\refreshed.json" />
+      <None Remove="Resources\audience_strict_context.json" />
+      <EmbeddedResource Include="Resources\audience_strict_context.json" />
+      <None Remove="Resources\audience_context.json" />
+      <EmbeddedResource Include="Resources\audience_context.json" />
     </ItemGroup>
 
 </Project>

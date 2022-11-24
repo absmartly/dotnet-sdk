@@ -1,10 +1,9 @@
-﻿using System.Text;
-using ABSmartly.Internal.Hashing;
+﻿using ABSmartly.Internal.Hashing;
 
-namespace ABSmartly.DotNet.Standard.UnitTests.InternalTests.HashingTests;
+namespace ABSmartly.Sdk.Tests.Internal.Hashing;
 
 [TestFixture]
-public class MD5HashTests
+public class Md5Tests
 {
     [TestCase("", "1B2M2Y8AsgTpgAmY7PhCfg")]
     [TestCase(" ", "chXunH2dwinSkhpA6JnsXw")]
@@ -21,34 +20,10 @@ public class MD5HashTests
     [TestCase("The quick brown fox jumps over the lazy dog and eats a pie", "iM-8ECRrLUQzixl436y96A")]
     [TestCase("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
     "24m7XOq4f5wPzCqzbBicLA")]
-
-    [TestCase("4a42766ca6313d26f49985e799ff4f3790fb86efa0fce46edb3ea8fbf1ea3408", "H2jvj6o9YcAgNdhKqEbtWw")]
-    [TestCase("bleh@absmarty.com", "DRgslOje35bZMmpaohQjkA")]
-    [TestCase("açb↓c", "LxcqH5VC15rXfWfA_smreg")]
-    [TestCase("123456778999", "K4uy4bTeCy34W97lmceVRg")]
-    public void Hash_InputString_Returns_ExpectedHashedString(string actualString, string expectedHash)
+    public void TestDigestBase64Url(string actualString, string expectedHash)
     {
         var actualStringHash = Md5.Hash(actualString);
 
-        Assert.That(actualStringHash, Is.EqualTo(expectedHash));
+        actualStringHash.Should().Be(expectedHash);
     }
-
-    [Test]
-    public void Hash_LargeInputString_Returns_ExpectedHashedString()
-    {
-        const string actualString = "4a42766ca6313d26f49985e799ff4f3790fb86efa0fce46edb3ea8fbf1ea3408";
-        var sb = new StringBuilder();
-        var count = (2048 + actualString.Length - 1) / actualString.Length;
-
-        for (var i = 0; i < count; i++)
-        {
-            sb.Append(actualString);
-        }
-
-        var actualStringHash = Md5.Hash(sb.ToString());
-
-        Assert.That(actualStringHash, Is.EqualTo("Rxnq-eM9eE1SEoMnkEMOIw"));
-    }
-
-
 }

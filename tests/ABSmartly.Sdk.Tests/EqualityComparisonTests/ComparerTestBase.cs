@@ -1,6 +1,6 @@
 ﻿using System.Collections;
 
-namespace ABSmartly.Sdk.Tests.JsonExpressionsTests.EqualityComparison;
+namespace ABSmartly.Sdk.Tests.EqualityComparisonTests;
 
 public abstract class ComparerTestBase
 {

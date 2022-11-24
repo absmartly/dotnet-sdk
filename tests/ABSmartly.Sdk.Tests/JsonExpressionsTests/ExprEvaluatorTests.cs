@@ -111,6 +111,17 @@ public class ExprEvaluatorTests
         e.NumberConvert("1.5").Should().Be(1.5);
         e.NumberConvert("2.0").Should().Be(2.0);
         e.NumberConvert("3.0").Should().Be(3.0);
+        
+        e.NumberConvert(1.0d).Should().Be(1.0);
+        e.NumberConvert(1.0f).Should().Be(1.0);
+        e.NumberConvert((byte)1).Should().Be(1.0);
+        e.NumberConvert(1.0m).Should().Be(1.0);
+        e.NumberConvert((short)1).Should().Be(1.0);
+        e.NumberConvert(1).Should().Be(1.0);
+        e.NumberConvert((long)1).Should().Be(1.0);
+        e.NumberConvert((ushort)1).Should().Be(1.0);
+        e.NumberConvert((uint)1).Should().Be(1.0);
+        e.NumberConvert((ulong)1).Should().Be(1.0);
     }
 
     [Test]
@@ -209,6 +220,15 @@ public class ExprEvaluatorTests
         e.Compare(null, "abc").Should().BeNull();
         e.Compare(null, new Dictionary<string, object>()).Should().BeNull();
         e.Compare(null, new List<object>()).Should().BeNull();
+        
+        e.Compare(0, null).Should().BeNull();
+        e.Compare(1, null).Should().BeNull();
+        e.Compare(true, null).Should().BeNull();
+        e.Compare(false, null).Should().BeNull();
+        e.Compare("", null).Should().BeNull();
+        e.Compare("abc", null).Should().BeNull();
+        e.Compare(new Dictionary<string, object>(), null).Should().BeNull();
+        e.Compare(new List<object>(), null).Should().BeNull();
     }
 
     [Test]

@@ -12,15 +12,20 @@ public class DefaultContextDataDeserializerTests
     public void TestDeserializeStream()
     {
         using var jsonStream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.context.json");
-        //using var streamReader = new StreamReader(jsonStream);
-        //var contextJson = streamReader.ReadToEnd();
 
         var expected = ExpectedData();
         var actual = _deserializer.Deserialize(jsonStream);
         actual.Should().NotBeNull();
-        actual.Should().BeEquivalentTo(expected, options => options.RespectingDeclaredTypes());
+        actual.Should().BeEquivalentTo(expected);
     }
 
+    [Test]
+    public void TestDeserializeDoesNotThrow()
+    {
+	    var act = () => _deserializer.Deserialize(null);
+	    act.Should().NotThrow();
+    }
+    
     private ContextData ExpectedData()
     {
         var experiment0 = new Experiment
@@ -36,10 +41,10 @@ public class DefaultContextDataDeserializerTests
 	        TrafficSeedLo = 455443629,
 	        TrafficSplit = new[]{0.0, 1.0},
 	        FullOnVariant = 0,
-	        Applications = new[]{new ExperimentApplication("website")},
+	        Applications = new[]{new ExperimentApplication{Name = "website"}},
 	        Variants = new ExperimentVariant[]{
-		        new("A", null),
-		        new("B", "{\"banner.border\":1,\"banner.size\":\"large\"}")
+		        new() {Name = "A", Config = null},
+		        new(){Name = "B", Config = "{\"banner.border\":1,\"banner.size\":\"large\"}"}
 	        },
 	        AudienceStrict = false,
 	        Audience = null
@@ -58,11 +63,11 @@ public class DefaultContextDataDeserializerTests
 			TrafficSeedLo = 212903484,
 			TrafficSplit = new[]{0.0, 1.0},
 			FullOnVariant = 0,
-			Applications = new[]{new ExperimentApplication("website")},
+			Applications = new[]{new ExperimentApplication{Name = "website"}},
 			Variants = new ExperimentVariant[]{
-				new("A", null),
-				new("B", "{\"button.color\":\"blue\"}"),
-				new("C", "{\"button.color\":\"red\"}")
+				new(){Name = "A", Config = null},
+				new(){Name = "B", Config = "{\"button.color\":\"blue\"}"},
+				new(){Name = "C", Config = "{\"button.color\":\"red\"}"}
 			},
 			AudienceStrict = false,
 			Audience = ""
@@ -81,11 +86,11 @@ public class DefaultContextDataDeserializerTests
 			TrafficSeedLo = 511357582,
 			TrafficSplit = new[]{0.99, 0.01},
 			FullOnVariant = 0,
-			Applications = new[]{new ExperimentApplication("website")},
+			Applications = new[]{new ExperimentApplication{Name = "website"}},
 			Variants = new ExperimentVariant[]{
-				new("A", null),
-				new("B", "{\"card.width\":\"80%\"}"),
-				new("C", "{\"card.width\":\"75%\"}")
+				new(){Name = "A", Config = null},
+				new(){Name = "B", Config = "{\"card.width\":\"80%\"}"},
+				new(){Name = "C", Config = "{\"card.width\":\"75%\"}"}
 			},
 			AudienceStrict = false,
 			Audience = "{}"
@@ -104,12 +109,12 @@ public class DefaultContextDataDeserializerTests
 			TrafficSeedLo = 330937933,
 			TrafficSplit = new[]{0.0, 1.0},
 			FullOnVariant = 2,
-			Applications = new[]{new ExperimentApplication("website")},
+			Applications = new[]{new ExperimentApplication{Name = "website"}},
 			Variants = new ExperimentVariant[]{
-				new("A", null),
-				new("B", "{\"submit.color\":\"red\",\"submit.shape\":\"circle\"}"),
-				new("C", "{\"submit.color\":\"blue\",\"submit.shape\":\"rect\"}"),
-				new("D", "{\"submit.color\":\"green\",\"submit.shape\":\"square\"}")
+				new(){Name = "A", Config = null},
+				new(){Name = "B", Config = "{\"submit.color\":\"red\",\"submit.shape\":\"circle\"}"},
+				new(){Name = "C", Config = "{\"submit.color\":\"blue\",\"submit.shape\":\"rect\"}"},
+				new(){Name = "D", Config = "{\"submit.color\":\"green\",\"submit.shape\":\"square\"}"}
 			},
 			AudienceStrict = false,
 			Audience = "null"

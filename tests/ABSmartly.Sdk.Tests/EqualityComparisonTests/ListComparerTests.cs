@@ -1,6 +1,7 @@
-﻿using ABSmartly.JsonExpressions.EqualityComparison;
+﻿using ABSmartly.Concurrency;
+using ABSmartly.EqualityComparison;
 
-namespace ABSmartly.Sdk.Tests.JsonExpressionsTests.EqualityComparison;
+namespace ABSmartly.Sdk.Tests.EqualityComparisonTests;
 
 [TestFixture]
 public class ListComparerTests: ComparerTestBase
@@ -24,6 +25,10 @@ public class ListComparerTests: ComparerTestBase
 
         _comparer.Equals(emptyList, emptyList).Should().Be(true);
         
+        _comparer.Equals((object)list1, (object)list1).Should().Be(true);
+        _comparer.Equals((object)list1, null).Should().Be(false);
+        _comparer.Equals(null, (object)list1).Should().Be(false);
+        
         _comparer.Equals(list1, list1).Should().Be(true);
         _comparer.Equals(list1, null).Should().Be(false);
         _comparer.Equals(null, list1).Should().Be(false);
@@ -38,5 +43,17 @@ public class ListComparerTests: ComparerTestBase
         Mock.Get(ValueComparer).Invocations.Clear();
         _comparer.Equals(list1, list5).Should().Be(false);
         Mock.Get(ValueComparer).Verify(x => x.Equals(It.IsAny<int>(), It.IsAny<int>()), Times.Exactly(2));
+    }
+    
+    [Test]
+    public void TestConstructorMissingLock()
+    {
+        Func<ListLockableAdapter<int>> act;
+
+        act = () => new ListLockableAdapter<int>(null);
+        act.Should().Throw<ArgumentNullException>().WithMessage("Lock is required (Parameter 'lockSlim')");
+        
+        act = () => new ListLockableAdapter<int>(null, new []{1,2,3});
+        act.Should().Throw<ArgumentNullException>().WithMessage("Lock is required (Parameter 'lockSlim')");
     }
 }
