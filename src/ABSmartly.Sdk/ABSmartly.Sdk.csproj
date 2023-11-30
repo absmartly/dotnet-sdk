@@ -6,7 +6,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <AssemblyName>ABSmartly.Sdk</AssemblyName>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <PackageVersion>1.2.2</PackageVersion>
+        <PackageVersion>1.2.6</PackageVersion>
         <Title>A/B Smartly DotNet SDK</Title>
         <Authors>A/B Smartly</Authors>
         <Description>The A/B Smartly DotNet SDK is a client SDK for A/B Smartly service</Description>
@@ -38,5 +38,10 @@
         <PackageReference Include="Polly" Version="7.2.3" />
         <PackageReference Include="System.Text.Json" Version="6.0.5" />
     </ItemGroup>
+
+    <Target Name="PostClean" AfterTargets="Clean">
+        <RemoveDir Directories="$(BaseIntermediateOutputPath)" /><!-- obj -->
+        <RemoveDir Directories="$(BaseOutputPath)" /><!-- bin -->
+    </Target>
 
 </Project>
