@@ -1,6 +1,8 @@
 name: Publish Nuget
 on:
   push:
+    branches:
+      - "main"
     tags:
       - v*
 jobs:
@@ -23,6 +25,6 @@ jobs:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
         
       - name: Run Release
-        run: dotnet nuget push src/ABSmartly.Sdk/bin/Debug/ -k $NUGET_AUTH_TOKEN -s https://api.nuget.org/v3/index.json
+        run: dotnet nuget push src/ABSmartly.Sdk/bin/Debug/ --source https://api.nuget.org/v3/index.json --api-key $NUGET_AUTH_TOKEN
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
