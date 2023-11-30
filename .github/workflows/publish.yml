@@ -7,7 +7,7 @@ on:
       - v*
 jobs:
   build:
-    runs-on: windows-2019
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
@@ -18,18 +18,13 @@ jobs:
           dotnet-quality: 'preview'
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
-          
-      - name: Test
-        run: echo $NUGET_AUTH_TOKEN
-        env:
-          NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
-
+        
       - name: Run Build
         run: dotnet build src/ABSmartly.Sdk
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
         
       - name: Run Release
-        run: dotnet nuget push src/ABSmartly.Sdk/bin/Debug/ --source https://api.nuget.org/v3/index.json --api-key %NUGET_AUTH_TOKEN
+        run: dotnet nuget push src/ABSmartly.Sdk/bin/Debug/ --source https://api.nuget.org/v3/index.json --api-key $NUGET_AUTH_TOKEN
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
