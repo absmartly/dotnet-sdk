@@ -1,0 +1,20 @@
+name: CI
+on: [push]
+jobs:
+  build:
+    runs-on: windows-2019
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '6.0.x'
+          dotnet-quality: 'preview'
+        env:
+          NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
+          
+      - name: Run Build
+        run: dotnet build src/ABSmartly.Sdk
+        
+      - name: Run Tests
+        run: dotnet test tests/ABSmartly.Sdk.Tests

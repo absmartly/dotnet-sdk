@@ -55,6 +55,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private bool _failed;
     private Dictionary<string, ExperimentVariables> _index;
+    private Dictionary<string, Dictionary<string, ContextCustomFieldValue>> _contextCustomFields;
+    
     private DictionaryLockableAdapter<string, ExperimentVariables> _indexVariables;
 
     private volatile int _pendingCount;
@@ -460,6 +462,84 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _dataLock.ExitReadLock();
         }
     }
+    
+    public List<String> GetCustomFieldKeys()
+    {
+        try
+        {
+            _dataLock.EnterReadLock();
+
+            var keys = new List<String>();
+            
+            foreach (var experiment in _data.Experiments)
+            {
+                var customFieldValues = experiment.CustomFieldValues;
+                if (customFieldValues != null)
+                {
+                    foreach (var customFieldValue in customFieldValues)
+                    {
+                        keys.Add(customFieldValue.Name);
+                    }
+                }
+            }
+            
+            return keys.OrderBy(q => q).Distinct().ToList();
+        }
+        finally
+        {
+            _dataLock.ExitReadLock();
+        }
+    }
+    
+    public Object GetCustomFieldValue(String environmentName, String key)
+    {
+        try
+        {
+            _dataLock.EnterReadLock();
+
+            _contextCustomFields.TryGetValue(environmentName, out var customFieldValues);
+
+            if (customFieldValues != null)
+            {
+                customFieldValues.TryGetValue(key, out var field);
+                if (field != null)
+                {
+                    return field.Value;
+                }
+            }
+
+            return null;
+        }
+        finally
+        {
+            _dataLock.ExitReadLock();
+        }
+    }
+    
+    public Object GetCustomFieldType(String environmentName, String key)
+    {
+        try
+        {
+            _dataLock.EnterReadLock();
+
+            _contextCustomFields.TryGetValue(environmentName, out var customFieldValues);
+
+            if (customFieldValues != null)
+            {
+                customFieldValues.TryGetValue(key, out var field);
+                if (field != null)
+                {
+                    return field.Type;
+                }
+            }
+
+            return null;
+        }
+        finally
+        {
+            _dataLock.ExitReadLock();
+        }
+    }
 
     private ExperimentVariables GetVariableExperiment(string key)
     {
@@ -854,6 +934,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         var index = new Dictionary<string, ExperimentVariables>();
         var indexVariables = new Dictionary<string, ExperimentVariables>();
+        var contextCustomFields = new Dictionary<string, Dictionary<string, ContextCustomFieldValue>>();
 
         foreach (var experiment in data.Experiments)
         {
@@ -878,6 +959,43 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 }
 
             index[experiment.Name] = experimentVariables;
+
+            if (experiment.CustomFieldValues == null) continue;
+            
+            var experimentCustomFields = new Dictionary<string, ContextCustomFieldValue>();
+            foreach (var customFieldValue in experiment.CustomFieldValues)
+            {
+                var value = new ContextCustomFieldValue
+                {
+                    Type = customFieldValue.Type
+                };
+
+                if (customFieldValue.Value != null)
+                {
+                    var customValue = customFieldValue.Value;
+
+                    if (customFieldValue.Type.StartsWith("json"))
+                    {
+                        value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
+                    }
+                    else if(customFieldValue.Type.StartsWith("boolean"))
+                    {
+                        value.Value = Convert.ToBoolean(customValue);
+                    }
+                    else if(customFieldValue.Type.StartsWith("number"))
+                    {
+                        value.Value = Convert.ToInt64(customValue);
+                    }
+                    else
+                    {
+                        value.Value = customValue;
+                    }
+                }
+
+                experimentCustomFields[customFieldValue.Name] = value;
+            }
+
+            contextCustomFields[experiment.Name] = experimentCustomFields;
         }
 
         try
@@ -885,6 +1003,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _dataLock.EnterWriteLock();
 
             _index = index;
+            _contextCustomFields = contextCustomFields;
             _indexVariables =
                 new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock),
                     indexVariables);
@@ -997,6 +1116,13 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         public Experiment Data { get; set; }
         public List<Dictionary<string, object>> Variables { get; set; }
+    }
+    
+    public class ContextCustomFieldValue
+    {
+        public String Name { get; set; }
+        public String Type { get; set; }
+        public Object Value { get; set; }
     }
 
     public class Assignment

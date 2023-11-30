@@ -770,6 +770,51 @@ public class ContextTests
 
         context.GetVariableKeys().Should().BeEquivalentTo(_variableExperiments);
     }
+    
+    [Test]
+    public void TestGetCustomFieldKeys()
+    {
+        var context = CreateContext(_data);
+
+        context.GetCustomFieldKeys().Should().BeEquivalentTo(new List<String> { "country", "languages", "overrides" });
+    }
+    
+    [Test]
+    public void TestGetCustomFieldValues()
+    {
+        var context = CreateContext(_data);
+
+        context.GetCustomFieldValue("not_found", "not_found").Should().BeNull();
+        context.GetCustomFieldValue("exp_test_ab", "not_found").Should().BeNull();
+        context.GetCustomFieldValue("exp_test_ab", "country").Should().BeEquivalentTo("US,PT,ES,DE,FR");
+        context.GetCustomFieldType("exp_test_ab", "country").Should().BeEquivalentTo("string");
+        
+        context.GetCustomFieldValue("exp_test_ab", "overrides").Should().BeEquivalentTo(new Dictionary<String, Object>
+            {
+                { "123", 1 },
+                { "456", 0 }
+            }
+        );
+        context.GetCustomFieldType("exp_test_ab", "overrides").Should().BeEquivalentTo("json");
+
+        context.GetCustomFieldValue("exp_test_ab", "languages").Should().BeNull();
+        context.GetCustomFieldValue("exp_test_ab", "languages").Should().BeNull();
+        
+        context.GetCustomFieldValue("exp_test_abc", "overrides").Should().BeNull();
+        context.GetCustomFieldValue("exp_test_abc", "overrides").Should().BeNull();
+        
+        context.GetCustomFieldValue("exp_test_abc", "languages").Should().BeEquivalentTo("en-US,en-GB,pt-PT,pt-BR,es-ES,es-MX");
+        context.GetCustomFieldType("exp_test_abc", "languages").Should().BeEquivalentTo("string");
+        
+        context.GetCustomFieldValue("exp_test_no_custom_fields", "country").Should().BeNull();
+        context.GetCustomFieldValue("exp_test_no_custom_fields", "country").Should().BeNull();
+        
+        context.GetCustomFieldValue("exp_test_no_custom_fields", "overrides").Should().BeNull();
+        context.GetCustomFieldValue("exp_test_no_custom_fields", "overrides").Should().BeNull();
+
+        context.GetCustomFieldValue("exp_test_no_custom_fields", "languages").Should().BeNull();
+        context.GetCustomFieldValue("exp_test_no_custom_fields", "languages").Should().BeNull();
+    }
 
     [Test]
     public void TestPeekTreatmentReturnsOverrideVariant()

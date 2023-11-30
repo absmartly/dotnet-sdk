@@ -20,6 +20,7 @@ public class Experiment
     public int FullOnVariant { get; set; }
     public ExperimentApplication[] Applications { get; set; }
     public ExperimentVariant[] Variants { get; set; }
+    public CustomFieldValue[] CustomFieldValues { get; set; }
     public bool AudienceStrict { get; set; }
     public string Audience { get; set; }
 
