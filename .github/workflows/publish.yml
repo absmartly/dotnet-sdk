@@ -1,8 +1,6 @@
 name: Publish Nuget
 on:
   push:
-    branches:
-      - "main"
     tags:
       - v*
 jobs:
@@ -16,6 +14,11 @@ jobs:
         with:
           dotnet-version: '5.0.x'
           dotnet-quality: 'preview'
+        env:
+          NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
+          
+      - name: Test
+        run: echo $NUGET_AUTH_TOKEN
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
 
