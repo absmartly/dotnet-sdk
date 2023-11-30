@@ -6,7 +6,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <AssemblyName>ABSmartly.Sdk</AssemblyName>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <PackageVersion>1.1.1</PackageVersion>
+        <PackageVersion>1.2.1</PackageVersion>
         <Title>A/B Smartly DotNet SDK</Title>
         <Authors>A/B Smartly</Authors>
         <Description>The A/B Smartly DotNet SDK is a client SDK for A/B Smartly service</Description>
@@ -19,11 +19,11 @@
         <TargetFrameworks>net5.0;netstandard2.0</TargetFrameworks>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
         <FileVersion>1.1.1.77</FileVersion>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     </PropertyGroup>
 
     <ItemGroup>
         <Folder Include="JsonExpressions\Operators\" />
-        <Folder Include="Models\" />
     </ItemGroup>
 
     <ItemGroup>
