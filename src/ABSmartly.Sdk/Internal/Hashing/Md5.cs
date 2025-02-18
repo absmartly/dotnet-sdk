@@ -6,18 +6,31 @@ namespace ABSmartly.Internal.Hashing;
 
 public static class Md5
 {
+
+#if !NET5_0_OR_GREATER
     private static readonly DotNetMD5 DotNetMd5;
 
     static Md5()
     {
         DotNetMd5 = DotNetMD5.Create();
     }
+#endif
 
     public static string Hash(string unit)
     {
         var bytes = Encoding.UTF8.GetBytes(unit);
-        var len = (uint)bytes.Length;
-        var hashBytes = DotNetMd5.ComputeHash(bytes, 0, (int)len);
+
+#if NET5_0_OR_GREATER
+        var hashBytes = DotNetMD5.HashData(bytes);
+#else
+        byte[] hashBytes;
+
+        lock (DotNetMd5)
+        {
+            hashBytes = DotNetMd5.ComputeHash(bytes);
+        }
+#endif
+
         var rawHashedString = Convert.ToBase64String(hashBytes);
         var hashedString = rawHashedString.Replace('+', '-').Replace('/', '_').Replace("=", "");
         return hashedString;
