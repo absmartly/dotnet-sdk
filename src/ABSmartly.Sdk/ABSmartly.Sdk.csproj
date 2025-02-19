@@ -6,7 +6,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <AssemblyName>ABSmartly.Sdk</AssemblyName>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <PackageVersion>1.2.6</PackageVersion>
+        <PackageVersion>1.2.7</PackageVersion>
         <Title>A/B Smartly DotNet SDK</Title>
         <Authors>A/B Smartly</Authors>
         <Description>The A/B Smartly DotNet SDK is a client SDK for A/B Smartly service</Description>
