@@ -8,21 +8,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v3
+      - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '6.0.x'
-          dotnet-quality: 'preview'
+          dotnet-version: '8.0.x'
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
-        
+
       - name: Run Build
-        run: dotnet build src/ABSmartly.Sdk
+        run: dotnet build src/ABSmartly.Sdk --configuration Release
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
-        
+
       - name: Run Release
-        run: dotnet nuget push src/ABSmartly.Sdk/bin/Debug/*.nupkg -s https://api.nuget.org/v3/index.json -k $NUGET_AUTH_TOKEN
+        run: dotnet nuget push src/ABSmartly.Sdk/bin/Release/*.nupkg -s https://api.nuget.org/v3/index.json -k $NUGET_AUTH_TOKEN
         env:
           NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
