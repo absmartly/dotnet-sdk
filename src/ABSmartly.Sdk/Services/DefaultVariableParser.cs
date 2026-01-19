@@ -27,4 +27,16 @@ public class DefaultVariableParser : JsonParserBase, IVariableParser
             return null;
         }
     }
+
+    public static object ParseValue(string json)
+    {
+        try
+        {
+            return ParseJsonValue(json);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

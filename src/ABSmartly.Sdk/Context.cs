@@ -61,6 +61,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private volatile int _pendingCount;
     private int _refreshing;
+    private int _attrsSeq;
     private volatile CancellationTokenSource _refreshTimer;
 
     private volatile CancellationTokenSource _timeout;
@@ -294,6 +295,26 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return _hashedUnits.ConcurrentGetOrAdd(unitType, _ => Md5.HashToUtf8Bytes(unitUid));
     }
 
+    private bool AudienceMatches(Experiment experiment, Assignment assignment)
+    {
+        if (!string.IsNullOrEmpty(experiment.Audience))
+        {
+            if (_attrsSeq > assignment.AttrsSeq)
+            {
+                var attrs = new Dictionary<string, object>(_attributes.Count);
+                foreach (var attribute in _attributes) attrs[attribute.Name] = attribute.Value;
+
+                var match = _audienceMatcher.Evaluate(experiment.Audience, attrs);
+                var newAudienceMismatch = match != null ? !match.Value : false;
+                if (newAudienceMismatch != assignment.AudienceMismatch)
+                {
+                    return false;
+                }
+                assignment.AttrsSeq = _attrsSeq;
+            }
+        }
+        return true;
+    }
 
     private Assignment GetAssignment(string experimentName)
     {
@@ -321,7 +342,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 else if (!_customAssignments.TryGetValue(experimentName, out var custom) ||
                          custom == assignment.Variant)
                 {
-                    if (ExperimentMatches(experiment.Data, assignment))
+                    if (ExperimentMatches(experiment.Data, assignment) &&
+                        AudienceMatches(experiment.Data, assignment))
                         // assignment is up-to-date
                         return assignment;
                 }
@@ -422,9 +444,10 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 }
             }
 
-            if (experiment != null && assignment.Variant < experiment.Data.Variants.Length)
+            if (experiment != null && assignment.Variant >= 0 && assignment.Variant < experiment.Data.Variants.Length)
                 assignment.Variables = experiment.Variables[assignment.Variant];
 
+            assignment.AttrsSeq = _attrsSeq;
             _assignmentCache[experimentName] = assignment;
 
             return assignment;
@@ -585,6 +608,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
         var attribute = new Attribute { Name = name, Value = value, SetAt = _clock.Millis() };
         _attributes.ConcurrentAdd(attribute);
+        Interlocked.Increment(ref _attrsSeq);
     }
 
     public void SetAttributes(Dictionary<string, object> attributes)
@@ -675,8 +699,13 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _contextLock.EnterWriteLock();
 
             var previous = _units.TryGetValue(unitType, out var u) ? u : null;
-            if (previous != null && !previous.Equals(uidTrimmed))
-                throw new ArgumentException($"Unit '{unitType}' already set.");
+            if (previous != null)
+            {
+                if (!previous.Equals(uidTrimmed))
+                    throw new ArgumentException($"Unit '{unitType}' already set.");
+                // Same value, no-op
+                return;
+            }
 
             _units.Add(unitType, uidTrimmed);
         }
@@ -976,7 +1005,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
                     if (customFieldValue.Type.StartsWith("json"))
                     {
-                        value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
+                        value.Value = DefaultVariableParser.ParseValue(customValue);
                     }
                     else if(customFieldValue.Type.StartsWith("boolean"))
                     {
@@ -1129,7 +1158,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         public int Exposed;
 
-        public Dictionary<string, object> Variables = new();
+        public Dictionary<string, object> Variables = null;
         public int Id { get; set; }
         public int Iteration { get; set; }
         public int FullOnVariant { get; set; }
@@ -1144,6 +1173,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         public bool Custom { get; set; }
 
         public bool AudienceMismatch { get; set; }
+        public int AttrsSeq { get; set; }
     }
 
     #endregion
