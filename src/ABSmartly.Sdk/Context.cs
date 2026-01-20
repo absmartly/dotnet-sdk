@@ -310,7 +310,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 {
                     return false;
                 }
-                assignment.AttrsSeq = _attrsSeq;
             }
         }
         return true;
