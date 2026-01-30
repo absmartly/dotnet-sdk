@@ -314,6 +314,7 @@ public class Startup
 // Controllers/HomeController.cs
 using Microsoft.AspNetCore.Mvc;
 using ABSmartly;
+using System.Threading.Tasks;
 
 public class HomeController : Controller
 {
@@ -397,7 +398,6 @@ builder.Services.AddABSmartly(
 // Pages/Index.razor
 @page "/"
 @inject ABsmartly ABsmartly
-@inject NavigationManager NavigationManager
 
 <h1>@(treatment == 0 ? "Control Group" : "Treatment Group")</h1>
 
@@ -429,7 +429,7 @@ using ABSmartly.DependencyInjection;
 var builder = WebApplication.CreateBuilder(args);
 
 var httpConfig = HttpClientConfig.CreateDefault();
-httpConfig.Timeout = TimeSpan.FromMilliseconds(1500);
+httpConfig.ConnectTimeout = 1500;
 
 builder.Services.AddABSmartly(
     builder.Configuration.GetSection("ABSmartly"),
@@ -533,7 +533,7 @@ The A/B Smartly SDK can be instantiated with an event logger used for all contex
 // Example implementation
 public class CustomEventLogger : IContextEventLogger
 {
-    public void HandleEvent(Context context, EventType eventType, object data)
+    public void HandleEvent(IContext context, EventType eventType, object data)
     {
         switch (eventType)
         {
