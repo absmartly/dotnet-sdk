@@ -1842,6 +1842,78 @@ public class ContextTests
         context.PendingCount.Should().Be(3);
     }
 
+    [Test]
+    public void TestRefreshKeepsCustomAssignments()
+    {
+        var context = CreateReadyContext();
+        context.IsReady().Should().BeTrue();
+
+        context.SetCustomAssignment("exp_test_ab", 2);
+        context.GetTreatment("exp_test_ab").Should().Be(2);
+        context.PendingCount.Should().Be(1);
+
+        SetupRefreshData();
+        context.Refresh();
+
+        Mock.Get(_dataProvider).Verify(x => x.GetContextDataAsync(), Times.Once);
+
+        context.GetCustomAssignment("exp_test_ab").Should().Be(2);
+        context.GetTreatment("exp_test_ab").Should().Be(2);
+        context.PendingCount.Should().Be(1);
+    }
+
+    [Test]
+    public void TestGetTreatmentQueuesExposureAfterPeek()
+    {
+        var context = CreateReadyContext();
+
+        context.PeekTreatment("exp_test_ab").Should().Be(1);
+        context.PendingCount.Should().Be(0);
+
+        context.GetTreatment("exp_test_ab").Should().Be(1);
+        context.PendingCount.Should().Be(1);
+
+        var expectedEvent = new PublishEvent
+        {
+            Hashed = true,
+            PublishedAt = _clock.Millis(),
+            Units = _publishUnits,
+            Exposures = new[]
+            {
+                Exposure(1, "exp_test_ab", "session_id", 1, _clock.Millis(), true, true, false, false, false, false)
+            }
+        };
+
+        context.Publish();
+
+        VerifyPublishData(_eventHandler, context, expectedEvent);
+    }
+
+    [Test]
+    public void TestGetTreatmentQueuesExposureWithCustomAssignmentVariant()
+    {
+        var context = CreateReadyContext();
+
+        context.SetCustomAssignment("exp_test_ab", 2);
+        context.GetTreatment("exp_test_ab").Should().Be(2);
+        context.PendingCount.Should().Be(1);
+
+        var expectedEvent = new PublishEvent
+        {
+            Hashed = true,
+            PublishedAt = _clock.Millis(),
+            Units = _publishUnits,
+            Exposures = new[]
+            {
+                Exposure(1, "exp_test_ab", "session_id", 2, _clock.Millis(), true, true, false, false, true, false)
+            }
+        };
+
+        context.Publish();
+
+        VerifyPublishData(_eventHandler, context, expectedEvent);
+    }
+
     private Context CreateContext(ContextConfig config, ContextData data) =>
         new(config, data, _clock, _dataProvider, _eventHandler, _eventLogger, _variableParser,
             _audienceMatcher, new LoggerFactory());
