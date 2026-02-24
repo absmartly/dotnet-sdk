@@ -19,11 +19,20 @@ public class DefaultVariableParser : JsonParserBase, IVariableParser
     {
         try
         {
-            return ParseJsonString(config);
+            var result = ParseJsonString(config);
+            if (result == null)
+            {
+                var message = $"Failed to parse variant config for experiment '{experimentName}', variant '{variantName}' - result was null";
+                _logger?.LogWarning(message);
+                Console.Error.WriteLine($"[ABSmartly] WARNING: {message}");
+            }
+            return result;
         }
         catch (Exception e)
         {
-            _logger?.LogError(e.Message);
+            var message = $"Failed to parse variant config for experiment '{experimentName}', variant '{variantName}': {e.Message}";
+            _logger?.LogError(e, message);
+            Console.Error.WriteLine($"[ABSmartly] ERROR: {message}");
             return null;
         }
     }
@@ -34,7 +43,7 @@ public class DefaultVariableParser : JsonParserBase, IVariableParser
         {
             return ParseJsonValue(json);
         }
-        catch
+        catch (Exception e)
         {
             return null;
         }

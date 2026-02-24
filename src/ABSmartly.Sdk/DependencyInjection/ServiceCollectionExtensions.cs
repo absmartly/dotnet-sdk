@@ -20,7 +20,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration abSmartlyServiceConfiguration,
         HttpClientConfig httpClientConfig,
-        Action<ABSdkConfig> setupSdkOptions = null,
+        Action<ABsmartlyConfig> setupSdkOptions = null,
         Func<PolicyBuilder<HttpResponseMessage>, IAsyncPolicy<HttpResponseMessage>> setupRetryPolicy = null
     )
     {
@@ -31,7 +31,7 @@ public static class ServiceCollectionExtensions
         services.Configure<ABSmartlyServiceConfiguration>(abSmartlyServiceConfiguration);
         services.Configure(setupSdkOptions ?? (_ => { }));
 
-        var builder = services.AddHttpClient(ABSdk.HttpClientName);
+        var builder = services.AddHttpClient(ABsmartly.HttpClientName);
 
 #if NETCOREAPP2_1_OR_GREATER || NETCOREAPP || NET
         builder = builder
@@ -64,10 +64,10 @@ public static class ServiceCollectionExtensions
 
         builder.AddTransientHttpErrorPolicy(setupRetryPolicy ?? ConfigureDefaultPolicy(httpClientConfig));
 
-        services.AddTransient<IABSdkHttpClientFactory, ABSdkHttpClientFactory>();
+        services.AddTransient<IABsmartlyHttpClientFactory, ABsmartlyHttpClientFactory>();
         services.AddTransient<IJsonOptionsProvider, JsonOptionsProvider>();
 
-        services.AddSingleton<ABSdk>();
+        services.AddSingleton<ABsmartly>();
     }
 
     private static Func<PolicyBuilder<HttpResponseMessage>, AsyncRetryPolicy<HttpResponseMessage>>

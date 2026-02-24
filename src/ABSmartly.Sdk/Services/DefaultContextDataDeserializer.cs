@@ -20,11 +20,20 @@ public class DefaultContextDataDeserializer : IContextDataDeserializer
     {
         try
         {
-            return JsonSerializer.Deserialize<ContextData>(stream, JsonOptionsProvider.Default.SerializerOptions);
+            var result = JsonSerializer.Deserialize<ContextData>(stream, JsonOptionsProvider.Default.SerializerOptions);
+            if (result == null)
+            {
+                var message = "Deserialization returned null - invalid or empty context data";
+                _logger?.LogError(message);
+                Console.Error.WriteLine($"[ABSmartly] ERROR: {message}");
+            }
+            return result;
         }
         catch (Exception e)
         {
-            _logger?.LogError("{Message}", e.Message);
+            var message = $"Failed to deserialize context data: {e.Message}";
+            _logger?.LogError(e, message);
+            Console.Error.WriteLine($"[ABSmartly] ERROR: {message}");
             return null;
         }
     }

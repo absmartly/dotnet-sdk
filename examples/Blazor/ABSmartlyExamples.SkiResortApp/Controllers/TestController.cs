@@ -27,11 +27,11 @@ public class Test : ControllerBase
         _ => "Scorching"
     };
 
-    private readonly ABSdk _abSdk;
+    private readonly ABsmartly _absmartly;
 
-    public Test(ABSdk abSdk)
+    public Test(ABsmartly absmartly)
     {
-        _abSdk = abSdk;
+        _absmartly = absmartly;
     }
 
     [HttpGet]
@@ -64,7 +64,7 @@ public class Test : ControllerBase
         });
 
         var config = new ContextConfig().SetUnit("user_id", userId);
-        var context = await _abSdk.CreateContextAsync(config);
+        var context = await _absmartly.CreateContextAsync(config);
 
         var treatment = context.GetTreatment("net_seasons");
 
@@ -81,7 +81,7 @@ public class Test : ControllerBase
     {
         var config = new ContextConfig().SetUnit("user_id", userId);
         config.RefreshInterval = TimeSpan.FromHours(4);
-        var context = await _abSdk.CreateContextAsync(config);
+        var context = await _absmartly.CreateContextAsync(config);
 
         context.Track("booking", new Dictionary<string, object>
         {

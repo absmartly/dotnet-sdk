@@ -48,12 +48,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private readonly object _timeoutLock = new();
     private readonly Dictionary<string, string> _units;
     private readonly IVariableParser _variableParser;
-    private bool _closed;
+    private volatile bool _closed;
     private int _closing;
 
-    private ContextData _data;
+    private volatile ContextData _data;
 
-    private bool _failed;
+    private volatile bool _failed;
     private Dictionary<string, ExperimentVariables> _index;
     private Dictionary<string, Dictionary<string, ContextCustomFieldValue>> _contextCustomFields;
     
@@ -226,16 +226,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                         if (_exposures.Count > 0)
                         {
                             exposures = _exposures.ToArray();
-                            _exposures.Clear();
                         }
 
                         if (_achievements.Count > 0)
                         {
                             achievements = _achievements.ToArray();
-                            _achievements.Clear();
                         }
-
-                        _pendingCount = 0;
                     }
                 }
                 finally
@@ -264,6 +260,18 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
                         await _eventHandler.PublishAsync(this, publishEvent).ConfigureUnboundContinuation();
                         LogEvent(EventType.Publish, publishEvent);
+
+                        try
+                        {
+                            Monitor.Enter(_eventLock);
+                            _exposures.Clear();
+                            _achievements.Clear();
+                            Interlocked.Exchange(ref _pendingCount, 0);
+                        }
+                        finally
+                        {
+                            Monitor.Exit(_eventLock);
+                        }
                     }
                     catch (Exception e)
                     {
@@ -295,16 +303,34 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return _hashedUnits.ConcurrentGetOrAdd(unitType, _ => Md5.HashToUtf8Bytes(unitUid));
     }
 
+    private Dictionary<string, object> BuildAttributesDictionary()
+    {
+        var attrs = new Dictionary<string, object>(_attributes.Count);
+        foreach (var attribute in _attributes)
+        {
+            attrs[attribute.Name] = attribute.Value;
+        }
+        return attrs;
+    }
+
+    private bool? EvaluateAudience(string audience)
+    {
+        if (string.IsNullOrEmpty(audience))
+        {
+            return null;
+        }
+
+        var attrs = BuildAttributesDictionary();
+        return _audienceMatcher.Evaluate(audience, attrs);
+    }
+
     private bool AudienceMatches(Experiment experiment, Assignment assignment)
     {
         if (!string.IsNullOrEmpty(experiment.Audience))
         {
             if (_attrsSeq > assignment.AttrsSeq)
             {
-                var attrs = new Dictionary<string, object>(_attributes.Count);
-                foreach (var attribute in _attributes) attrs[attribute.Name] = attribute.Value;
-
-                var match = _audienceMatcher.Evaluate(experiment.Audience, attrs);
+                var match = EvaluateAudience(experiment.Audience);
                 var newAudienceMismatch = match != null ? !match.Value : false;
                 if (newAudienceMismatch != assignment.AudienceMismatch)
                 {
@@ -385,10 +411,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
                     if (!string.IsNullOrEmpty(experiment.Data.Audience))
                     {
-                        var attrs = new Dictionary<string, object>(_attributes.Count);
-                        foreach (var attribute in _attributes) attrs.Add(attribute.Name, attribute.Value);
-
-                        var match = _audienceMatcher.Evaluate(experiment.Data.Audience, attrs);
+                        var match = EvaluateAudience(experiment.Data.Audience);
                         if (match != null) assignment.AudienceMismatch = !match.Value;
                     }
 
@@ -513,21 +536,18 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
     
-    public Object GetCustomFieldValue(String environmentName, String key)
+    private ContextCustomFieldValue GetCustomField(string environmentName, string key)
     {
         try
         {
             _dataLock.EnterReadLock();
 
-            _contextCustomFields.TryGetValue(environmentName, out var customFieldValues);
-
-            if (customFieldValues != null)
+            if (_contextCustomFields != null &&
+                _contextCustomFields.TryGetValue(environmentName, out var customFieldValues) &&
+                customFieldValues != null &&
+                customFieldValues.TryGetValue(key, out var field))
             {
-                customFieldValues.TryGetValue(key, out var field);
-                if (field != null)
-                {
-                    return field.Value;
-                }
+                return field;
             }
 
             return null;
@@ -537,30 +557,17 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _dataLock.ExitReadLock();
         }
     }
-    
+
+    public Object GetCustomFieldValue(String environmentName, String key)
+    {
+        var field = GetCustomField(environmentName, key);
+        return field?.Value;
+    }
+
     public Object GetCustomFieldType(String environmentName, String key)
     {
-        try
-        {
-            _dataLock.EnterReadLock();
-
-            _contextCustomFields.TryGetValue(environmentName, out var customFieldValues);
-
-            if (customFieldValues != null)
-            {
-                customFieldValues.TryGetValue(key, out var field);
-                if (field != null)
-                {
-                    return field.Type;
-                }
-            }
-
-            return null;
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
+        var field = GetCustomField(environmentName, key);
+        return field?.Type;
     }
 
     private ExperimentVariables GetVariableExperiment(string key)
@@ -849,8 +856,14 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private void CheckReady(bool expectNotClosed)
     {
-        if (!IsReady()) throw new Exception("ABSmartly Context is not yet ready");
-        if (expectNotClosed) CheckNotClosed();
+        if (!IsReady())
+        {
+            throw new InvalidOperationException("ABSmartly Context is not yet ready");
+        }
+        if (expectNotClosed)
+        {
+            CheckNotClosed();
+        }
     }
 
     #endregion
@@ -872,11 +885,29 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _timeout = new CancellationTokenSource();
             var token = _timeout.Token;
 
-            Task.Run(async () =>
+            var task = Task.Run(async () =>
             {
-                await Task.Delay(_publishDelay, token).ConfigureUnboundContinuation();
-                await Flush().ConfigureUnboundContinuation();
+                try
+                {
+                    await Task.Delay(_publishDelay, token).ConfigureUnboundContinuation();
+                    await Flush().ConfigureUnboundContinuation();
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception e)
+                {
+                    _logger?.LogError(e, "Error during flush timeout");
+                }
             }, token);
+
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                {
+                    _logger?.LogError(t.Exception, "Unhandled exception in flush timeout task");
+                }
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
         finally
         {
@@ -895,6 +926,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             if (_timeout == null) return;
 
             _timeout.Cancel();
+            _timeout.Dispose();
             _timeout = null;
         }
         finally
@@ -920,14 +952,33 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _refreshTimer = new CancellationTokenSource();
             var token = _refreshTimer.Token;
 
-            Task.Run(async () =>
+            var task = Task.Run(async () =>
             {
                 while (!token.IsCancellationRequested)
                 {
-                    await Task.Delay(_refreshInterval, token).ConfigureUnboundContinuation();
-                    await RefreshAsync();
+                    try
+                    {
+                        await Task.Delay(_refreshInterval, token).ConfigureUnboundContinuation();
+                        await RefreshAsync();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception e)
+                    {
+                        _logger?.LogError(e, "Error during refresh timer");
+                    }
                 }
             }, token);
+
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                {
+                    _logger?.LogError(t.Exception, "Unhandled exception in refresh timer task");
+                }
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
         finally
         {
@@ -946,6 +997,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             if (_refreshTimer == null) return;
 
             _refreshTimer.Cancel();
+            _refreshTimer.Dispose();
             _refreshTimer = null;
         }
         finally
@@ -975,11 +1027,26 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             foreach (var variant in experiment.Variants)
                 if (variant.Config != null && !string.IsNullOrWhiteSpace(variant.Config))
                 {
-                    var variables = _variableParser.Parse(this, experiment.Name, variant.Name, variant.Config);
+                    try
+                    {
+                        var variables = _variableParser.Parse(this, experiment.Name, variant.Name, variant.Config);
 
-                    foreach (var key in variables.Keys) indexVariables[key] = experimentVariables;
-
-                    experimentVariables.Variables.Add(variables);
+                        if (variables != null)
+                        {
+                            foreach (var key in variables.Keys) indexVariables[key] = experimentVariables;
+                            experimentVariables.Variables.Add(variables);
+                        }
+                        else
+                        {
+                            _logger?.LogWarning("Variable parser returned null for experiment '{ExperimentName}', variant '{VariantName}'", experiment.Name, variant.Name);
+                            experimentVariables.Variables.Add(new Dictionary<string, object>());
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        _logger?.LogError(e, "Failed to parse variables for experiment '{ExperimentName}', variant '{VariantName}'", experiment.Name, variant.Name);
+                        experimentVariables.Variables.Add(new Dictionary<string, object>());
+                    }
                 }
                 else
                 {
@@ -1000,23 +1067,32 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
                 if (customFieldValue.Value != null)
                 {
-                    var customValue = customFieldValue.Value;
+                    try
+                    {
+                        var customValue = customFieldValue.Value;
 
-                    if (customFieldValue.Type.StartsWith("json"))
-                    {
-                        value.Value = DefaultVariableParser.ParseValue(customValue);
+                        if (customFieldValue.Type.StartsWith("json"))
+                        {
+                            value.Value = DefaultVariableParser.ParseValue(customValue);
+                        }
+                        else if(customFieldValue.Type.StartsWith("boolean"))
+                        {
+                            value.Value = Convert.ToBoolean(customValue);
+                        }
+                        else if(customFieldValue.Type.StartsWith("number"))
+                        {
+                            value.Value = Convert.ToInt64(customValue);
+                        }
+                        else
+                        {
+                            value.Value = customValue;
+                        }
                     }
-                    else if(customFieldValue.Type.StartsWith("boolean"))
+                    catch (Exception e)
                     {
-                        value.Value = Convert.ToBoolean(customValue);
-                    }
-                    else if(customFieldValue.Type.StartsWith("number"))
-                    {
-                        value.Value = Convert.ToInt64(customValue);
-                    }
-                    else
-                    {
-                        value.Value = customValue;
+                        _logger?.LogWarning(e, "Failed to convert custom field '{FieldName}' of type '{FieldType}' for experiment '{ExperimentName}'. Value: '{Value}'",
+                            customFieldValue.Name, customFieldValue.Type, experiment.Name, customFieldValue.Value);
+                        value.Value = null;
                     }
                 }
 
@@ -1109,7 +1185,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
-    public void Dispose(bool disposing)
+    protected virtual void Dispose(bool disposing)
     {
         if (disposing)
         {

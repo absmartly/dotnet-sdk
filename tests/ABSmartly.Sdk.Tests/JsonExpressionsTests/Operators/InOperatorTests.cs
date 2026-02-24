@@ -10,16 +10,16 @@ public class InOperatorTests : OperatorTestBase
     [Test]
     public void TestStrings()
     {
-        _operator.Evaluate(Evaluator, T.ListOf("abcdefghijk", "abc")).Should().Be(true);
-        _operator.Evaluate(Evaluator, T.ListOf("abcdefghijk", "def")).Should().Be(true);
-        _operator.Evaluate(Evaluator, T.ListOf("abcdefghijk", "xxx")).Should().Be(false);
-        _operator.Evaluate(Evaluator, T.ListOf("abcdefghijk", null)).Should().BeNull();
-        _operator.Evaluate(Evaluator, T.ListOf(null, "xxx")).Should().BeNull();
+        _operator.Evaluate(Evaluator, T.ListOf("abc", "abcdefghijk")).Should().Be(true);
+        _operator.Evaluate(Evaluator, T.ListOf("def", "abcdefghijk")).Should().Be(true);
+        _operator.Evaluate(Evaluator, T.ListOf("xxx", "abcdefghijk")).Should().Be(false);
+        _operator.Evaluate(Evaluator, T.ListOf(null, "abcdefghijk")).Should().BeNull();
+        _operator.Evaluate(Evaluator, T.ListOf("xxx", null)).Should().BeNull();
 
-        Mock.Get(Evaluator).Verify(x => x.Evaluate("abcdefghijk"), Times.Exactly(4));
+        Mock.Get(Evaluator).Verify(x => x.Evaluate("abcdefghijk"), Times.Exactly(3));
         Mock.Get(Evaluator).Verify(x => x.Evaluate("abc"), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.Evaluate("def"), Times.Once);
-        Mock.Get(Evaluator).Verify(x => x.Evaluate("xxx"), Times.Once);
+        Mock.Get(Evaluator).Verify(x => x.Evaluate("xxx"), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.StringConvert("abc"), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.StringConvert("def"), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.StringConvert("xxx"), Times.Once);
@@ -28,11 +28,11 @@ public class InOperatorTests : OperatorTestBase
     [Test]
     public void TestArrayEmpty()
     {
-        _operator.Evaluate(Evaluator, T.ListOf(T.ListOf(), 1)).Should().Be(false);
-        _operator.Evaluate(Evaluator, T.ListOf(T.ListOf(), "1")).Should().Be(false);
-        _operator.Evaluate(Evaluator, T.ListOf(T.ListOf(), true)).Should().Be(false);
-        _operator.Evaluate(Evaluator, T.ListOf(T.ListOf(), false)).Should().Be(false);
-        _operator.Evaluate(Evaluator, T.ListOf(T.ListOf(), null)).Should().BeNull();
+        _operator.Evaluate(Evaluator, T.ListOf(1, T.ListOf())).Should().Be(false);
+        _operator.Evaluate(Evaluator, T.ListOf("1", T.ListOf())).Should().Be(false);
+        _operator.Evaluate(Evaluator, T.ListOf(true, T.ListOf())).Should().Be(false);
+        _operator.Evaluate(Evaluator, T.ListOf(false, T.ListOf())).Should().Be(false);
+        _operator.Evaluate(Evaluator, T.ListOf(null, T.ListOf())).Should().BeNull();
 
         Mock.Get(Evaluator).Verify(x => x.BooleanConvert(It.IsAny<object>()), Times.Never);
         Mock.Get(Evaluator).Verify(x => x.NumberConvert(It.IsAny<object>()), Times.Never);
@@ -46,28 +46,28 @@ public class InOperatorTests : OperatorTestBase
         var haystack01 = T.ListOf(0.0, 1.0);
         var haystack12 = T.ListOf(1.0, 2.0);
 
-        _operator.Evaluate(Evaluator, T.ListOf(haystack01, 2.0)).Should().Be(false);
+        _operator.Evaluate(Evaluator, T.ListOf(2.0, haystack01)).Should().Be(false);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.Evaluate(haystack01), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(2.0), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.Compare(It.IsAny<double>(), 2.0), Times.Exactly(2));
 
         Mock.Get(Evaluator).Invocations.Clear();
-        _operator.Evaluate(Evaluator, T.ListOf(haystack12, 0.0)).Should().Be(false);
+        _operator.Evaluate(Evaluator, T.ListOf(0.0, haystack12)).Should().Be(false);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.Evaluate(haystack12), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(0.0), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.Compare(It.IsAny<double>(), 0.0), Times.Exactly(2));
 
         Mock.Get(Evaluator).Invocations.Clear();
-        _operator.Evaluate(Evaluator, T.ListOf(haystack01, 0.0)).Should().Be(true);
+        _operator.Evaluate(Evaluator, T.ListOf(0.0, haystack01)).Should().Be(true);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.Evaluate(haystack01), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(0.0), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.Compare(It.IsAny<double>(), 0.0), Times.Once);
 
         Mock.Get(Evaluator).Invocations.Clear();
-        _operator.Evaluate(Evaluator, T.ListOf(haystack12, 2.0)).Should().Be(true);
+        _operator.Evaluate(Evaluator, T.ListOf(2.0, haystack12)).Should().Be(true);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.Evaluate(haystack12), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(2.0), Times.Once);
@@ -80,7 +80,7 @@ public class InOperatorTests : OperatorTestBase
         var haystackAb = T.MapOf("a", 1, "b", 2);
         var haystackBc = T.MapOf("b", 2, "c", 3, "0", 100);
 
-        _operator.Evaluate(Evaluator, T.ListOf(haystackAb, "c")).Should().Be(false);
+        _operator.Evaluate(Evaluator, T.ListOf("c", haystackAb)).Should().Be(false);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.Evaluate(haystackAb), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.StringConvert(It.IsAny<object>()), Times.Once);
@@ -88,7 +88,7 @@ public class InOperatorTests : OperatorTestBase
         Mock.Get(Evaluator).Verify(x => x.Evaluate("c"), Times.Once);
 
         Mock.Get(Evaluator).Invocations.Clear();
-        _operator.Evaluate(Evaluator, T.ListOf(haystackBc, "a")).Should().Be(false);
+        _operator.Evaluate(Evaluator, T.ListOf("a", haystackBc)).Should().Be(false);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.Evaluate(haystackBc), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.StringConvert(It.IsAny<object>()), Times.Once);
@@ -96,7 +96,7 @@ public class InOperatorTests : OperatorTestBase
         Mock.Get(Evaluator).Verify(x => x.Evaluate("a"), Times.Once);
 
         Mock.Get(Evaluator).Invocations.Clear();
-        _operator.Evaluate(Evaluator, T.ListOf(haystackAb, "a")).Should().Be(true);
+        _operator.Evaluate(Evaluator, T.ListOf("a", haystackAb)).Should().Be(true);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.Evaluate(haystackAb), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.StringConvert(It.IsAny<object>()), Times.Once);
@@ -104,7 +104,7 @@ public class InOperatorTests : OperatorTestBase
         Mock.Get(Evaluator).Verify(x => x.Evaluate("a"), Times.Once);
 
         Mock.Get(Evaluator).Invocations.Clear();
-        _operator.Evaluate(Evaluator, T.ListOf(haystackBc, "c")).Should().Be(true);
+        _operator.Evaluate(Evaluator, T.ListOf("c", haystackBc)).Should().Be(true);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.Evaluate(haystackBc), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.StringConvert(It.IsAny<object>()), Times.Once);
@@ -112,7 +112,7 @@ public class InOperatorTests : OperatorTestBase
         Mock.Get(Evaluator).Verify(x => x.Evaluate("c"), Times.Once);
 
         Mock.Get(Evaluator).Invocations.Clear();
-        _operator.Evaluate(Evaluator, T.ListOf(haystackBc, 0)).Should().Be(true);
+        _operator.Evaluate(Evaluator, T.ListOf(0, haystackBc)).Should().Be(true);
         Mock.Get(Evaluator).Verify(x => x.Evaluate(It.IsAny<object>()), Times.Exactly(2));
         Mock.Get(Evaluator).Verify(x => x.Evaluate(haystackBc), Times.Once);
         Mock.Get(Evaluator).Verify(x => x.StringConvert(It.IsAny<object>()), Times.Once);

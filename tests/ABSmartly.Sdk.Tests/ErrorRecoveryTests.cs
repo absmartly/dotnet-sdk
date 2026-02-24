@@ -140,7 +140,7 @@ public class ErrorRecoveryTests
         firstPublishAct.Should().Throw<Exception>().WithMessage("Transient network error");
 
         context.Track("goal2", new Dictionary<string, object> { ["value"] = 50 });
-        context.PendingCount.Should().Be(1);
+        context.PendingCount.Should().Be(3);
 
         context.Publish();
 

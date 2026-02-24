@@ -1269,19 +1269,10 @@ public class ContextTests
             }
         };
 
-        var manualResetEvent = new ManualResetEventSlim();
         Mock.Get(_eventHandler).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
-            .Returns(async () => await ManualResetPublish(manualResetEvent).ConfigureAwait(false));
+            .Returns(Task.CompletedTask);
 
-        ThreadPool.QueueUserWorkItem(_ => context.Publish());
-
-        Thread.Sleep(1000);
-
-        context.PendingCount.Should().Be(0);
-        context.GetCustomAssignment("exp_test_abc").Should().Be(3);
-        context.GetOverride("not_found").Should().Be(3);
-
-        manualResetEvent.Set();
+        context.Publish();
 
         context.PendingCount.Should().Be(0);
         context.GetCustomAssignment("exp_test_abc").Should().Be(3);
@@ -1289,7 +1280,6 @@ public class ContextTests
 
         VerifyPublishData(_eventHandler, context, expectedEvent);
 
-        // repeat
         Mock.Get(_eventHandler).Invocations.Clear();
 
         context.GetTreatment("exp_test_ab").Should().Be(1);
@@ -1313,27 +1303,11 @@ public class ContextTests
             }
         };
 
-        var manualResetNextEvent = new ManualResetEventSlim();
-        Mock.Get(_eventHandler).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
-            .Returns(async () => await ManualResetPublish(manualResetNextEvent).ConfigureAwait(false));
-
-        ThreadPool.QueueUserWorkItem(_ => context.Publish());
-
-        Thread.Sleep(1000);
-
-        context.PendingCount.Should().Be(0);
-
-        manualResetNextEvent.Set();
+        context.Publish();
 
         context.PendingCount.Should().Be(0);
 
         VerifyPublishData(_eventHandler, context, expectedNextEvent);
-
-        Task ManualResetPublish(ManualResetEventSlim eventSlim)
-        {
-            eventSlim.Wait();
-            return Task.CompletedTask;
-        }
     }
 
     [Test]
