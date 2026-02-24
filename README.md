@@ -1,12 +1,12 @@
 # A/B Smartly .NET SDK
 
+A/B Smartly - .NET SDK
+
 Latest
 stable: [![NuGet stable](https://img.shields.io/nuget/v/ABSmartly.Sdk?style=flat-square)](https://www.nuget.org/packages/ABSmartly.Sdk)
 
 Current
 prerelease: [![NuGet pre](https://img.shields.io/nuget/vpre/ABSmartly.Sdk?style=flat-square)](https://www.nuget.org/packages/ABSmartly.Sdk)
-
-A/B Smartly - .NET SDK
 
 ## Compatibility
 
@@ -29,7 +29,7 @@ dotnet add package ABSmartly.Sdk --version 1.0.0
 
 ## Getting Started
 
-Please follow the [installation](#installation) instructions before trying the following code:
+Please follow the [installation](#installation) instructions before trying the following code.
 
 ### Initialization
 
@@ -131,29 +131,27 @@ When injecting `IABsmartlyHttpClientFactory`, ensure it creates instances of the
 
 When injecting `IHttpClientFactory`, ensure it creates named `IHttpClient` instances with the name `ABSmartlySDK.HttpClient` (available as `ABsmartly.HttpClientName`).
 
-### Creating a New Context
+## Creating a New Context
 
-#### Asynchronously (Recommended)
+### Asynchronously (Recommended)
 
 ```csharp
-// define a new context request
 var config = new ContextConfig()
     .SetUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8");
 
 var context = await _absmartly.CreateContextAsync(config);
 ```
 
-#### Synchronously
+### Synchronously
 
 ```csharp
-// define a new context request
 var config = new ContextConfig()
     .SetUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8");
 
 var context = _absmartly.CreateContext(config);
 ```
 
-#### With Pre-fetched Data
+### With Pre-fetched Data
 
 When doing full-stack experimentation with A/B Smartly, we recommend creating a context only once on the server-side. Creating a context involves a round-trip to the A/B Smartly event collector. We can avoid repeating the round-trip on the client-side by re-using data previously retrieved.
 
@@ -166,6 +164,27 @@ var anotherContextConfig = new ContextConfig()
     .SetUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d9");
 
 var anotherContext = _absmartly.CreateContextWith(anotherContextConfig, context.GetContextData());
+```
+
+### Refreshing the Context with Fresh Experiment Data
+
+For long-running contexts, the context is usually created once when the application is first started. However, any experiments being tracked in your production code but started after the context was created will not be triggered.
+
+To mitigate this, we can use the `RefreshInterval` property on the context config:
+
+```csharp
+var config = new ContextConfig()
+    .SetUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8");
+config.RefreshInterval = TimeSpan.FromHours(4); // every 4 hours
+```
+
+Alternatively, the `Refresh()` method can be called manually. The `Refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `GetTreatment()` is called again.
+
+```csharp
+await context.RefreshAsync();
+
+// or synchronously
+context.Refresh();
 ```
 
 ### Setting Extra Units
@@ -186,18 +205,6 @@ context.SetUnits(new Dictionary<string, string> {
 
 ## Basic Usage
 
-### Context Attributes
-
-The `SetAttribute()` and `SetAttributes()` methods can be called before the context is ready.
-
-```csharp
-context.SetAttribute("user_agent", Request.Headers["User-Agent"]);
-
-context.SetAttributes(new Dictionary<string, object> {
-    { "customer_age", "new_customer" }
-});
-```
-
 ### Selecting a Treatment
 
 ```csharp
@@ -216,6 +223,56 @@ else
 ```csharp
 var defaultButtonColor = "red";
 var buttonColor = context.GetVariableValue("button.color", defaultButtonColor);
+```
+
+### Peek at Treatment Variants
+
+Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering an exposure. The A/B Smartly SDK provides a `PeekTreatment()` method for that.
+
+```csharp
+if (context.PeekTreatment("exp_test_experiment") == 0)
+{
+    // user is in control group (variant 0)
+}
+else
+{
+    // user is in treatment group
+}
+```
+
+#### Peeking at Variables
+
+```csharp
+var variable = context.PeekVariableValue("my_variable", defaultValue);
+```
+
+### Overriding Treatment Variants
+
+During development, for example, it is useful to force a treatment for an experiment. This can be achieved with the `SetOverride()` and/or `SetOverrides()` methods.
+
+The `SetOverride()` and `SetOverrides()` methods can be called before the context is ready.
+
+```csharp
+context.SetOverride("exp_test_experiment", 1); // force variant 1 of treatment
+
+context.SetOverrides(new Dictionary<string, int> {
+    { "exp_test_experiment", 1 },
+    { "exp_another_experiment", 0 }
+});
+```
+
+## Advanced
+
+### Context Attributes
+
+The `SetAttribute()` and `SetAttributes()` methods can be called before the context is ready.
+
+```csharp
+context.SetAttribute("user_agent", Request.Headers["User-Agent"]);
+
+context.SetAttributes(new Dictionary<string, object> {
+    { "customer_age", "new_customer" }
+});
 ```
 
 ### Tracking Goals
@@ -252,6 +309,73 @@ using var context = _absmartly.CreateContext(config);
 // or asynchronously
 await using var context = await _absmartly.CreateContextAsync(config);
 ```
+
+### Custom Event Logger
+
+The A/B Smartly SDK can be instantiated with an event logger used for all contexts. In addition, an event logger can be specified when creating a particular context in the `ContextConfig`.
+
+```csharp
+public class CustomEventLogger : IContextEventLogger
+{
+    public void HandleEvent(IContext context, EventType eventType, object data)
+    {
+        switch (eventType)
+        {
+            case EventType.Exposure when data is Exposure exposure:
+                Console.WriteLine($"exposed to experiment: {exposure.Name}");
+                break;
+            case EventType.Goal when data is GoalAchievement goal:
+                Console.WriteLine($"goal tracked: {goal.Name}");
+                break;
+            case EventType.Error:
+                Console.WriteLine($"error: {data}");
+                break;
+            case EventType.Close:
+            case EventType.Publish:
+            case EventType.Ready:
+            case EventType.Refresh:
+                break;
+        }
+    }
+}
+```
+
+**Usage:**
+
+```csharp
+// For all contexts, during SDK initialization
+// When using dependency injection
+builder.Services.AddABSmartly(
+    builder.Configuration.GetSection("ABSmartly"),
+    HttpClientConfig.CreateDefault(),
+    config => config.ContextEventLogger = new CustomEventLogger());
+
+// Or when creating SDK instance manually
+var absmartly = new ABsmartly(
+    new ABsmartlyHttpClientFactory(...),
+    new ABSmartlyServiceConfiguration { ... },
+    new ABsmartlyConfig { ContextEventLogger = new CustomEventLogger() });
+
+// OR, alternatively, during a particular context initialization
+var contextConfig = new ContextConfig
+{
+    ContextEventLogger = new CustomEventLogger()
+};
+```
+
+**Event Types**
+
+The data parameter depends on the type of event. Currently, the SDK logs the following events:
+
+| Event      | When                                                        | Data                                                   |
+|:-----------|:------------------------------------------------------------|:-------------------------------------------------------|
+| `Error`    | Context receives an error                                   | `Exception` object                                     |
+| `Ready`    | Context turns ready                                         | `ContextData` used to initialize the context           |
+| `Refresh`  | `Refresh()` method succeeds                                 | `ContextData` used to refresh the context              |
+| `Publish`  | `Publish()` or `PublishAsync()` method succeeds             | `PublishEvent` sent to the A/B Smartly event collector |
+| `Exposure` | `GetTreatment()` method succeeds on first exposure          | `Exposure` enqueued for publishing                     |
+| `Goal`     | `Track()` method succeeds                                   | `GoalAchievement` enqueued for publishing              |
+| `Close`    | Context disposal succeeds                                   | `null`                                                 |
 
 ## Platform-Specific Examples
 
@@ -469,7 +593,6 @@ else
 For Blazor or other component-based scenarios with navigation:
 
 ```csharp
-// In a Blazor component or controller
 private Task<IContext> _contextTask;
 private bool _isNavigating = false;
 
@@ -502,133 +625,6 @@ public void Dispose()
 }
 ```
 
-## Advanced
-
-### Refreshing the Context with Fresh Experiment Data
-
-For long-running contexts, the context is usually created once when the application is first started. However, any experiments being tracked in your production code but started after the context was created will not be triggered.
-
-To mitigate this, we can use the `RefreshInterval` property on the context config:
-
-```csharp
-var config = new ContextConfig()
-    .SetUnit("session_id", "5ebf06d8cb5d8137290c4abb64155584fbdb64d8");
-config.RefreshInterval = TimeSpan.FromHours(4); // every 4 hours
-```
-
-Alternatively, the `Refresh()` method can be called manually. The `Refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `GetTreatment()` is called again.
-
-```csharp
-await context.RefreshAsync();
-
-// or synchronously
-context.Refresh();
-```
-
-### Custom Event Logger
-
-The A/B Smartly SDK can be instantiated with an event logger used for all contexts. In addition, an event logger can be specified when creating a particular context in the `ContextConfig`.
-
-```csharp
-// Example implementation
-public class CustomEventLogger : IContextEventLogger
-{
-    public void HandleEvent(IContext context, EventType eventType, object data)
-    {
-        switch (eventType)
-        {
-            case EventType.Exposure when data is Exposure exposure:
-                Console.WriteLine($"exposed to experiment: {exposure.Name}");
-                break;
-            case EventType.Goal when data is GoalAchievement goal:
-                Console.WriteLine($"goal tracked: {goal.Name}");
-                break;
-            case EventType.Error:
-                Console.WriteLine($"error: {data}");
-                break;
-            case EventType.Close:
-            case EventType.Publish:
-            case EventType.Ready:
-            case EventType.Refresh:
-                break;
-        }
-    }
-}
-```
-
-**Usage:**
-
-```csharp
-// For all contexts, during SDK initialization
-// When using dependency injection
-builder.Services.AddABSmartly(
-    builder.Configuration.GetSection("ABSmartly"),
-    HttpClientConfig.CreateDefault(),
-    config => config.ContextEventLogger = new CustomEventLogger());
-
-// Or when creating SDK instance manually
-var absmartly = new ABsmartly(
-    new ABsmartlyHttpClientFactory(...),
-    new ABSmartlyServiceConfiguration { ... },
-    new ABsmartlyConfig { ContextEventLogger = new CustomEventLogger() });
-
-// OR, alternatively, during a particular context initialization
-var contextConfig = new ContextConfig
-{
-    ContextEventLogger = new CustomEventLogger()
-};
-```
-
-**Event Types**
-
-The data parameter depends on the type of event. Currently, the SDK logs the following events:
-
-| Event      | When                                                        | Data                                                   |
-|:-----------|:------------------------------------------------------------|:-------------------------------------------------------|
-| `Error`    | Context receives an error                                   | `Exception` object                                     |
-| `Ready`    | Context turns ready                                         | `ContextData` used to initialize the context           |
-| `Refresh`  | `Refresh()` method succeeds                                 | `ContextData` used to refresh the context              |
-| `Publish`  | `Publish()` or `PublishAsync()` method succeeds             | `PublishEvent` sent to the A/B Smartly event collector |
-| `Exposure` | `GetTreatment()` method succeeds on first exposure          | `Exposure` enqueued for publishing                     |
-| `Goal`     | `Track()` method succeeds                                   | `GoalAchievement` enqueued for publishing              |
-| `Close`    | Context disposal succeeds                                   | `null`                                                 |
-
-### Peek at Treatment Variants
-
-Although generally not recommended, it is sometimes necessary to peek at a treatment or variable without triggering an exposure. The A/B Smartly SDK provides a `PeekTreatment()` method for that.
-
-```csharp
-if (context.PeekTreatment("exp_test_experiment") == 0)
-{
-    // user is in control group (variant 0)
-}
-else
-{
-    // user is in treatment group
-}
-```
-
-**Peeking at variables:**
-
-```csharp
-var variable = context.PeekVariableValue("my_variable", defaultValue);
-```
-
-### Overriding Treatment Variants
-
-During development, for example, it is useful to force a treatment for an experiment. This can be achieved with the `SetOverride()` and/or `SetOverrides()` methods.
-
-The `SetOverride()` and `SetOverrides()` methods can be called before the context is ready.
-
-```csharp
-context.SetOverride("exp_test_experiment", 1); // force variant 1 of treatment
-
-context.SetOverrides(new Dictionary<string, int> {
-    { "exp_test_experiment", 1 },
-    { "exp_another_experiment", 0 }
-});
-```
-
 ## About A/B Smartly
 
 **A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
@@ -648,11 +644,3 @@ A/B Smartly's real-time analytics helps engineering and product teams ensure tha
 - [.NET SDK](https://www.github.com/absmartly/dotnet-sdk) (this package)
 - [Dart SDK](https://www.github.com/absmartly/dart-sdk)
 - [Flutter SDK](https://www.github.com/absmartly/flutter-sdk)
-
-## Documentation
-
-- [Full Documentation](https://docs.absmartly.com/)
-
-## License
-
-See [LICENSE](LICENSE) for details.
