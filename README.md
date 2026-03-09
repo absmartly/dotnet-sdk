@@ -90,9 +90,9 @@ public class Test : ControllerBase
 
 The `AddABSmartly` extension method allows you to configure SDK settings, HTTP connection settings, inject custom implementations of context-specific services, and configure additional HTTP request policies using Polly.
 
-#### Advanced: Manual SDK Configuration
+#### Alternative: Manual SDK Configuration
 
-Alternatively, the SDK instance can be created manually:
+The SDK instance can also be created manually:
 
 ```csharp
 using ABSmartly;

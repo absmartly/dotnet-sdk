@@ -112,6 +112,7 @@ public class LargePayloadTests
         var data = new ContextData(new[] { experiment });
 
         var config = new ContextConfig().SetUnits(_units);
+        config.PublishDelay = TimeSpan.FromMinutes(10);
         var context = CreateContext(config, data);
 
         context.IsReady().Should().BeTrue();
