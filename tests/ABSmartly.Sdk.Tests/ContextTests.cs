@@ -1406,7 +1406,7 @@ public class ContextTests
             try
             {
                 manualResetEvent.Wait();
-                context2.Dispose();
+                context3.Dispose();
             }
             catch (Exception e)
             {
@@ -1420,7 +1420,7 @@ public class ContextTests
             try
             {
                 manualResetEvent.Wait();
-                await context2.DisposeAsync();
+                await context3.DisposeAsync();
             }
             catch (Exception e)
             {
@@ -1893,7 +1893,7 @@ public class ContextTests
             _audienceMatcher, new LoggerFactory());
 
     private Context CreateContext(ContextData data) =>
-        new(new ContextConfig().SetUnits(_units), data, _clock, _dataProvider, _eventHandler, _eventLogger,
+        new(new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }.SetUnits(_units), data, _clock, _dataProvider, _eventHandler, _eventLogger,
             _variableParser,
             _audienceMatcher, new LoggerFactory());
 
