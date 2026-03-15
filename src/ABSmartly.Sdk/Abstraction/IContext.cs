@@ -36,12 +36,24 @@ public interface IContext
     /// </summary>
     /// <returns>Boolean value indicating that context is closed and no longer available for operations.</returns>
     bool IsClosed();
-    
+
     /// <summary>
     /// Returns true when context is performing closing and doing any outstanding sync and close operations, false otherwise.
     /// </summary>
     /// <returns>Boolean value indicating context is performing closing and no longer available for operations.</returns>
     bool IsClosing();
+
+    /// <summary>
+    /// Returns true when context all sync is performed and context is finalized, false otherwise.
+    /// Alias for <see cref="IsClosed"/>.
+    /// </summary>
+    bool IsFinalized();
+
+    /// <summary>
+    /// Returns true when context is performing finalization, false otherwise.
+    /// Alias for <see cref="IsClosing"/>.
+    /// </summary>
+    bool IsFinalizing();
     
     /// <summary>
     /// Get names of available experiments for the context. 
@@ -209,4 +221,10 @@ public interface IContext
     /// <param name="goalName">Achievement name</param>
     /// <param name="properties">Additional achievement information</param>
     void Track(string goalName, Dictionary<string, object> properties);
+
+    /// <summary>
+    /// Closes the context, publishing any pending events.
+    /// Alias for Dispose.
+    /// </summary>
+    void Close();
 }

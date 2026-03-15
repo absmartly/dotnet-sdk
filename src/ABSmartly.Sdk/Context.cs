@@ -548,14 +548,14 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
     
-    private ContextCustomFieldValue GetCustomField(string environmentName, string key)
+    private ContextCustomFieldValue GetCustomField(string experimentName, string key)
     {
         try
         {
             _dataLock.EnterReadLock();
 
             if (_contextCustomFields != null &&
-                _contextCustomFields.TryGetValue(environmentName, out var customFieldValues) &&
+                _contextCustomFields.TryGetValue(experimentName, out var customFieldValues) &&
                 customFieldValues != null &&
                 customFieldValues.TryGetValue(key, out var field))
             {
@@ -570,16 +570,21 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
-    public object GetCustomFieldValue(string environmentName, string key)
+    public object GetCustomFieldValue(string experimentName, string key)
     {
-        var field = GetCustomField(environmentName, key);
+        var field = GetCustomField(experimentName, key);
         return field?.Value;
     }
 
-    public object GetCustomFieldType(string environmentName, string key)
+    public object GetCustomFieldValueType(string experimentName, string key)
     {
-        var field = GetCustomField(environmentName, key);
+        var field = GetCustomField(experimentName, key);
         return field?.Type;
+    }
+
+    public object GetCustomFieldType(string experimentName, string key)
+    {
+        return GetCustomFieldValueType(experimentName, key);
     }
 
     private List<ExperimentVariables> GetVariableExperiments(string key)
@@ -618,6 +623,16 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     public bool IsClosing()
     {
         return !_closed && _closing > 0;
+    }
+
+    public bool IsFinalized()
+    {
+        return IsClosed();
+    }
+
+    public bool IsFinalizing()
+    {
+        return IsClosing();
     }
 
     #endregion
@@ -745,7 +760,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             if (previous != null)
             {
                 if (!previous.Equals(uidTrimmed))
-                    throw new ArgumentException($"Unit '{unitType}' already set.");
+                    throw new ArgumentException($"Unit '{unitType}' UID already set.");
                 // Same value, no-op
                 return;
             }
@@ -905,15 +920,15 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private void CheckNotClosed()
     {
-        if (_closed) throw new InvalidOperationException("ABSmartly Context is closed");
-        if (_closing > 0) throw new InvalidOperationException("ABSmartly Context is closing");
+        if (_closed) throw new InvalidOperationException("ABsmartly Context is finalized.");
+        if (_closing > 0) throw new InvalidOperationException("ABsmartly Context is finalizing.");
     }
 
     private void CheckReady(bool expectNotClosed)
     {
         if (!IsReady())
         {
-            throw new InvalidOperationException("ABSmartly Context is not yet ready");
+            throw new InvalidOperationException("ABsmartly Context is not yet ready.");
         }
         if (expectNotClosed)
         {
@@ -1246,6 +1261,11 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 Interlocked.Exchange(ref _closing, 0);
             }
         }
+    }
+
+    public void Close()
+    {
+        Dispose();
     }
 
     public void Dispose()

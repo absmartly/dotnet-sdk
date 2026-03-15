@@ -218,7 +218,7 @@ public class ContextTests
 
         void VerifyThrows(Action act)
         {
-            act.Should().Throw<InvalidOperationException>().WithMessage("ABSmartly Context is closing");
+            act.Should().Throw<InvalidOperationException>().WithMessage("ABsmartly Context is finalizing.");
         }
     }
 
@@ -255,7 +255,7 @@ public class ContextTests
 
         void VerifyThrows(Action act)
         {
-            act.Should().Throw<InvalidOperationException>().WithMessage("ABSmartly Context is closed");
+            act.Should().Throw<InvalidOperationException>().WithMessage("ABsmartly Context is finalized.");
         }
     }
 
@@ -370,7 +370,7 @@ public class ContextTests
 
         var act = () => context.SetUnit("session_id", "123");
 
-        act.Should().Throw<ArgumentException>().WithMessage("Unit 'session_id' already set.");
+        act.Should().Throw<ArgumentException>().WithMessage("Unit 'session_id' UID already set.");
     }
 
     [Test]
