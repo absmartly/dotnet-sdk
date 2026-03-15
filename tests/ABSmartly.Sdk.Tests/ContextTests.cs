@@ -61,15 +61,15 @@ public class ContextTests
         "submit.shape", "rect",
         "show-modal", true);
 
-    private readonly Dictionary<string, string> _variableExperiments = new()
+    private readonly Dictionary<string, List<string>> _variableExperiments = new()
     {
-        ["banner.border"] = "exp_test_ab",
-        ["banner.size"] = "exp_test_ab",
-        ["button.color"] = "exp_test_abc",
-        ["card.width"] = "exp_test_not_eligible",
-        ["submit.color"] = "exp_test_fullon",
-        ["submit.shape"] = "exp_test_fullon",
-        ["show-modal"] = "exp_test_new"
+        ["banner.border"] = new List<string> { "exp_test_ab" },
+        ["banner.size"] = new List<string> { "exp_test_ab" },
+        ["button.color"] = new List<string> { "exp_test_abc" },
+        ["card.width"] = new List<string> { "exp_test_not_eligible" },
+        ["submit.color"] = new List<string> { "exp_test_fullon" },
+        ["submit.shape"] = new List<string> { "exp_test_fullon" },
+        ["show-modal"] = new List<string> { "exp_test_new" }
     };
 
     private readonly Unit[] _publishUnits =
@@ -193,8 +193,6 @@ public class ContextTests
 
         VerifyThrows(() => context.SetAttribute("attr1", "value1"));
         VerifyThrows(() => context.SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1" }));
-        VerifyThrows(() => context.SetOverride("exp_test_ab", 2));
-        VerifyThrows(() => context.SetOverrides(new Dictionary<string, int> { ["exp_test_ab"] = 2 }));
         VerifyThrows(() => context.SetUnit("test", "test"));
         VerifyThrows(() => context.SetUnits(new Dictionary<string, string> { ["test"] = "test" }));
         VerifyThrows(() => context.SetCustomAssignment("exp_test_ab", 2));
@@ -240,8 +238,6 @@ public class ContextTests
 
         VerifyThrows(() => context.SetAttribute("attr1", "value1"));
         VerifyThrows(() => context.SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1" }));
-        VerifyThrows(() => context.SetOverride("exp_test_ab", 2));
-        VerifyThrows(() => context.SetOverrides(new Dictionary<string, int> { ["exp_test_ab"] = 2 }));
         VerifyThrows(() => context.SetUnit("test", "test"));
         VerifyThrows(() => context.SetUnits(new Dictionary<string, string> { ["test"] = "test" }));
         VerifyThrows(() => context.SetCustomAssignment("exp_test_ab", 2));
@@ -605,9 +601,10 @@ public class ContextTests
 
         var experiments = _data.Experiments.Select(x => x.Name).ToDictionary(x => x);
 
-        foreach (var (variable, experimentName) in _variableExperiments)
+        foreach (var (variable, experimentNames) in _variableExperiments)
         {
             var actual = context.PeekVariableValue(variable, 17);
+            var experimentName = experimentNames[0];
             var eligible = experimentName != "exp_test_not_eligible";
 
             if (eligible && experiments.ContainsKey(experimentName))
@@ -642,9 +639,10 @@ public class ContextTests
 
         var experiments = _data.Experiments.Select(x => x.Name).ToDictionary(x => x);
 
-        foreach (var (variable, experimentName) in _variableExperiments)
+        foreach (var (variable, experimentNames) in _variableExperiments)
         {
             var actual = context.GetVariableValue(variable, 17);
+            var experimentName = experimentNames[0];
             var eligible = experimentName != "exp_test_not_eligible";
 
             if (eligible && experiments.ContainsKey(experimentName))
@@ -1943,5 +1941,86 @@ public class ContextTests
         {
             return Task.FromResult(data ?? _refreshedData);
         }
+    }
+
+    [Test]
+    public void TestSetOverrideSucceedsAfterDispose()
+    {
+        var context = CreateReadyContext();
+        context.Dispose();
+        context.IsClosed().Should().BeTrue();
+        context.SetOverride("exp_test_ab", 2);
+        context.GetOverride("exp_test_ab").Should().Be(2);
+    }
+
+    [Test]
+    public void TestSetOverridesSucceedsAfterDispose()
+    {
+        var context = CreateReadyContext();
+        context.Dispose();
+        context.IsClosed().Should().BeTrue();
+        context.SetOverrides(new Dictionary<string, int> { ["exp_test_ab"] = 2, ["exp_test_abc"] = 1 });
+        context.GetOverride("exp_test_ab").Should().Be(2);
+        context.GetOverride("exp_test_abc").Should().Be(1);
+    }
+
+    [Test]
+    public void TestGetVariableKeysReturnsListPerKey()
+    {
+        var context = CreateContext(_refreshedData);
+
+        var variableKeys = context.GetVariableKeys();
+
+        foreach (var (key, experiments) in variableKeys)
+        {
+            experiments.Should().NotBeNull();
+            experiments.Should().NotBeEmpty();
+        }
+    }
+
+    [Test]
+    public void TestGetVariableKeysMultipleExperimentsShareKey()
+    {
+        var sharedKey = "shared_key";
+        var exp1 = new Experiment
+        {
+            Id = 100,
+            Name = "exp_a",
+            UnitType = "user_id",
+            Iteration = 1,
+            FullOnVariant = 0,
+            TrafficSplit = new double[] { 0.0, 1.0 },
+            Split = new double[] { 0.5, 0.5 },
+            Variants = new[]
+            {
+                new ExperimentVariant { Name = "control", Config = null },
+                new ExperimentVariant { Name = "treatment", Config = $"{{\"{sharedKey}\": \"value_a\"}}" }
+            }
+        };
+        var exp2 = new Experiment
+        {
+            Id = 101,
+            Name = "exp_b",
+            UnitType = "user_id",
+            Iteration = 1,
+            FullOnVariant = 0,
+            TrafficSplit = new double[] { 0.0, 1.0 },
+            Split = new double[] { 0.5, 0.5 },
+            Variants = new[]
+            {
+                new ExperimentVariant { Name = "control", Config = null },
+                new ExperimentVariant { Name = "treatment", Config = $"{{\"{sharedKey}\": \"value_b\"}}" }
+            }
+        };
+
+        var data = new ContextData { Experiments = new[] { exp1, exp2 } };
+        var context = CreateContext(data);
+
+        var variableKeys = context.GetVariableKeys();
+
+        variableKeys.Should().ContainKey(sharedKey);
+        variableKeys[sharedKey].Should().HaveCount(2);
+        variableKeys[sharedKey].Should().Contain("exp_a");
+        variableKeys[sharedKey].Should().Contain("exp_b");
     }
 }

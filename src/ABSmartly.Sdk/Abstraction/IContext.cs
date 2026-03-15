@@ -131,10 +131,10 @@ public interface IContext
     void SetUnits(Dictionary<string, string> units);
     
     /// <summary>
-    /// Get mapping of every variable key in this context to appropriate experiment.
+    /// Get mapping of every variable key in this context to appropriate experiments.
     /// </summary>
-    /// <returns>Dictionary with (variable key => experiment name) mapping.</returns>
-    Dictionary<string, string> GetVariableKeys();
+    /// <returns>Dictionary with (variable key => list of experiment names) mapping.</returns>
+    Dictionary<string, List<string>> GetVariableKeys();
     
     /// <summary>
     /// Gets variant assignment for current context and returns variable value if available,

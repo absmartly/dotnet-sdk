@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -40,7 +41,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private readonly DictionaryLockableAdapter<string, byte[]> _hashedUnits;
     private readonly ILogger<Context> _logger;
-    private readonly DictionaryLockableAdapter<string, int?> _overrides;
+    private readonly ConcurrentDictionary<string, int?> _overrides;
     private readonly int _publishDelay;
     private readonly int _refreshInterval;
 
@@ -57,11 +58,11 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private Dictionary<string, ExperimentVariables> _index;
     private Dictionary<string, Dictionary<string, ContextCustomFieldValue>> _contextCustomFields;
     
-    private DictionaryLockableAdapter<string, ExperimentVariables> _indexVariables;
+    private DictionaryLockableAdapter<string, List<ExperimentVariables>> _indexVariables;
 
     private volatile int _pendingCount;
     private int _refreshing;
-    private int _attrsSeq;
+    private volatile int _attrsSeq;
     private volatile CancellationTokenSource _refreshTimer;
 
     private volatile CancellationTokenSource _timeout;
@@ -80,7 +81,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         if (config == null) throw new ArgumentNullException(nameof(config), "Context configuration is required");
 
-        _logger = loggerFactory.CreateLogger<Context>();
+        _logger = loggerFactory?.CreateLogger<Context>();
         _clock = clock;
         _publishDelay = Convert.ToInt32(config.PublishDelay.TotalMilliseconds);
         _refreshInterval = Convert.ToInt32(config.RefreshInterval.TotalMilliseconds);
@@ -106,9 +107,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             SetAttributes(config.Attributes);
 
         _overrides = config.Overrides != null
-            ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock),
-                config.Overrides)
-            : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
+            ? new ConcurrentDictionary<string, int?>(config.Overrides.Select(kv => KeyValuePair.Create(kv.Key, (int?)kv.Value)))
+            : new ConcurrentDictionary<string, int?>();
 
         _customAssignments = config.CustomAssignments != null
             ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock),
@@ -264,9 +264,13 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                         try
                         {
                             Monitor.Enter(_eventLock);
-                            _exposures.Clear();
-                            _achievements.Clear();
-                            Interlocked.Exchange(ref _pendingCount, 0);
+                            var exposureCount = exposures?.Length ?? 0;
+                            var achievementCount = achievements?.Length ?? 0;
+                            if (exposureCount > 0)
+                                _exposures.RemoveRange(0, exposureCount);
+                            if (achievementCount > 0)
+                                _achievements.RemoveRange(0, achievementCount);
+                            Interlocked.Add(ref _pendingCount, -(exposureCount + achievementCount));
                         }
                         finally
                         {
@@ -491,8 +495,15 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private Assignment GetVariableAssignment(string key)
     {
-        var experiment = GetVariableExperiment(key);
-        return experiment != null ? GetAssignment(experiment.Data.Name) : null;
+        var experiments = GetVariableExperiments(key);
+        if (experiments == null) return null;
+        foreach (var experiment in experiments)
+        {
+            var assignment = GetAssignment(experiment.Data.Name);
+            if (assignment.Assigned || assignment.Overridden)
+                return assignment;
+        }
+        return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name) : null;
     }
 
     private ExperimentVariables GetExperiment(string experimentName)
@@ -508,13 +519,13 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
     
-    public List<String> GetCustomFieldKeys()
+    public List<string> GetCustomFieldKeys()
     {
         try
         {
             _dataLock.EnterReadLock();
 
-            var keys = new List<String>();
+            var keys = new List<string>();
             
             foreach (var experiment in _data.Experiments)
             {
@@ -558,19 +569,19 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
-    public Object GetCustomFieldValue(String environmentName, String key)
+    public object GetCustomFieldValue(string environmentName, string key)
     {
         var field = GetCustomField(environmentName, key);
         return field?.Value;
     }
 
-    public Object GetCustomFieldType(String environmentName, String key)
+    public object GetCustomFieldType(string environmentName, string key)
     {
         var field = GetCustomField(environmentName, key);
         return field?.Type;
     }
 
-    private ExperimentVariables GetVariableExperiment(string key)
+    private List<ExperimentVariables> GetVariableExperiments(string key)
     {
         return _indexVariables.ConcurrentGetValueOrDefault(key);
     }
@@ -649,13 +660,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     public void SetOverride(string experimentName, int variant)
     {
-        CheckNotClosed();
-        _overrides.ConcurrentSet(experimentName, variant);
+        _overrides[experimentName] = variant;
     }
 
     public int? GetOverride(string experimentName)
     {
-        return _overrides.ConcurrentGetValueOrDefault(experimentName);
+        return _overrides.TryGetValue(experimentName, out var v) ? v : null;
     }
 
     public void SetOverrides(Dictionary<string, int> overrides)
@@ -730,17 +740,22 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     #region Variable
 
-    public Dictionary<string, string> GetVariableKeys()
+    public Dictionary<string, List<string>> GetVariableKeys()
     {
         CheckReady(true);
 
-        var variableKeys = new Dictionary<string, string>(_indexVariables.Count);
+        var variableKeys = new Dictionary<string, List<string>>(_indexVariables.Count);
 
         try
         {
             _dataLock.EnterReadLock();
 
-            foreach (var kv in _indexVariables) variableKeys.Add(kv.Key, kv.Value.Data.Name);
+            foreach (var kv in _indexVariables)
+            {
+                var names = new List<string>(kv.Value.Count);
+                foreach (var ev in kv.Value) names.Add(ev.Data.Name);
+                variableKeys.Add(kv.Key, names);
+            }
         }
         finally
         {
@@ -1013,7 +1028,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private void SetData(ContextData data)
     {
         var index = new Dictionary<string, ExperimentVariables>();
-        var indexVariables = new Dictionary<string, ExperimentVariables>();
+        var indexVariables = new Dictionary<string, List<ExperimentVariables>>();
         var contextCustomFields = new Dictionary<string, Dictionary<string, ContextCustomFieldValue>>();
 
         foreach (var experiment in data.Experiments)
@@ -1033,7 +1048,20 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
                         if (variables != null)
                         {
-                            foreach (var key in variables.Keys) indexVariables[key] = experimentVariables;
+                            foreach (var key in variables.Keys)
+                            {
+                                if (!indexVariables.TryGetValue(key, out var list))
+                                {
+                                    list = new List<ExperimentVariables>();
+                                    indexVariables[key] = list;
+                                }
+                                if (list.Find(ev => ev.Data.Id == experiment.Id) == null)
+                                {
+                                    var insertAt = list.FindIndex(ev => ev.Data.Id > experiment.Id);
+                                    if (insertAt < 0) list.Add(experimentVariables);
+                                    else list.Insert(insertAt, experimentVariables);
+                                }
+                            }
                             experimentVariables.Variables.Add(variables);
                         }
                         else
@@ -1109,7 +1137,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _index = index;
             _contextCustomFields = contextCustomFields;
             _indexVariables =
-                new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock),
+                new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock),
                     indexVariables);
             _data = data;
 
@@ -1128,7 +1156,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _dataLock.EnterWriteLock();
             _index = new Dictionary<string, ExperimentVariables>();
             _indexVariables =
-                new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock));
+                new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock));
             _data = new ContextData();
             _failed = true;
         }
@@ -1224,16 +1252,16 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     
     public class ContextCustomFieldValue
     {
-        public String Name { get; set; }
-        public String Type { get; set; }
-        public Object Value { get; set; }
+        public string Name { get; set; }
+        public string Type { get; set; }
+        public object Value { get; set; }
     }
 
     public class Assignment
     {
         public int Exposed;
 
-        public Dictionary<string, object> Variables = null;
+        public Dictionary<string, object> Variables = new();
         public int Id { get; set; }
         public int Iteration { get; set; }
         public int FullOnVariant { get; set; }
