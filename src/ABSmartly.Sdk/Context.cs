@@ -55,6 +55,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private volatile ContextData _data;
 
     private volatile bool _failed;
+    private volatile Exception _failedError;
     private Dictionary<string, ExperimentVariables> _index;
     private Dictionary<string, Dictionary<string, ContextCustomFieldValue>> _contextCustomFields;
     
@@ -604,6 +605,11 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return _failed;
     }
 
+    public Exception ReadyError()
+    {
+        return _failedError;
+    }
+
     public bool IsClosed()
     {
         return _closed;
@@ -631,6 +637,27 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     public void SetAttributes(Dictionary<string, object> attributes)
     {
         foreach (var kvp in attributes) SetAttribute(kvp.Key, kvp.Value);
+    }
+
+    public object GetAttribute(string name)
+    {
+        object result = null;
+        foreach (var attribute in _attributes)
+        {
+            if (attribute.Name == name)
+                result = attribute.Value;
+        }
+        return result;
+    }
+
+    public Dictionary<string, object> GetAttributes()
+    {
+        var result = new Dictionary<string, object>();
+        foreach (var attribute in _attributes)
+        {
+            result[attribute.Name] = attribute.Value;
+        }
+        return result;
     }
 
     #endregion
@@ -734,6 +761,19 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     public void SetUnits(Dictionary<string, string> units)
     {
         foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
+    }
+
+    public Dictionary<string, string> GetUnits()
+    {
+        try
+        {
+            _contextLock.EnterReadLock();
+            return new Dictionary<string, string>(_units);
+        }
+        finally
+        {
+            _contextLock.ExitReadLock();
+        }
     }
 
     #endregion
@@ -1149,7 +1189,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
-    private void SetDataFailed()
+    private void SetDataFailed(Exception error = null)
     {
         try
         {
@@ -1159,6 +1199,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock));
             _data = new ContextData();
             _failed = true;
+            _failedError = error;
         }
         finally
         {

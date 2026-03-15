@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using ABSmartly.Models;
 
@@ -23,7 +24,13 @@ public interface IContext
     /// </summary>
     /// <returns>Boolean value indicating context 'ready' status.</returns>
     bool IsFailed();
-    
+
+    /// <summary>
+    /// Returns the exception from failed data loading, or null if data loaded successfully.
+    /// </summary>
+    /// <returns>Exception from failed data loading, or null.</returns>
+    Exception ReadyError();
+
     /// <summary>
     /// Returns true when context all sync is performed and context is closed, false otherwise.
     /// </summary>
@@ -129,7 +136,26 @@ public interface IContext
     /// </summary>
     /// <param name="units">Dictionary with units to set (type => UID)</param>
     void SetUnits(Dictionary<string, string> units);
-    
+
+    /// <summary>
+    /// Returns a copy of all units set on this context.
+    /// </summary>
+    /// <returns>Dictionary with all units (type => UID).</returns>
+    Dictionary<string, string> GetUnits();
+
+    /// <summary>
+    /// Returns the last value set for the specified attribute, or null if not set.
+    /// </summary>
+    /// <param name="name">Attribute name</param>
+    /// <returns>Attribute value, or null if not set.</returns>
+    object GetAttribute(string name);
+
+    /// <summary>
+    /// Returns a dictionary of all attributes set on this context (last value wins).
+    /// </summary>
+    /// <returns>Dictionary with all attributes (name => value).</returns>
+    Dictionary<string, object> GetAttributes();
+
     /// <summary>
     /// Get mapping of every variable key in this context to appropriate experiments.
     /// </summary>

@@ -2023,4 +2023,86 @@ public class ContextTests
         variableKeys[sharedKey].Should().Contain("exp_a");
         variableKeys[sharedKey].Should().Contain("exp_b");
     }
+
+    [Test]
+    public void TestReadyErrorReturnsNullOnSuccess()
+    {
+        var context = CreateContext(_data);
+        context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().BeFalse();
+        context.ReadyError().Should().BeNull();
+    }
+
+    [Test]
+    public void TestReadyErrorReturnsNullWhenFailedWithNoException()
+    {
+        var context = CreateContext(null!);
+        context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().BeTrue();
+        context.ReadyError().Should().BeNull();
+    }
+
+    [Test]
+    public void TestGetUnitsReturnsAllUnits()
+    {
+        var context = CreateContext(_data);
+        var result = context.GetUnits();
+        result.Should().BeEquivalentTo(_units);
+    }
+
+    [Test]
+    public void TestGetUnitsReturnsCopy()
+    {
+        var context = CreateContext(_data);
+        var result = context.GetUnits();
+        result["new_unit"] = "uid";
+        context.GetUnits().Should().NotContainKey("new_unit");
+    }
+
+    [Test]
+    public void TestGetAttributeReturnsNullWhenNotSet()
+    {
+        var context = CreateContext(_data);
+        context.GetAttribute("not_found").Should().BeNull();
+    }
+
+    [Test]
+    public void TestGetAttributeReturnsValue()
+    {
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }
+            .SetUnits(_units)
+            .SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1", ["attr2"] = 42 });
+        var context = CreateContext(config, _data);
+        context.GetAttribute("attr1").Should().Be("value1");
+        context.GetAttribute("attr2").Should().Be(42);
+    }
+
+    [Test]
+    public void TestGetAttributeReturnsLastValue()
+    {
+        var context = CreateContext(_data);
+        context.SetAttribute("attr1", "value1");
+        context.SetAttribute("attr1", "value2");
+        context.GetAttribute("attr1").Should().Be("value2");
+    }
+
+    [Test]
+    public void TestGetAttributesReturnsAllAttributes()
+    {
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }
+            .SetUnits(_units)
+            .SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1", ["attr2"] = 42 });
+        var context = CreateContext(config, _data);
+        var result = context.GetAttributes();
+        result["attr1"].Should().Be("value1");
+        result["attr2"].Should().Be(42);
+    }
+
+    [Test]
+    public void TestGetAttributesReturnsEmptyWhenNoneSet()
+    {
+        var context = CreateContext(_data);
+        var result = context.GetAttributes();
+        result.Should().BeEmpty();
+    }
 }
