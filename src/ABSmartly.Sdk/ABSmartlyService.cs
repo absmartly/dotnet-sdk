@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
+using ABSmartly.Extensions;
 using ABSmartly.Models;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
@@ -55,7 +56,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
             throw new ArgumentException("Endpoint must use HTTPS to protect API key (localhost and private hosts are exempt for testing)", nameof(_config.Endpoint));
         }
 
-        _url = config.Endpoint + "/context";
+        _url = config.Endpoint.TrimEnd('/') + "/context";
         _logger = loggerFactory?.CreateLogger<ABSmartlyService>();
     }
 
@@ -65,26 +66,23 @@ public class ABSmartlyService : IABSmartlyServiceClient
         {
             using var httpClient = _httpClientFactory.CreateClient();
             var uri = QueryHelpers.AddQueryString(_url, GetDefaultQueryParameters());
-            var response = await httpClient.GetAsync(uri);
+            var response = await httpClient.GetAsync(uri).ConfigureUnboundContinuation();
             response.EnsureSuccessStatusCode();
 
-            var responseStream = await response.Content.ReadAsStreamAsync();
+            var responseStream = await response.Content.ReadAsStreamAsync().ConfigureUnboundContinuation();
             var result = _dataDeserializer.Deserialize(responseStream);
 
             if (result == null)
             {
                 var message = "Context data deserializer returned null - check logs for deserialization errors";
                 _logger?.LogError(message);
-                Console.Error.WriteLine($"[ABSmartly] ERROR: {message}");
             }
 
             return result;
         }
         catch (Exception e)
         {
-            var message = $"Error fetching context data: {e.Message}";
-            _logger?.LogError(e, message);
-            Console.Error.WriteLine($"[ABSmartly] ERROR: {message}");
+            _logger?.LogError(e, "Error fetching context data: {Message}", e.Message);
             return null;
         }
     }
@@ -101,21 +99,19 @@ public class ABSmartlyService : IABSmartlyServiceClient
             {
                 var message = "Event serializer returned null";
                 _logger?.LogError(message);
-                Console.Error.WriteLine($"[ABSmartly] ERROR: {message}");
                 return false;
             }
 
             var content = new ByteArrayContent(serializedEvent);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
-            var result = await httpClient.PutAsync(_url, content);
+            var result = await httpClient.PutAsync(_url, content).ConfigureUnboundContinuation();
 
             if (!result.IsSuccessStatusCode)
             {
-                var responseContent = await result.Content.ReadAsStringAsync();
+                var responseContent = await result.Content.ReadAsStringAsync().ConfigureUnboundContinuation();
                 var message = $"Publish event failed: HTTP {(int)result.StatusCode} {result.ReasonPhrase}";
                 _logger?.LogError("{Message}, response: {ResponseContent}", message, responseContent);
-                Console.Error.WriteLine($"[ABSmartly] ERROR: {message}");
                 return false;
             }
 
@@ -123,9 +119,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
         }
         catch (Exception e)
         {
-            var message = $"Error publishing event: {e.Message}";
-            _logger?.LogError(e, message);
-            Console.Error.WriteLine($"[ABSmartly] ERROR: {message}");
+            _logger?.LogError(e, "Error publishing event: {Message}", e.Message);
             return false;
         }
     }
@@ -150,25 +144,18 @@ public class ABSmartlyService : IABSmartlyServiceClient
 
     private static bool IsLocalEndpoint(string endpoint)
     {
-        if (Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
-        {
-            var host = uri.Host;
-            if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
-                return true;
-            if (host.StartsWith("127.", StringComparison.Ordinal))
-                return true;
-            if (string.Equals(host, "::1", StringComparison.Ordinal))
-                return true;
-            if (host.IndexOf('.') < 0)
-                return true;
-        }
-        else
-        {
-            if (endpoint.IndexOf("localhost", StringComparison.OrdinalIgnoreCase) >= 0)
-                return true;
-            if (endpoint.IndexOf("127.0.0.1", StringComparison.Ordinal) >= 0)
-                return true;
-        }
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+            return false;
+
+        var host = uri.Host;
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (host.StartsWith("127.", StringComparison.Ordinal))
+            return true;
+        if (string.Equals(host, "::1", StringComparison.Ordinal) ||
+            string.Equals(host, "[::1]", StringComparison.Ordinal))
+            return true;
+
         return false;
     }
 }

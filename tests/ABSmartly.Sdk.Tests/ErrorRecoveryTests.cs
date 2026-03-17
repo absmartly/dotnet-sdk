@@ -85,7 +85,7 @@ public class ErrorRecoveryTests
         }
 
         callCount.Should().Be(3);
-        context.GetExperiments().Should().BeEquivalentTo(_refreshedData.Experiments.Select(x => x.Name));
+        context.Experiments.Should().BeEquivalentTo(_refreshedData.Experiments.Select(x => x.Name));
     }
 
     [Test]
@@ -195,7 +195,7 @@ public class ErrorRecoveryTests
 
         await context.RefreshAsync();
 
-        context.GetExperiments().Should().BeEquivalentTo(_refreshedData.Experiments.Select(x => x.Name));
+        context.Experiments.Should().BeEquivalentTo(_refreshedData.Experiments.Select(x => x.Name));
     }
 
     [Test]
@@ -279,7 +279,7 @@ public class ErrorRecoveryTests
 
         refreshCount.Should().Be(1);
 
-        context.GetExperiments().Should().BeEquivalentTo(_refreshedData.Experiments.Select(x => x.Name));
+        context.Experiments.Should().BeEquivalentTo(_refreshedData.Experiments.Select(x => x.Name));
     }
 
     [Test]

@@ -249,18 +249,18 @@ public class FixVerificationTests
     public void IsFinalized_ReturnsFalseWhenOpen_TrueAfterClose()
     {
         var context = CreateContext(_data);
-        context.IsFinalized().Should().BeFalse();
+        context.IsFinalized.Should().BeFalse();
         context.Dispose();
-        context.IsFinalized().Should().BeTrue();
+        context.IsFinalized.Should().BeTrue();
     }
 
     [Test]
     public void Close_AliasForDispose_ContextBecomesFinalized()
     {
         var context = CreateContext(_data);
-        context.IsFinalized().Should().BeFalse();
+        context.IsFinalized.Should().BeFalse();
         context.Close();
-        context.IsFinalized().Should().BeTrue();
+        context.IsFinalized.Should().BeTrue();
         context.IsClosed().Should().BeTrue();
     }
 

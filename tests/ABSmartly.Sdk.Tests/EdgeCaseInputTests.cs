@@ -71,7 +71,7 @@ public class EdgeCaseInputTests
 
         context.IsReady().Should().BeTrue();
 
-        var experiments = context.GetExperiments();
+        var experiments = context.Experiments;
         experiments.Should().Contain(unicodeExperimentName);
 
         var treatment = context.GetTreatment(unicodeExperimentName);

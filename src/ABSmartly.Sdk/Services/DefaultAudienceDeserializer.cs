@@ -28,9 +28,7 @@ public class DefaultAudienceDeserializer : JsonParserBase, IAudienceDeserializer
         }
         catch (Exception e)
         {
-            var message = $"Failed to deserialize audience filter - treating as no filter (everyone matches): {e.Message}";
-            _logger?.LogWarning(e, message);
-            Console.Error.WriteLine($"[ABSmartly] WARNING: {message}");
+            _logger?.LogWarning(e, "Failed to deserialize audience filter - treating as no filter (everyone matches): {Message}", e.Message);
             return null;
         }
     }

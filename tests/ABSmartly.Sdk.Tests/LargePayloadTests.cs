@@ -73,7 +73,7 @@ public class LargePayloadTests
 
         context.IsReady().Should().BeTrue();
         context.IsFailed().Should().BeFalse();
-        context.GetExperiments().Length.Should().Be(experimentCount);
+        context.Experiments.Length.Should().Be(experimentCount);
 
         for (var i = 0; i < experimentCount; i++)
         {
@@ -300,7 +300,7 @@ public class LargePayloadTests
 
         await context.RefreshAsync();
 
-        context.GetExperiments().Length.Should().Be(experimentCount + 5);
+        context.Experiments.Length.Should().Be(experimentCount + 5);
     }
 
     private Context CreateContext(ContextConfig config, ContextData data) =>

@@ -108,7 +108,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             SetAttributes(config.Attributes);
 
         _overrides = config.Overrides != null
-            ? new ConcurrentDictionary<string, int?>(config.Overrides.Select(kv => KeyValuePair.Create(kv.Key, (int?)kv.Value)))
+            ? new ConcurrentDictionary<string, int?>(config.Overrides.Select(kv => new KeyValuePair<string, int?>(kv.Key, kv.Value)))
             : new ConcurrentDictionary<string, int?>();
 
         _customAssignments = config.CustomAssignments != null
@@ -137,20 +137,26 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     public int PendingCount => _pendingCount;
 
 
-    public string[] GetExperiments()
+    public string[] Experiments
     {
-        CheckReady(true);
+        get
+        {
+            CheckReady(true);
 
-        try
-        {
-            _dataLock.EnterReadLock();
-            return _data.Experiments.Select(x => x.Name).ToArray();
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
+            try
+            {
+                _dataLock.EnterReadLock();
+                return _data.Experiments.Select(x => x.Name).ToArray();
+            }
+            finally
+            {
+                _dataLock.ExitReadLock();
+            }
         }
     }
+
+    [Obsolete("Use the Experiments property instead.")]
+    public string[] GetExperiments() => Experiments;
 
     public ContextData GetContextData()
     {
@@ -610,10 +616,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return _failed;
     }
 
-    public Exception ReadyError()
-    {
-        return _failedError;
-    }
+    public Exception ReadyError => _failedError;
 
     public bool IsClosed()
     {
@@ -625,15 +628,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return !_closed && _closing > 0;
     }
 
-    public bool IsFinalized()
-    {
-        return IsClosed();
-    }
+    public bool IsFinalized => IsClosed();
 
-    public bool IsFinalizing()
-    {
-        return IsClosing();
-    }
+    public bool IsFinalizing => IsClosing();
 
     #endregion
 
@@ -665,15 +662,21 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return result;
     }
 
-    public Dictionary<string, object> GetAttributes()
+    public Dictionary<string, object> Attributes
     {
-        var result = new Dictionary<string, object>();
-        foreach (var attribute in _attributes)
+        get
         {
-            result[attribute.Name] = attribute.Value;
+            var result = new Dictionary<string, object>();
+            foreach (var attribute in _attributes)
+            {
+                result[attribute.Name] = attribute.Value;
+            }
+            return result;
         }
-        return result;
     }
+
+    [Obsolete("Use the Attributes property instead.")]
+    public Dictionary<string, object> GetAttributes() => Attributes;
 
     #endregion
 
@@ -778,46 +781,68 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
     }
 
-    public Dictionary<string, string> GetUnits()
+    public Dictionary<string, string> Units
     {
-        try
+        get
         {
-            _contextLock.EnterReadLock();
-            return new Dictionary<string, string>(_units);
-        }
-        finally
-        {
-            _contextLock.ExitReadLock();
+            try
+            {
+                _contextLock.EnterReadLock();
+                return new Dictionary<string, string>(_units);
+            }
+            finally
+            {
+                _contextLock.ExitReadLock();
+            }
         }
     }
+
+    [Obsolete("Use the Units property instead.")]
+    public Dictionary<string, string> GetUnits() => Units;
 
     #endregion
 
     #region Variable
 
-    public Dictionary<string, List<string>> GetVariableKeys()
+    public Dictionary<string, List<string>> VariableKeys
     {
-        CheckReady(true);
-
-        var variableKeys = new Dictionary<string, List<string>>(_indexVariables.Count);
-
-        try
+        get
         {
-            _dataLock.EnterReadLock();
+            CheckReady(true);
 
-            foreach (var kv in _indexVariables)
+            var variableKeys = new Dictionary<string, List<string>>(_indexVariables.Count);
+
+            try
             {
-                var names = new List<string>(kv.Value.Count);
-                foreach (var ev in kv.Value) names.Add(ev.Data.Name);
-                variableKeys.Add(kv.Key, names);
-            }
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
+                _dataLock.EnterReadLock();
 
-        return variableKeys;
+                foreach (var kv in _indexVariables)
+                {
+                    var names = new List<string>(kv.Value.Count);
+                    foreach (var ev in kv.Value) names.Add(ev.Data.Name);
+                    variableKeys.Add(kv.Key, names);
+                }
+            }
+            finally
+            {
+                _dataLock.ExitReadLock();
+            }
+
+            return variableKeys;
+        }
+    }
+
+    [Obsolete("Use the VariableKeys property instead.")]
+    public Dictionary<string, List<string>> GetVariableExperimentKeys() => VariableKeys;
+
+    [Obsolete("Use the VariableKeys property instead.")]
+    public Dictionary<string, string> GetVariableKeys()
+    {
+        var full = VariableKeys;
+        var result = new Dictionary<string, string>(full.Count);
+        foreach (var kv in full)
+            if (kv.Value.Count > 0) result[kv.Key] = kv.Value[0];
+        return result;
     }
 
     public object GetVariableValue(string key, object defaultValue)
