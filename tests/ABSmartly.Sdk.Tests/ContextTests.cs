@@ -203,10 +203,10 @@ public class ContextTests
         VerifyThrows(() => context.Publish());
         VerifyThrows(() => context.Refresh());
         VerifyThrows(() => context.GetContextData());
-        VerifyThrows(() => context.GetExperiments());
+        VerifyThrows(() => _ = context.Experiments);
         VerifyThrows(() => context.GetVariableValue("banner.border", 17));
         VerifyThrows(() => context.PeekVariableValue("banner.border", 17));
-        VerifyThrows(() => context.GetVariableKeys());
+        VerifyThrows(() => _ = context.VariableKeys);
 
         manualResetEvent.Set();
 
@@ -248,10 +248,10 @@ public class ContextTests
         VerifyThrows(() => context.Publish());
         VerifyThrows(() => context.Refresh());
         VerifyThrows(() => context.GetContextData());
-        VerifyThrows(() => context.GetExperiments());
+        VerifyThrows(() => _ = context.Experiments);
         VerifyThrows(() => context.GetVariableValue("banner.border", 17));
         VerifyThrows(() => context.PeekVariableValue("banner.border", 17));
-        VerifyThrows(() => context.GetVariableKeys());
+        VerifyThrows(() => _ = context.VariableKeys);
 
         void VerifyThrows(Action act)
         {
@@ -265,7 +265,7 @@ public class ContextTests
         var context = CreateReadyContext();
         context.IsReady().Should().BeTrue();
 
-        context.GetExperiments().Should().BeEquivalentTo(_data.Experiments.Select(x => x.Name));
+        context.Experiments.Should().BeEquivalentTo(_data.Experiments.Select(x => x.Name));
     }
 
     [Test]
@@ -766,7 +766,7 @@ public class ContextTests
     {
         var context = CreateContext(_refreshedData);
 
-        context.GetVariableKeys().Should().BeEquivalentTo(_variableExperiments);
+        context.VariableKeys.Should().BeEquivalentTo(_variableExperiments);
     }
     
     [Test]
@@ -1144,6 +1144,7 @@ public class ContextTests
     public void TestTrackStartsPublishTimeoutAfterAchievement()
     {
         Context context;
+        var workDone = new ManualResetEventSlim(false);
 
         ThreadPool.QueueUserWorkItem(_ =>
         {
@@ -1153,9 +1154,11 @@ public class ContextTests
 
             context.Track("goal1", new Dictionary<string, object> { ["amount"] = 125 });
             context.Track("goal2", new Dictionary<string, object> { ["value"] = 999.0 });
+            workDone.Set();
         });
 
-        Thread.Sleep(1000);
+        workDone.Wait(TimeSpan.FromSeconds(5));
+        Thread.Sleep(2000);
 
         Mock.Get(_eventHandler).Verify(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()), Times.Once);
     }
@@ -1525,7 +1528,7 @@ public class ContextTests
 
         var expectedExperiments = _refreshedData.Experiments.Select(x => x.Name).ToArray();
 
-        context.GetExperiments().Should().BeEquivalentTo(expectedExperiments);
+        context.Experiments.Should().BeEquivalentTo(expectedExperiments);
     }
 
     [Test]
@@ -1591,7 +1594,7 @@ public class ContextTests
 
         var expectedExperiments = _refreshedData.Experiments.Select(x => x.Name).ToArray();
 
-        context.GetExperiments().Should().BeEquivalentTo(expectedExperiments);
+        context.Experiments.Should().BeEquivalentTo(expectedExperiments);
     }
 
     [Test]
@@ -1969,7 +1972,7 @@ public class ContextTests
     {
         var context = CreateContext(_refreshedData);
 
-        var variableKeys = context.GetVariableKeys();
+        var variableKeys = context.VariableKeys;
 
         foreach (var (key, experiments) in variableKeys)
         {
@@ -2016,7 +2019,7 @@ public class ContextTests
         var data = new ContextData { Experiments = new[] { exp1, exp2 } };
         var context = CreateContext(data);
 
-        var variableKeys = context.GetVariableKeys();
+        var variableKeys = context.VariableKeys;
 
         variableKeys.Should().ContainKey(sharedKey);
         variableKeys[sharedKey].Should().HaveCount(2);
@@ -2030,7 +2033,7 @@ public class ContextTests
         var context = CreateContext(_data);
         context.IsReady().Should().BeTrue();
         context.IsFailed().Should().BeFalse();
-        context.ReadyError().Should().BeNull();
+        context.ReadyError.Should().BeNull();
     }
 
     [Test]
@@ -2039,14 +2042,14 @@ public class ContextTests
         var context = CreateContext(null!);
         context.IsReady().Should().BeTrue();
         context.IsFailed().Should().BeTrue();
-        context.ReadyError().Should().BeNull();
+        context.ReadyError.Should().BeNull();
     }
 
     [Test]
     public void TestGetUnitsReturnsAllUnits()
     {
         var context = CreateContext(_data);
-        var result = context.GetUnits();
+        var result = context.Units;
         result.Should().BeEquivalentTo(_units);
     }
 
@@ -2054,9 +2057,9 @@ public class ContextTests
     public void TestGetUnitsReturnsCopy()
     {
         var context = CreateContext(_data);
-        var result = context.GetUnits();
+        var result = context.Units;
         result["new_unit"] = "uid";
-        context.GetUnits().Should().NotContainKey("new_unit");
+        context.Units.Should().NotContainKey("new_unit");
     }
 
     [Test]
@@ -2093,7 +2096,7 @@ public class ContextTests
             .SetUnits(_units)
             .SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1", ["attr2"] = 42 });
         var context = CreateContext(config, _data);
-        var result = context.GetAttributes();
+        var result = context.Attributes;
         result["attr1"].Should().Be("value1");
         result["attr2"].Should().Be(42);
     }
@@ -2102,7 +2105,7 @@ public class ContextTests
     public void TestGetAttributesReturnsEmptyWhenNoneSet()
     {
         var context = CreateContext(_data);
-        var result = context.GetAttributes();
+        var result = context.Attributes;
         result.Should().BeEmpty();
     }
 }
