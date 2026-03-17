@@ -1143,22 +1143,24 @@ public class ContextTests
     [Test]
     public void TestTrackStartsPublishTimeoutAfterAchievement()
     {
-        Context context;
-        var workDone = new ManualResetEventSlim(false);
+        var publishCalled = new SemaphoreSlim(0, 1);
 
-        ThreadPool.QueueUserWorkItem(_ =>
-        {
-            context = CreateContext(new ContextConfig { PublishDelay = TimeSpan.FromMilliseconds(1) }, _data);
-            context.IsReady().Should().BeTrue();
-            context.IsFailed().Should().BeFalse();
+        Mock.Get(_eventHandler)
+            .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(() =>
+            {
+                publishCalled.Release();
+                return Task.CompletedTask;
+            });
 
-            context.Track("goal1", new Dictionary<string, object> { ["amount"] = 125 });
-            context.Track("goal2", new Dictionary<string, object> { ["value"] = 999.0 });
-            workDone.Set();
-        });
+        var context = CreateContext(new ContextConfig { PublishDelay = TimeSpan.FromMilliseconds(1) }, _data);
+        context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().BeFalse();
 
-        workDone.Wait(TimeSpan.FromSeconds(5));
-        Thread.Sleep(2000);
+        context.Track("goal1", new Dictionary<string, object> { ["amount"] = 125 });
+        context.Track("goal2", new Dictionary<string, object> { ["value"] = 999.0 });
+
+        publishCalled.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("publish timeout should fire within 5 seconds");
 
         Mock.Get(_eventHandler).Verify(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()), Times.Once);
     }
