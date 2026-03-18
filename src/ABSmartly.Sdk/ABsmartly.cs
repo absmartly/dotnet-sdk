@@ -21,7 +21,7 @@ public class ABsmartly
 
     private IContextDataDeserializer _contextDataDeserializer;
     private IContextDataProvider _contextDataProvider;
-    private IContextEventHandler _contextEventHandler;
+    private IContextPublisher _contextEventHandler;
     private IContextEventLogger _contextEventLogger;
     private IContextEventSerializer _contextEventSerializer;
     private IABsmartlyHttpClientFactory _httpClientFactory;
@@ -68,7 +68,7 @@ public class ABsmartly
             _loggerFactory);
 
         _contextDataProvider = config?.ContextDataProvider ?? new DefaultContextDataProvider(_client);
-        _contextEventHandler = config?.ContextEventHandler ?? new DefaultContextEventHandler(_client);
+        _contextEventHandler = config?.ContextPublisher ?? new DefaultContextPublisher(_client);
         _contextEventLogger = config?.ContextEventLogger;
 
         _variableParser = config?.VariableParser ?? new DefaultVariableParser(_loggerFactory);

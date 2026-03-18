@@ -32,7 +32,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private readonly ReaderWriterLockSlim _dataLock = new(LockRecursionPolicy.SupportsRecursion);
     private readonly IContextDataProvider _dataProvider;
-    private readonly IContextEventHandler _eventHandler;
+    private readonly IContextPublisher _eventHandler;
     private readonly object _eventLock = new();
     private readonly IContextEventLogger _eventLogger;
 
@@ -74,7 +74,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         ContextData data,
         Clock clock,
         IContextDataProvider dataProvider,
-        IContextEventHandler eventHandler,
+        IContextPublisher eventHandler,
         IContextEventLogger eventLogger,
         IVariableParser variableParser,
         AudienceMatcher audienceMatcher,
