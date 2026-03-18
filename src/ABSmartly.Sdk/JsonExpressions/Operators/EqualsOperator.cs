@@ -13,8 +13,11 @@ public class EqualsOperator : IOperator
 
         var objectList = list as List<object> ?? list.Cast<object>().ToList();
 
-        object lhs = objectList.Count > 0 ? evaluator.Evaluate(objectList[0]) : null;
-        object rhs = objectList.Count > 1 ? evaluator.Evaluate(objectList[1]) : null;
+        if (objectList.Count < 2)
+            return null;
+
+        object lhs = evaluator.Evaluate(objectList[0]);
+        object rhs = evaluator.Evaluate(objectList[1]);
 
         if (lhs is null && rhs is null)
             return true;

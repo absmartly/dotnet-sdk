@@ -32,9 +32,7 @@ public abstract class JsonParserBase
 
     protected static object? ParseJsonValue(string json)
     {
-        var stringReader = new StringReader(json);
-        var jsonReader = new JsonTextReader(stringReader);
-        var jToken = JToken.Load(jsonReader);
+        var jToken = JToken.Parse(json);
         return ParseToken(jToken);
     }
 

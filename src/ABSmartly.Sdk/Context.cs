@@ -1189,7 +1189,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                         }
                         else if(customFieldValue.Type.StartsWith("number"))
                         {
-                            value.Value = Convert.ToInt64(customValue);
+                            value.Value = long.TryParse(customValue, out var longVal)
+                                ? (object)longVal
+                                : Convert.ToDouble(customValue);
                         }
                         else
                         {

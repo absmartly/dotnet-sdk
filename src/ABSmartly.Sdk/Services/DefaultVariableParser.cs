@@ -33,7 +33,7 @@ public class DefaultVariableParser : JsonParserBase, IVariableParser
         }
     }
 
-    public static object ParseValue(string json)
+    public static object? ParseValue(string json)
     {
         try
         {

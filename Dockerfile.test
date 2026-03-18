@@ -1,6 +1,5 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0
 
-RUN dotnet workload install --skip-manifest-update 2>/dev/null || true
 
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime dotnet --channel 8.0 --install-dir /usr/share/dotnet
 

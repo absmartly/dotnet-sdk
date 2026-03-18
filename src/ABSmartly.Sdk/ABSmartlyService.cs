@@ -109,9 +109,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
 
             if (!result.IsSuccessStatusCode)
             {
-                var responseContent = await result.Content.ReadAsStringAsync().ConfigureUnboundContinuation();
-                var message = $"Publish event failed: HTTP {(int)result.StatusCode} {result.ReasonPhrase}";
-                _logger?.LogError("{Message}, response: {ResponseContent}", message, responseContent);
+                _logger?.LogError("Publish event failed: HTTP {StatusCode} {ReasonPhrase}", (int)result.StatusCode, result.ReasonPhrase);
                 return false;
             }
 
