@@ -6,13 +6,13 @@ namespace ABSmartly.JsonExpressions.Operators;
 
 public class InOperator : BinaryOperator
 {
-    protected override object Binary(IEvaluator evaluator, object lhs, object rhs)
+    protected override object Binary(IEvaluator evaluator, object haystack, object needle)
     {
-        return rhs switch
+        return haystack switch
         {
-            string hsString => HandleString(evaluator, hsString, lhs),
-            IList hsList => HandleIList(evaluator, hsList, lhs),
-            IDictionary<string, object> hsDictionary => HandleIDictionary(evaluator, hsDictionary, lhs),
+            string hsString => HandleString(evaluator, hsString, needle),
+            IList hsList => HandleIList(evaluator, hsList, needle),
+            IDictionary<string, object> hsDictionary => HandleIDictionary(evaluator, hsDictionary, needle),
             _ => null
         };
     }
