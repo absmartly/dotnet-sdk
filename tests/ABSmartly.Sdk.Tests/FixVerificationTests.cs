@@ -165,8 +165,10 @@ public class FixVerificationTests
 
         var op = new EqualsOperator();
 
+        // A null operand short-circuits to null (canonical: matches all other
+        // SDKs and the collector — eq does not treat null == null as a match).
         var nullNull = op.Evaluate(evaluator, new List<object> { null!, null! });
-        nullNull.Should().Be(true);
+        nullNull.Should().BeNull();
 
         var nullValue = op.Evaluate(evaluator, new List<object> { null!, "hello" });
         nullValue.Should().BeNull();
