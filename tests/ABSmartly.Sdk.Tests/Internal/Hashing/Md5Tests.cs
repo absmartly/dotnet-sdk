@@ -27,4 +27,16 @@ public class Md5Tests
 
         actualStringHash.Should().Be(expectedHash);
     }
+
+    // Characters outside the BMP are stored as UTF-16 surrogate pairs and must encode to 4-byte UTF-8; these canonical hashes are shared across all SDKs.
+    [TestCase("😀", "KgLqw51xanDs83V5GFkntg")]
+    [TestCase("😀😁", "ZJuDalvUWRJnVtkspj-2bQ")]
+    [TestCase("世界你好", "v2CJG7YcjjWncKOSCzF2GA")]
+    [TestCase("user_世界_123", "SCgk4OzXlFMvo1UMsP88fA")]
+    public void TestDigestBase64UrlAstralAndMultibyte(string actualString, string expectedHash)
+    {
+        var actualStringHash = Md5.Hash(actualString);
+
+        actualStringHash.Should().Be(expectedHash);
+    }
 }
