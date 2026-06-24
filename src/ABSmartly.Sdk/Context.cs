@@ -34,6 +34,10 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private readonly IContextDataProvider _dataProvider;
     private readonly IContextPublisher _eventHandler;
     private readonly object _eventLock = new();
+    // Serializes Flush() so concurrent flushes (publish-delay timer, explicit
+    // PublishAsync, Close/Dispose) cannot overlap. _eventLock cannot be held
+    // across the await on PublishAsync, so a separate async-capable gate is used.
+    private readonly SemaphoreSlim _flushLock = new(1, 1);
     private readonly IContextEventLogger _eventLogger;
 
     private readonly List<Exposure> _exposures = new();
@@ -215,97 +219,112 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         ClearTimeout();
 
-        if (!_failed)
+        // Serialize flushes so the publish-delay timer, an explicit PublishAsync,
+        // and Close/Dispose cannot run Flush concurrently. Without this, two
+        // flushes both snapshot the event lists, then each calls RemoveRange with
+        // its (now stale) snapshot count, throwing ArgumentException, or the
+        // publish is duplicated/skipped.
+        await _flushLock.WaitAsync().ConfigureUnboundContinuation();
+        try
         {
-            if (_pendingCount > 0)
+            if (!_failed)
             {
-                Exposure[] exposures = null;
-                GoalAchievement[] achievements = null;
-                int eventCount;
+                if (_pendingCount > 0)
+                {
+                    Exposure[] exposures = null;
+                    GoalAchievement[] achievements = null;
+                    int eventCount;
 
+                    try
+                    {
+                        Monitor.Enter(_eventLock);
+
+                        eventCount = _pendingCount;
+                        if (eventCount > 0)
+                        {
+                            if (_exposures.Count > 0)
+                            {
+                                exposures = _exposures.ToArray();
+                            }
+
+                            if (_achievements.Count > 0)
+                            {
+                                achievements = _achievements.ToArray();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        Monitor.Exit(_eventLock);
+                    }
+
+                    if (eventCount > 0)
+                        try
+                        {
+                            var publishEvent = new PublishEvent
+                            {
+                                Hashed = true,
+                                PublishedAt = _clock.Millis(),
+                                Units = _units
+                                    .Select(kv => new Unit
+                                    {
+                                        Type = kv.Key,
+                                        Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
+                                    })
+                                    .ToArray(),
+                                Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
+                                Exposures = exposures,
+                                Goals = achievements
+                            };
+
+                            await _eventHandler.PublishAsync(this, publishEvent).ConfigureUnboundContinuation();
+                            LogEvent(EventType.Publish, publishEvent);
+
+                            try
+                            {
+                                Monitor.Enter(_eventLock);
+                                // Clamp to the current count: items were snapshotted by
+                                // value, and the list size is authoritative.
+                                var exposureCount = Math.Min(exposures?.Length ?? 0, _exposures.Count);
+                                var achievementCount = Math.Min(achievements?.Length ?? 0, _achievements.Count);
+                                if (exposureCount > 0)
+                                    _exposures.RemoveRange(0, exposureCount);
+                                if (achievementCount > 0)
+                                    _achievements.RemoveRange(0, achievementCount);
+                                Interlocked.Add(ref _pendingCount, -(exposureCount + achievementCount));
+                            }
+                            finally
+                            {
+                                Monitor.Exit(_eventLock);
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            _logger.LogError(e, "{Publish}", EventType.Publish);
+                            LogError(e);
+                            throw;
+                        }
+                }
+            }
+            else
+            {
                 try
                 {
                     Monitor.Enter(_eventLock);
 
-                    eventCount = _pendingCount;
-                    if (eventCount > 0)
-                    {
-                        if (_exposures.Count > 0)
-                        {
-                            exposures = _exposures.ToArray();
-                        }
-
-                        if (_achievements.Count > 0)
-                        {
-                            achievements = _achievements.ToArray();
-                        }
-                    }
+                    _exposures.Clear();
+                    _achievements.Clear();
+                    Interlocked.Exchange(ref _pendingCount, 0);
                 }
                 finally
                 {
                     Monitor.Exit(_eventLock);
                 }
-
-                if (eventCount > 0)
-                    try
-                    {
-                        var publishEvent = new PublishEvent
-                        {
-                            Hashed = true,
-                            PublishedAt = _clock.Millis(),
-                            Units = _units
-                                .Select(kv => new Unit
-                                {
-                                    Type = kv.Key,
-                                    Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
-                                })
-                                .ToArray(),
-                            Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
-                            Exposures = exposures,
-                            Goals = achievements
-                        };
-
-                        await _eventHandler.PublishAsync(this, publishEvent).ConfigureUnboundContinuation();
-                        LogEvent(EventType.Publish, publishEvent);
-
-                        try
-                        {
-                            Monitor.Enter(_eventLock);
-                            var exposureCount = exposures?.Length ?? 0;
-                            var achievementCount = achievements?.Length ?? 0;
-                            if (exposureCount > 0)
-                                _exposures.RemoveRange(0, exposureCount);
-                            if (achievementCount > 0)
-                                _achievements.RemoveRange(0, achievementCount);
-                            Interlocked.Add(ref _pendingCount, -(exposureCount + achievementCount));
-                        }
-                        finally
-                        {
-                            Monitor.Exit(_eventLock);
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.LogError(e, "{Publish}", EventType.Publish);
-                        LogError(e);
-                        throw;
-                    }
             }
         }
-        else
+        finally
         {
-            try
-            {
-                Monitor.Enter(_eventLock);
-
-                _exposures.Clear();
-                _achievements.Clear();
-                Interlocked.Exchange(ref _pendingCount, 0);
-            }
-            finally
-            {
-                Monitor.Exit(_eventLock);
-            }
+            _flushLock.Release();
         }
     }
 
