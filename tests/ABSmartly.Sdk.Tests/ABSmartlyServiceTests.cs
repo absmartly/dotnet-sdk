@@ -73,15 +73,27 @@ public class ABSmartlyServiceTests
     {
         Func<ABSmartlyService> act;
 
-        var config = H.ServiceConfig("1", "1", "1", "1");
+        var httpsConfig = H.ServiceConfig("1", "https://test.example.com", "1", "1");
 
-        act = () => new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+        act = () => new ABSmartlyService(httpsConfig, _httpClientFactory, _deserializer, _serializer);
         act.Should().NotThrow();
 
-        act = () => new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer, null);
+        act = () => new ABSmartlyService(httpsConfig, _httpClientFactory, _deserializer, _serializer, null);
         act.Should().NotThrow();
 
-        act = () => new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer, _loggerFactory);
+        act = () => new ABSmartlyService(httpsConfig, _httpClientFactory, _deserializer, _serializer, _loggerFactory);
+        act.Should().NotThrow();
+
+        var localhostConfig = H.ServiceConfig("1", "http://localhost:8080", "1", "1");
+        act = () => new ABSmartlyService(localhostConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        var loopbackConfig = H.ServiceConfig("1", "http://127.0.0.1:8080", "1", "1");
+        act = () => new ABSmartlyService(loopbackConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        var ipv6Config = H.ServiceConfig("1", "http://[::1]:3000", "1", "1");
+        act = () => new ABSmartlyService(ipv6Config, _httpClientFactory, _deserializer, _serializer);
         act.Should().NotThrow();
     }
 

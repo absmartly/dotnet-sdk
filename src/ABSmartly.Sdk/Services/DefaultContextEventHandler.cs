@@ -1,19 +1,16 @@
-﻿using System.Threading.Tasks;
+using System;
+using System.Threading.Tasks;
 using ABSmartly.Models;
 
 namespace ABSmartly.Services;
 
-public class DefaultContextEventHandler : IContextEventHandler
+/// <summary>
+/// Obsolete: Use <see cref="DefaultContextPublisher"/> instead.
+/// </summary>
+[Obsolete("Use DefaultContextPublisher instead.")]
+public class DefaultContextEventHandler : DefaultContextPublisher, IContextEventHandler
 {
-    private readonly IABSmartlyServiceClient _client;
-
-    public DefaultContextEventHandler(IABSmartlyServiceClient client)
+    public DefaultContextEventHandler(IABSmartlyServiceClient client) : base(client)
     {
-        _client = client;
-    }
-
-    public async Task PublishAsync(IContext context, PublishEvent publishEvent)
-    {
-        await _client.PublishAsync(publishEvent);
     }
 }

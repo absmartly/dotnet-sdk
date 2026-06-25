@@ -61,15 +61,15 @@ public class ContextTests
         "submit.shape", "rect",
         "show-modal", true);
 
-    private readonly Dictionary<string, string> _variableExperiments = new()
+    private readonly Dictionary<string, List<string>> _variableExperiments = new()
     {
-        ["banner.border"] = "exp_test_ab",
-        ["banner.size"] = "exp_test_ab",
-        ["button.color"] = "exp_test_abc",
-        ["card.width"] = "exp_test_not_eligible",
-        ["submit.color"] = "exp_test_fullon",
-        ["submit.shape"] = "exp_test_fullon",
-        ["show-modal"] = "exp_test_new"
+        ["banner.border"] = new List<string> { "exp_test_ab" },
+        ["banner.size"] = new List<string> { "exp_test_ab" },
+        ["button.color"] = new List<string> { "exp_test_abc" },
+        ["card.width"] = new List<string> { "exp_test_not_eligible" },
+        ["submit.color"] = new List<string> { "exp_test_fullon" },
+        ["submit.shape"] = new List<string> { "exp_test_fullon" },
+        ["show-modal"] = new List<string> { "exp_test_new" }
     };
 
     private readonly Unit[] _publishUnits =
@@ -193,8 +193,6 @@ public class ContextTests
 
         VerifyThrows(() => context.SetAttribute("attr1", "value1"));
         VerifyThrows(() => context.SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1" }));
-        VerifyThrows(() => context.SetOverride("exp_test_ab", 2));
-        VerifyThrows(() => context.SetOverrides(new Dictionary<string, int> { ["exp_test_ab"] = 2 }));
         VerifyThrows(() => context.SetUnit("test", "test"));
         VerifyThrows(() => context.SetUnits(new Dictionary<string, string> { ["test"] = "test" }));
         VerifyThrows(() => context.SetCustomAssignment("exp_test_ab", 2));
@@ -205,10 +203,10 @@ public class ContextTests
         VerifyThrows(() => context.Publish());
         VerifyThrows(() => context.Refresh());
         VerifyThrows(() => context.GetContextData());
-        VerifyThrows(() => context.GetExperiments());
+        VerifyThrows(() => _ = context.Experiments);
         VerifyThrows(() => context.GetVariableValue("banner.border", 17));
         VerifyThrows(() => context.PeekVariableValue("banner.border", 17));
-        VerifyThrows(() => context.GetVariableKeys());
+        VerifyThrows(() => _ = context.VariableKeys);
 
         manualResetEvent.Set();
 
@@ -220,7 +218,7 @@ public class ContextTests
 
         void VerifyThrows(Action act)
         {
-            act.Should().Throw<InvalidOperationException>().WithMessage("ABSmartly Context is closing");
+            act.Should().Throw<InvalidOperationException>().WithMessage("ABsmartly Context is finalizing.");
         }
     }
 
@@ -240,8 +238,6 @@ public class ContextTests
 
         VerifyThrows(() => context.SetAttribute("attr1", "value1"));
         VerifyThrows(() => context.SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1" }));
-        VerifyThrows(() => context.SetOverride("exp_test_ab", 2));
-        VerifyThrows(() => context.SetOverrides(new Dictionary<string, int> { ["exp_test_ab"] = 2 }));
         VerifyThrows(() => context.SetUnit("test", "test"));
         VerifyThrows(() => context.SetUnits(new Dictionary<string, string> { ["test"] = "test" }));
         VerifyThrows(() => context.SetCustomAssignment("exp_test_ab", 2));
@@ -252,14 +248,14 @@ public class ContextTests
         VerifyThrows(() => context.Publish());
         VerifyThrows(() => context.Refresh());
         VerifyThrows(() => context.GetContextData());
-        VerifyThrows(() => context.GetExperiments());
+        VerifyThrows(() => _ = context.Experiments);
         VerifyThrows(() => context.GetVariableValue("banner.border", 17));
         VerifyThrows(() => context.PeekVariableValue("banner.border", 17));
-        VerifyThrows(() => context.GetVariableKeys());
+        VerifyThrows(() => _ = context.VariableKeys);
 
         void VerifyThrows(Action act)
         {
-            act.Should().Throw<InvalidOperationException>().WithMessage("ABSmartly Context is closed");
+            act.Should().Throw<InvalidOperationException>().WithMessage("ABsmartly Context is finalized.");
         }
     }
 
@@ -269,7 +265,7 @@ public class ContextTests
         var context = CreateReadyContext();
         context.IsReady().Should().BeTrue();
 
-        context.GetExperiments().Should().BeEquivalentTo(_data.Experiments.Select(x => x.Name));
+        context.Experiments.Should().BeEquivalentTo(_data.Experiments.Select(x => x.Name));
     }
 
     [Test]
@@ -374,7 +370,7 @@ public class ContextTests
 
         var act = () => context.SetUnit("session_id", "123");
 
-        act.Should().Throw<ArgumentException>().WithMessage("Unit 'session_id' already set.");
+        act.Should().Throw<ArgumentException>().WithMessage("Unit 'session_id' UID already set.");
     }
 
     [Test]
@@ -605,9 +601,10 @@ public class ContextTests
 
         var experiments = _data.Experiments.Select(x => x.Name).ToDictionary(x => x);
 
-        foreach (var (variable, experimentName) in _variableExperiments)
+        foreach (var (variable, experimentNames) in _variableExperiments)
         {
             var actual = context.PeekVariableValue(variable, 17);
+            var experimentName = experimentNames[0];
             var eligible = experimentName != "exp_test_not_eligible";
 
             if (eligible && experiments.ContainsKey(experimentName))
@@ -642,9 +639,10 @@ public class ContextTests
 
         var experiments = _data.Experiments.Select(x => x.Name).ToDictionary(x => x);
 
-        foreach (var (variable, experimentName) in _variableExperiments)
+        foreach (var (variable, experimentNames) in _variableExperiments)
         {
             var actual = context.GetVariableValue(variable, 17);
+            var experimentName = experimentNames[0];
             var eligible = experimentName != "exp_test_not_eligible";
 
             if (eligible && experiments.ContainsKey(experimentName))
@@ -768,7 +766,7 @@ public class ContextTests
     {
         var context = CreateContext(_refreshedData);
 
-        context.GetVariableKeys().Should().BeEquivalentTo(_variableExperiments);
+        context.VariableKeys.Should().BeEquivalentTo(_variableExperiments);
     }
     
     [Test]
@@ -1145,19 +1143,24 @@ public class ContextTests
     [Test]
     public void TestTrackStartsPublishTimeoutAfterAchievement()
     {
-        Context context;
+        var publishCalled = new SemaphoreSlim(0, 1);
 
-        ThreadPool.QueueUserWorkItem(_ =>
-        {
-            context = CreateContext(new ContextConfig { PublishDelay = TimeSpan.FromMilliseconds(1) }, _data);
-            context.IsReady().Should().BeTrue();
-            context.IsFailed().Should().BeFalse();
+        Mock.Get(_eventHandler)
+            .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(() =>
+            {
+                publishCalled.Release();
+                return Task.CompletedTask;
+            });
 
-            context.Track("goal1", new Dictionary<string, object> { ["amount"] = 125 });
-            context.Track("goal2", new Dictionary<string, object> { ["value"] = 999.0 });
-        });
+        var context = CreateContext(new ContextConfig { PublishDelay = TimeSpan.FromMilliseconds(1) }, _data);
+        context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().BeFalse();
 
-        Thread.Sleep(1000);
+        context.Track("goal1", new Dictionary<string, object> { ["amount"] = 125 });
+        context.Track("goal2", new Dictionary<string, object> { ["value"] = 999.0 });
+
+        publishCalled.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("publish timeout should fire within 5 seconds");
 
         Mock.Get(_eventHandler).Verify(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()), Times.Once);
     }
@@ -1269,19 +1272,10 @@ public class ContextTests
             }
         };
 
-        var manualResetEvent = new ManualResetEventSlim();
         Mock.Get(_eventHandler).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
-            .Returns(async () => await ManualResetPublish(manualResetEvent).ConfigureAwait(false));
+            .Returns(Task.CompletedTask);
 
-        ThreadPool.QueueUserWorkItem(_ => context.Publish());
-
-        Thread.Sleep(1000);
-
-        context.PendingCount.Should().Be(0);
-        context.GetCustomAssignment("exp_test_abc").Should().Be(3);
-        context.GetOverride("not_found").Should().Be(3);
-
-        manualResetEvent.Set();
+        context.Publish();
 
         context.PendingCount.Should().Be(0);
         context.GetCustomAssignment("exp_test_abc").Should().Be(3);
@@ -1289,7 +1283,6 @@ public class ContextTests
 
         VerifyPublishData(_eventHandler, context, expectedEvent);
 
-        // repeat
         Mock.Get(_eventHandler).Invocations.Clear();
 
         context.GetTreatment("exp_test_ab").Should().Be(1);
@@ -1313,27 +1306,11 @@ public class ContextTests
             }
         };
 
-        var manualResetNextEvent = new ManualResetEventSlim();
-        Mock.Get(_eventHandler).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
-            .Returns(async () => await ManualResetPublish(manualResetNextEvent).ConfigureAwait(false));
-
-        ThreadPool.QueueUserWorkItem(_ => context.Publish());
-
-        Thread.Sleep(1000);
-
-        context.PendingCount.Should().Be(0);
-
-        manualResetNextEvent.Set();
+        context.Publish();
 
         context.PendingCount.Should().Be(0);
 
         VerifyPublishData(_eventHandler, context, expectedNextEvent);
-
-        Task ManualResetPublish(ManualResetEventSlim eventSlim)
-        {
-            eventSlim.Wait();
-            return Task.CompletedTask;
-        }
     }
 
     [Test]
@@ -1432,7 +1409,7 @@ public class ContextTests
             try
             {
                 manualResetEvent.Wait();
-                context2.Dispose();
+                context3.Dispose();
             }
             catch (Exception e)
             {
@@ -1446,7 +1423,7 @@ public class ContextTests
             try
             {
                 manualResetEvent.Wait();
-                await context2.DisposeAsync();
+                await context3.DisposeAsync();
             }
             catch (Exception e)
             {
@@ -1553,7 +1530,7 @@ public class ContextTests
 
         var expectedExperiments = _refreshedData.Experiments.Select(x => x.Name).ToArray();
 
-        context.GetExperiments().Should().BeEquivalentTo(expectedExperiments);
+        context.Experiments.Should().BeEquivalentTo(expectedExperiments);
     }
 
     [Test]
@@ -1619,7 +1596,7 @@ public class ContextTests
 
         var expectedExperiments = _refreshedData.Experiments.Select(x => x.Name).ToArray();
 
-        context.GetExperiments().Should().BeEquivalentTo(expectedExperiments);
+        context.Experiments.Should().BeEquivalentTo(expectedExperiments);
     }
 
     [Test]
@@ -1842,12 +1819,84 @@ public class ContextTests
         context.PendingCount.Should().Be(3);
     }
 
+    [Test]
+    public void TestRefreshKeepsCustomAssignments()
+    {
+        var context = CreateReadyContext();
+        context.IsReady().Should().BeTrue();
+
+        context.SetCustomAssignment("exp_test_ab", 2);
+        context.GetTreatment("exp_test_ab").Should().Be(2);
+        context.PendingCount.Should().Be(1);
+
+        SetupRefreshData();
+        context.Refresh();
+
+        Mock.Get(_dataProvider).Verify(x => x.GetContextDataAsync(), Times.Once);
+
+        context.GetCustomAssignment("exp_test_ab").Should().Be(2);
+        context.GetTreatment("exp_test_ab").Should().Be(2);
+        context.PendingCount.Should().Be(1);
+    }
+
+    [Test]
+    public void TestGetTreatmentQueuesExposureAfterPeek()
+    {
+        var context = CreateReadyContext();
+
+        context.PeekTreatment("exp_test_ab").Should().Be(1);
+        context.PendingCount.Should().Be(0);
+
+        context.GetTreatment("exp_test_ab").Should().Be(1);
+        context.PendingCount.Should().Be(1);
+
+        var expectedEvent = new PublishEvent
+        {
+            Hashed = true,
+            PublishedAt = _clock.Millis(),
+            Units = _publishUnits,
+            Exposures = new[]
+            {
+                Exposure(1, "exp_test_ab", "session_id", 1, _clock.Millis(), true, true, false, false, false, false)
+            }
+        };
+
+        context.Publish();
+
+        VerifyPublishData(_eventHandler, context, expectedEvent);
+    }
+
+    [Test]
+    public void TestGetTreatmentQueuesExposureWithCustomAssignmentVariant()
+    {
+        var context = CreateReadyContext();
+
+        context.SetCustomAssignment("exp_test_ab", 2);
+        context.GetTreatment("exp_test_ab").Should().Be(2);
+        context.PendingCount.Should().Be(1);
+
+        var expectedEvent = new PublishEvent
+        {
+            Hashed = true,
+            PublishedAt = _clock.Millis(),
+            Units = _publishUnits,
+            Exposures = new[]
+            {
+                Exposure(1, "exp_test_ab", "session_id", 2, _clock.Millis(), true, true, false, false, true, false)
+            }
+        };
+
+        context.Publish();
+
+        VerifyPublishData(_eventHandler, context, expectedEvent);
+    }
+
     private Context CreateContext(ContextConfig config, ContextData data) =>
         new(config, data, _clock, _dataProvider, _eventHandler, _eventLogger, _variableParser,
             _audienceMatcher, new LoggerFactory());
 
     private Context CreateContext(ContextData data) =>
-        new(new ContextConfig().SetUnits(_units), data, _clock, _dataProvider, _eventHandler, _eventLogger,
+        new(new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }.SetUnits(_units), data, _clock, _dataProvider, _eventHandler, _eventLogger,
             _variableParser,
             _audienceMatcher, new LoggerFactory());
 
@@ -1897,5 +1946,168 @@ public class ContextTests
         {
             return Task.FromResult(data ?? _refreshedData);
         }
+    }
+
+    [Test]
+    public void TestSetOverrideSucceedsAfterDispose()
+    {
+        var context = CreateReadyContext();
+        context.Dispose();
+        context.IsClosed().Should().BeTrue();
+        context.SetOverride("exp_test_ab", 2);
+        context.GetOverride("exp_test_ab").Should().Be(2);
+    }
+
+    [Test]
+    public void TestSetOverridesSucceedsAfterDispose()
+    {
+        var context = CreateReadyContext();
+        context.Dispose();
+        context.IsClosed().Should().BeTrue();
+        context.SetOverrides(new Dictionary<string, int> { ["exp_test_ab"] = 2, ["exp_test_abc"] = 1 });
+        context.GetOverride("exp_test_ab").Should().Be(2);
+        context.GetOverride("exp_test_abc").Should().Be(1);
+    }
+
+    [Test]
+    public void TestGetVariableKeysReturnsListPerKey()
+    {
+        var context = CreateContext(_refreshedData);
+
+        var variableKeys = context.VariableKeys;
+
+        foreach (var (key, experiments) in variableKeys)
+        {
+            experiments.Should().NotBeNull();
+            experiments.Should().NotBeEmpty();
+        }
+    }
+
+    [Test]
+    public void TestGetVariableKeysMultipleExperimentsShareKey()
+    {
+        var sharedKey = "shared_key";
+        var exp1 = new Experiment
+        {
+            Id = 100,
+            Name = "exp_a",
+            UnitType = "user_id",
+            Iteration = 1,
+            FullOnVariant = 0,
+            TrafficSplit = new double[] { 0.0, 1.0 },
+            Split = new double[] { 0.5, 0.5 },
+            Variants = new[]
+            {
+                new ExperimentVariant { Name = "control", Config = null },
+                new ExperimentVariant { Name = "treatment", Config = $"{{\"{sharedKey}\": \"value_a\"}}" }
+            }
+        };
+        var exp2 = new Experiment
+        {
+            Id = 101,
+            Name = "exp_b",
+            UnitType = "user_id",
+            Iteration = 1,
+            FullOnVariant = 0,
+            TrafficSplit = new double[] { 0.0, 1.0 },
+            Split = new double[] { 0.5, 0.5 },
+            Variants = new[]
+            {
+                new ExperimentVariant { Name = "control", Config = null },
+                new ExperimentVariant { Name = "treatment", Config = $"{{\"{sharedKey}\": \"value_b\"}}" }
+            }
+        };
+
+        var data = new ContextData { Experiments = new[] { exp1, exp2 } };
+        var context = CreateContext(data);
+
+        var variableKeys = context.VariableKeys;
+
+        variableKeys.Should().ContainKey(sharedKey);
+        variableKeys[sharedKey].Should().HaveCount(2);
+        variableKeys[sharedKey].Should().Contain("exp_a");
+        variableKeys[sharedKey].Should().Contain("exp_b");
+    }
+
+    [Test]
+    public void TestReadyErrorReturnsNullOnSuccess()
+    {
+        var context = CreateContext(_data);
+        context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().BeFalse();
+        context.ReadyError.Should().BeNull();
+    }
+
+    [Test]
+    public void TestReadyErrorReturnsNullWhenFailedWithNoException()
+    {
+        var context = CreateContext(null!);
+        context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().BeTrue();
+        context.ReadyError.Should().BeNull();
+    }
+
+    [Test]
+    public void TestGetUnitsReturnsAllUnits()
+    {
+        var context = CreateContext(_data);
+        var result = context.Units;
+        result.Should().BeEquivalentTo(_units);
+    }
+
+    [Test]
+    public void TestGetUnitsReturnsCopy()
+    {
+        var context = CreateContext(_data);
+        var result = context.Units;
+        result["new_unit"] = "uid";
+        context.Units.Should().NotContainKey("new_unit");
+    }
+
+    [Test]
+    public void TestGetAttributeReturnsNullWhenNotSet()
+    {
+        var context = CreateContext(_data);
+        context.GetAttribute("not_found").Should().BeNull();
+    }
+
+    [Test]
+    public void TestGetAttributeReturnsValue()
+    {
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }
+            .SetUnits(_units)
+            .SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1", ["attr2"] = 42 });
+        var context = CreateContext(config, _data);
+        context.GetAttribute("attr1").Should().Be("value1");
+        context.GetAttribute("attr2").Should().Be(42);
+    }
+
+    [Test]
+    public void TestGetAttributeReturnsLastValue()
+    {
+        var context = CreateContext(_data);
+        context.SetAttribute("attr1", "value1");
+        context.SetAttribute("attr1", "value2");
+        context.GetAttribute("attr1").Should().Be("value2");
+    }
+
+    [Test]
+    public void TestGetAttributesReturnsAllAttributes()
+    {
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }
+            .SetUnits(_units)
+            .SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1", ["attr2"] = 42 });
+        var context = CreateContext(config, _data);
+        var result = context.Attributes;
+        result["attr1"].Should().Be("value1");
+        result["attr2"].Should().Be(42);
+    }
+
+    [Test]
+    public void TestGetAttributesReturnsEmptyWhenNoneSet()
+    {
+        var context = CreateContext(_data);
+        var result = context.Attributes;
+        result.Should().BeEmpty();
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
+using ABSmartly.Extensions;
 using ABSmartly.Models;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
@@ -15,12 +16,12 @@ public class ABSmartlyService : IABSmartlyServiceClient
 
     private readonly IContextDataDeserializer _dataDeserializer;
     private readonly IContextEventSerializer _eventSerializer;
-    private readonly IABSdkHttpClientFactory _httpClientFactory;
+    private readonly IABsmartlyHttpClientFactory _httpClientFactory;
     private readonly ILogger<ABSmartlyService> _logger;
     private readonly string _url;
 
     public ABSmartlyService(ABSmartlyServiceConfiguration config,
-        IABSdkHttpClientFactory httpClientFactory,
+        IABsmartlyHttpClientFactory httpClientFactory,
         IContextDataDeserializer dataDeserializer,
         IContextEventSerializer eventSerializer,
         ILoggerFactory loggerFactory = null)
@@ -49,10 +50,13 @@ public class ABSmartlyService : IABSmartlyServiceClient
         if (string.IsNullOrWhiteSpace(_config.Environment))
             throw new ArgumentNullException(nameof(_config.Environment), "Missing Environment configuration");
 
-        _dataDeserializer = dataDeserializer;
-        _eventSerializer = eventSerializer;
+        if (!_config.Endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+            !IsLocalEndpoint(_config.Endpoint))
+        {
+            throw new ArgumentException("Endpoint must use HTTPS to protect API key (localhost and private hosts are exempt for testing)", nameof(_config.Endpoint));
+        }
 
-        _url = config.Endpoint + "/context";
+        _url = config.Endpoint.TrimEnd('/') + "/context";
         _logger = loggerFactory?.CreateLogger<ABSmartlyService>();
     }
 
@@ -62,15 +66,23 @@ public class ABSmartlyService : IABSmartlyServiceClient
         {
             using var httpClient = _httpClientFactory.CreateClient();
             var uri = QueryHelpers.AddQueryString(_url, GetDefaultQueryParameters());
-            var response = await httpClient.GetAsync(uri);
+            var response = await httpClient.GetAsync(uri).ConfigureUnboundContinuation();
             response.EnsureSuccessStatusCode();
 
-            var responseStream = await response.Content.ReadAsStreamAsync();
-            return _dataDeserializer.Deserialize(responseStream);
+            var responseStream = await response.Content.ReadAsStreamAsync().ConfigureUnboundContinuation();
+            var result = _dataDeserializer.Deserialize(responseStream);
+
+            if (result == null)
+            {
+                var message = "Context data deserializer returned null - check logs for deserialization errors";
+                _logger?.LogError(message);
+            }
+
+            return result;
         }
         catch (Exception e)
         {
-            _logger?.LogError("Fetch context data: {EMessage}", e.Message);
+            _logger?.LogError(e, "Error fetching context data: {Message}", e.Message);
             return null;
         }
     }
@@ -83,17 +95,21 @@ public class ABSmartlyService : IABSmartlyServiceClient
             SetupDefaultHeaders(httpClient);
 
             var serializedEvent = _eventSerializer.Serialize(publishEvent);
+            if (serializedEvent == null)
+            {
+                var message = "Event serializer returned null";
+                _logger?.LogError(message);
+                return false;
+            }
 
             var content = new ByteArrayContent(serializedEvent);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
-            var result = await httpClient.PutAsync(_url, content);
+            var result = await httpClient.PutAsync(_url, content).ConfigureUnboundContinuation();
 
             if (!result.IsSuccessStatusCode)
             {
-                _logger?.LogError(
-                    "Publish event unsuccessful request: reason '{ReasonPhrase}', response content = '{S}'",
-                    result.ReasonPhrase, await result.Content.ReadAsStringAsync());
+                _logger?.LogError("Publish event failed: HTTP {StatusCode} {ReasonPhrase}", (int)result.StatusCode, result.ReasonPhrase);
                 return false;
             }
 
@@ -101,12 +117,12 @@ public class ABSmartlyService : IABSmartlyServiceClient
         }
         catch (Exception e)
         {
-            _logger?.LogError("Exception when Publish event: {E}", e);
+            _logger?.LogError(e, "Error publishing event: {Message}", e.Message);
             return false;
         }
     }
 
-    private void SetupDefaultHeaders(IABSdkHttpClient client)
+    private void SetupDefaultHeaders(IABsmartlyHttpClient client)
     {
         client.AddHeader("X-API-Key", _config.ApiKey);
         client.AddHeader("X-Application", _config.Application);
@@ -122,5 +138,22 @@ public class ABSmartlyService : IABSmartlyServiceClient
             ["application"] = _config.Application,
             ["environment"] = _config.Environment
         };
+    }
+
+    private static bool IsLocalEndpoint(string endpoint)
+    {
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+            return false;
+
+        var host = uri.Host;
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (host.StartsWith("127.", StringComparison.Ordinal))
+            return true;
+        if (string.Equals(host, "::1", StringComparison.Ordinal) ||
+            string.Equals(host, "[::1]", StringComparison.Ordinal))
+            return true;
+
+        return false;
     }
 }

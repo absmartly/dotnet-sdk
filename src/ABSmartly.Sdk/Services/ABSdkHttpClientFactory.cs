@@ -1,49 +1,22 @@
-﻿using System.Net.Http;
-using System.Threading.Tasks;
+using System;
+using System.Net.Http;
 
 namespace ABSmartly.Services;
 
-public class ABSdkHttpClientFactory : IABSdkHttpClientFactory
+[Obsolete("ABSdkHttpClientFactory has been renamed to ABsmartlyHttpClientFactory. Please use ABsmartlyHttpClientFactory instead.")]
+public class ABSdkHttpClientFactory : ABsmartlyHttpClientFactory
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-
     public ABSdkHttpClientFactory(IHttpClientFactory httpClientFactory)
+        : base(httpClientFactory)
     {
-        _httpClientFactory = httpClientFactory;
     }
+}
 
-    public IABSdkHttpClient CreateClient()
+[Obsolete("AbsmartlyHttpClientFactory has been renamed to ABsmartlyHttpClientFactory. Please use ABsmartlyHttpClientFactory instead.")]
+public class AbsmartlyHttpClientFactory : ABsmartlyHttpClientFactory
+{
+    public AbsmartlyHttpClientFactory(IHttpClientFactory httpClientFactory)
+        : base(httpClientFactory)
     {
-        return new HttpClientWrapper(_httpClientFactory.CreateClient(ABSdk.HttpClientName));
-    }
-
-    public class HttpClientWrapper : IABSdkHttpClient
-    {
-        private readonly HttpClient _client;
-
-        public HttpClientWrapper(HttpClient client)
-        {
-            _client = client;
-        }
-
-        public Task<HttpResponseMessage> GetAsync(string requestUri)
-        {
-            return _client.GetAsync(requestUri);
-        }
-
-        public Task<HttpResponseMessage> PutAsync(string requestUri, HttpContent content)
-        {
-            return _client.PutAsync(requestUri, content);
-        }
-
-        public void AddHeader(string name, string value)
-        {
-            _client.DefaultRequestHeaders.Add(name, value);
-        }
-
-        public void Dispose()
-        {
-            _client?.Dispose();
-        }
     }
 }

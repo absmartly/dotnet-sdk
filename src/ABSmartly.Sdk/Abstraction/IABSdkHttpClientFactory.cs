@@ -1,18 +1,14 @@
-﻿#nullable enable
+#nullable enable
 using System;
-using System.Net.Http;
-using System.Threading.Tasks;
 
 namespace ABSmartly;
 
-public interface IABSdkHttpClientFactory
+[Obsolete("IABSdkHttpClientFactory has been renamed to IABsmartlyHttpClientFactory. Please use IABsmartlyHttpClientFactory instead.")]
+public interface IABSdkHttpClientFactory : IABsmartlyHttpClientFactory
 {
-    IABSdkHttpClient CreateClient();
 }
 
-public interface IABSdkHttpClient : IDisposable
+[Obsolete("IABSdkHttpClient has been renamed to IABsmartlyHttpClient. Please use IABsmartlyHttpClient instead.")]
+public interface IABSdkHttpClient : IABsmartlyHttpClient
 {
-    Task<HttpResponseMessage> GetAsync(string? requestUri);
-    Task<HttpResponseMessage> PutAsync(string? requestUri, HttpContent content);
-    void AddHeader(string name, string? value);
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -31,8 +32,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private readonly ReaderWriterLockSlim _dataLock = new(LockRecursionPolicy.SupportsRecursion);
     private readonly IContextDataProvider _dataProvider;
-    private readonly IContextEventHandler _eventHandler;
+    private readonly IContextPublisher _eventHandler;
     private readonly object _eventLock = new();
+    // Serializes Flush() so concurrent flushes (publish-delay timer, explicit
+    // PublishAsync, Close/Dispose) cannot overlap. _eventLock cannot be held
+    // across the await on PublishAsync, so a separate async-capable gate is used.
+    private readonly SemaphoreSlim _flushLock = new(1, 1);
     private readonly IContextEventLogger _eventLogger;
 
     private readonly List<Exposure> _exposures = new();
@@ -40,7 +45,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private readonly DictionaryLockableAdapter<string, byte[]> _hashedUnits;
     private readonly ILogger<Context> _logger;
-    private readonly DictionaryLockableAdapter<string, int?> _overrides;
+    private readonly ConcurrentDictionary<string, int?> _overrides;
     private readonly int _publishDelay;
     private readonly int _refreshInterval;
 
@@ -48,19 +53,21 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private readonly object _timeoutLock = new();
     private readonly Dictionary<string, string> _units;
     private readonly IVariableParser _variableParser;
-    private bool _closed;
+    private volatile bool _closed;
     private int _closing;
 
-    private ContextData _data;
+    private volatile ContextData _data;
 
-    private bool _failed;
+    private volatile bool _failed;
+    private volatile Exception _failedError;
     private Dictionary<string, ExperimentVariables> _index;
     private Dictionary<string, Dictionary<string, ContextCustomFieldValue>> _contextCustomFields;
     
-    private DictionaryLockableAdapter<string, ExperimentVariables> _indexVariables;
+    private DictionaryLockableAdapter<string, List<ExperimentVariables>> _indexVariables;
 
     private volatile int _pendingCount;
     private int _refreshing;
+    private volatile int _attrsSeq;
     private volatile CancellationTokenSource _refreshTimer;
 
     private volatile CancellationTokenSource _timeout;
@@ -71,7 +78,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         ContextData data,
         Clock clock,
         IContextDataProvider dataProvider,
-        IContextEventHandler eventHandler,
+        IContextPublisher eventHandler,
         IContextEventLogger eventLogger,
         IVariableParser variableParser,
         AudienceMatcher audienceMatcher,
@@ -79,7 +86,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         if (config == null) throw new ArgumentNullException(nameof(config), "Context configuration is required");
 
-        _logger = loggerFactory.CreateLogger<Context>();
+        _logger = loggerFactory?.CreateLogger<Context>();
         _clock = clock;
         _publishDelay = Convert.ToInt32(config.PublishDelay.TotalMilliseconds);
         _refreshInterval = Convert.ToInt32(config.RefreshInterval.TotalMilliseconds);
@@ -105,9 +112,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             SetAttributes(config.Attributes);
 
         _overrides = config.Overrides != null
-            ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock),
-                config.Overrides)
-            : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
+            ? new ConcurrentDictionary<string, int?>(config.Overrides.Select(kv => new KeyValuePair<string, int?>(kv.Key, kv.Value)))
+            : new ConcurrentDictionary<string, int?>();
 
         _customAssignments = config.CustomAssignments != null
             ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock),
@@ -135,20 +141,26 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     public int PendingCount => _pendingCount;
 
 
-    public string[] GetExperiments()
+    public string[] Experiments
     {
-        CheckReady(true);
+        get
+        {
+            CheckReady(true);
 
-        try
-        {
-            _dataLock.EnterReadLock();
-            return _data.Experiments.Select(x => x.Name).ToArray();
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
+            try
+            {
+                _dataLock.EnterReadLock();
+                return _data.Experiments.Select(x => x.Name).ToArray();
+            }
+            finally
+            {
+                _dataLock.ExitReadLock();
+            }
         }
     }
+
+    [Obsolete("Use the Experiments property instead.")]
+    public string[] GetExperiments() => Experiments;
 
     public ContextData GetContextData()
     {
@@ -207,85 +219,112 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         ClearTimeout();
 
-        if (!_failed)
+        // Serialize flushes so the publish-delay timer, an explicit PublishAsync,
+        // and Close/Dispose cannot run Flush concurrently. Without this, two
+        // flushes both snapshot the event lists, then each calls RemoveRange with
+        // its (now stale) snapshot count, throwing ArgumentException, or the
+        // publish is duplicated/skipped.
+        await _flushLock.WaitAsync().ConfigureUnboundContinuation();
+        try
         {
-            if (_pendingCount > 0)
+            if (!_failed)
             {
-                Exposure[] exposures = null;
-                GoalAchievement[] achievements = null;
-                int eventCount;
+                if (_pendingCount > 0)
+                {
+                    Exposure[] exposures = null;
+                    GoalAchievement[] achievements = null;
+                    int eventCount;
 
+                    try
+                    {
+                        Monitor.Enter(_eventLock);
+
+                        eventCount = _pendingCount;
+                        if (eventCount > 0)
+                        {
+                            if (_exposures.Count > 0)
+                            {
+                                exposures = _exposures.ToArray();
+                            }
+
+                            if (_achievements.Count > 0)
+                            {
+                                achievements = _achievements.ToArray();
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        Monitor.Exit(_eventLock);
+                    }
+
+                    if (eventCount > 0)
+                        try
+                        {
+                            var publishEvent = new PublishEvent
+                            {
+                                Hashed = true,
+                                PublishedAt = _clock.Millis(),
+                                Units = _units
+                                    .Select(kv => new Unit
+                                    {
+                                        Type = kv.Key,
+                                        Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
+                                    })
+                                    .ToArray(),
+                                Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
+                                Exposures = exposures,
+                                Goals = achievements
+                            };
+
+                            await _eventHandler.PublishAsync(this, publishEvent).ConfigureUnboundContinuation();
+                            LogEvent(EventType.Publish, publishEvent);
+
+                            try
+                            {
+                                Monitor.Enter(_eventLock);
+                                // Clamp to the current count: items were snapshotted by
+                                // value, and the list size is authoritative.
+                                var exposureCount = Math.Min(exposures?.Length ?? 0, _exposures.Count);
+                                var achievementCount = Math.Min(achievements?.Length ?? 0, _achievements.Count);
+                                if (exposureCount > 0)
+                                    _exposures.RemoveRange(0, exposureCount);
+                                if (achievementCount > 0)
+                                    _achievements.RemoveRange(0, achievementCount);
+                                Interlocked.Add(ref _pendingCount, -(exposureCount + achievementCount));
+                            }
+                            finally
+                            {
+                                Monitor.Exit(_eventLock);
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            _logger.LogError(e, "{Publish}", EventType.Publish);
+                            LogError(e);
+                            throw;
+                        }
+                }
+            }
+            else
+            {
                 try
                 {
                     Monitor.Enter(_eventLock);
 
-                    eventCount = _pendingCount;
-                    if (eventCount > 0)
-                    {
-                        if (_exposures.Count > 0)
-                        {
-                            exposures = _exposures.ToArray();
-                            _exposures.Clear();
-                        }
-
-                        if (_achievements.Count > 0)
-                        {
-                            achievements = _achievements.ToArray();
-                            _achievements.Clear();
-                        }
-
-                        _pendingCount = 0;
-                    }
+                    _exposures.Clear();
+                    _achievements.Clear();
+                    Interlocked.Exchange(ref _pendingCount, 0);
                 }
                 finally
                 {
                     Monitor.Exit(_eventLock);
                 }
-
-                if (eventCount > 0)
-                    try
-                    {
-                        var publishEvent = new PublishEvent
-                        {
-                            Hashed = true,
-                            PublishedAt = _clock.Millis(),
-                            Units = _units
-                                .Select(kv => new Unit
-                                {
-                                    Type = kv.Key,
-                                    Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
-                                })
-                                .ToArray(),
-                            Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
-                            Exposures = exposures,
-                            Goals = achievements
-                        };
-
-                        await _eventHandler.PublishAsync(this, publishEvent).ConfigureUnboundContinuation();
-                        LogEvent(EventType.Publish, publishEvent);
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.LogError(e, "{Publish}", EventType.Publish);
-                        LogError(e);
-                        throw;
-                    }
             }
         }
-        else
+        finally
         {
-            try
-            {
-                Monitor.Enter(_eventLock);
-
-                _exposures.Clear();
-                _achievements.Clear();
-                Interlocked.Exchange(ref _pendingCount, 0);
-            }
-            finally
-            {
-                Monitor.Exit(_eventLock);
-            }
+            _flushLock.Release();
         }
     }
 
@@ -294,6 +333,43 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return _hashedUnits.ConcurrentGetOrAdd(unitType, _ => Md5.HashToUtf8Bytes(unitUid));
     }
 
+    private Dictionary<string, object> BuildAttributesDictionary()
+    {
+        var attrs = new Dictionary<string, object>(_attributes.Count);
+        foreach (var attribute in _attributes)
+        {
+            attrs[attribute.Name] = attribute.Value;
+        }
+        return attrs;
+    }
+
+    private bool? EvaluateAudience(string audience)
+    {
+        if (string.IsNullOrEmpty(audience))
+        {
+            return null;
+        }
+
+        var attrs = BuildAttributesDictionary();
+        return _audienceMatcher.Evaluate(audience, attrs);
+    }
+
+    private bool AudienceMatches(Experiment experiment, Assignment assignment)
+    {
+        if (!string.IsNullOrEmpty(experiment.Audience))
+        {
+            if (_attrsSeq > assignment.AttrsSeq)
+            {
+                var match = EvaluateAudience(experiment.Audience);
+                var newAudienceMismatch = match != null ? !match.Value : false;
+                if (newAudienceMismatch != assignment.AudienceMismatch)
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
 
     private Assignment GetAssignment(string experimentName)
     {
@@ -321,7 +397,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 else if (!_customAssignments.TryGetValue(experimentName, out var custom) ||
                          custom == assignment.Variant)
                 {
-                    if (ExperimentMatches(experiment.Data, assignment))
+                    if (ExperimentMatches(experiment.Data, assignment) &&
+                        AudienceMatches(experiment.Data, assignment))
                         // assignment is up-to-date
                         return assignment;
                 }
@@ -364,10 +441,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
                     if (!string.IsNullOrEmpty(experiment.Data.Audience))
                     {
-                        var attrs = new Dictionary<string, object>(_attributes.Count);
-                        foreach (var attribute in _attributes) attrs.Add(attribute.Name, attribute.Value);
-
-                        var match = _audienceMatcher.Evaluate(experiment.Data.Audience, attrs);
+                        var match = EvaluateAudience(experiment.Data.Audience);
                         if (match != null) assignment.AudienceMismatch = !match.Value;
                     }
 
@@ -422,9 +496,10 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 }
             }
 
-            if (experiment != null && assignment.Variant < experiment.Data.Variants.Length)
+            if (experiment != null && assignment.Variant >= 0 && assignment.Variant < experiment.Data.Variants.Length)
                 assignment.Variables = experiment.Variables[assignment.Variant];
 
+            assignment.AttrsSeq = _attrsSeq;
             _assignmentCache[experimentName] = assignment;
 
             return assignment;
@@ -446,8 +521,15 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private Assignment GetVariableAssignment(string key)
     {
-        var experiment = GetVariableExperiment(key);
-        return experiment != null ? GetAssignment(experiment.Data.Name) : null;
+        var experiments = GetVariableExperiments(key);
+        if (experiments == null) return null;
+        foreach (var experiment in experiments)
+        {
+            var assignment = GetAssignment(experiment.Data.Name);
+            if (assignment.Assigned || assignment.Overridden)
+                return assignment;
+        }
+        return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name) : null;
     }
 
     private ExperimentVariables GetExperiment(string experimentName)
@@ -463,13 +545,13 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
     
-    public List<String> GetCustomFieldKeys()
+    public List<string> GetCustomFieldKeys()
     {
         try
         {
             _dataLock.EnterReadLock();
 
-            var keys = new List<String>();
+            var keys = new List<string>();
             
             foreach (var experiment in _data.Experiments)
             {
@@ -491,46 +573,18 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
     
-    public Object GetCustomFieldValue(String environmentName, String key)
+    private ContextCustomFieldValue GetCustomField(string experimentName, string key)
     {
         try
         {
             _dataLock.EnterReadLock();
 
-            _contextCustomFields.TryGetValue(environmentName, out var customFieldValues);
-
-            if (customFieldValues != null)
+            if (_contextCustomFields != null &&
+                _contextCustomFields.TryGetValue(experimentName, out var customFieldValues) &&
+                customFieldValues != null &&
+                customFieldValues.TryGetValue(key, out var field))
             {
-                customFieldValues.TryGetValue(key, out var field);
-                if (field != null)
-                {
-                    return field.Value;
-                }
-            }
-
-            return null;
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
-    }
-    
-    public Object GetCustomFieldType(String environmentName, String key)
-    {
-        try
-        {
-            _dataLock.EnterReadLock();
-
-            _contextCustomFields.TryGetValue(environmentName, out var customFieldValues);
-
-            if (customFieldValues != null)
-            {
-                customFieldValues.TryGetValue(key, out var field);
-                if (field != null)
-                {
-                    return field.Type;
-                }
+                return field;
             }
 
             return null;
@@ -541,7 +595,24 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
-    private ExperimentVariables GetVariableExperiment(string key)
+    public object GetCustomFieldValue(string experimentName, string key)
+    {
+        var field = GetCustomField(experimentName, key);
+        return field?.Value;
+    }
+
+    public object GetCustomFieldValueType(string experimentName, string key)
+    {
+        var field = GetCustomField(experimentName, key);
+        return field?.Type;
+    }
+
+    public object GetCustomFieldType(string experimentName, string key)
+    {
+        return GetCustomFieldValueType(experimentName, key);
+    }
+
+    private List<ExperimentVariables> GetVariableExperiments(string key)
     {
         return _indexVariables.ConcurrentGetValueOrDefault(key);
     }
@@ -564,6 +635,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return _failed;
     }
 
+    public Exception ReadyError => _failedError;
+
     public bool IsClosed()
     {
         return _closed;
@@ -573,6 +646,10 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         return !_closed && _closing > 0;
     }
+
+    public bool IsFinalized => IsClosed();
+
+    public bool IsFinalizing => IsClosing();
 
     #endregion
 
@@ -585,12 +662,40 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
         var attribute = new Attribute { Name = name, Value = value, SetAt = _clock.Millis() };
         _attributes.ConcurrentAdd(attribute);
+        Interlocked.Increment(ref _attrsSeq);
     }
 
     public void SetAttributes(Dictionary<string, object> attributes)
     {
         foreach (var kvp in attributes) SetAttribute(kvp.Key, kvp.Value);
     }
+
+    public object GetAttribute(string name)
+    {
+        object result = null;
+        foreach (var attribute in _attributes)
+        {
+            if (attribute.Name == name)
+                result = attribute.Value;
+        }
+        return result;
+    }
+
+    public Dictionary<string, object> Attributes
+    {
+        get
+        {
+            var result = new Dictionary<string, object>();
+            foreach (var attribute in _attributes)
+            {
+                result[attribute.Name] = attribute.Value;
+            }
+            return result;
+        }
+    }
+
+    [Obsolete("Use the Attributes property instead.")]
+    public Dictionary<string, object> GetAttributes() => Attributes;
 
     #endregion
 
@@ -619,13 +724,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     public void SetOverride(string experimentName, int variant)
     {
-        CheckNotClosed();
-        _overrides.ConcurrentSet(experimentName, variant);
+        _overrides[experimentName] = variant;
     }
 
     public int? GetOverride(string experimentName)
     {
-        return _overrides.ConcurrentGetValueOrDefault(experimentName);
+        return _overrides.TryGetValue(experimentName, out var v) ? v : null;
     }
 
     public void SetOverrides(Dictionary<string, int> overrides)
@@ -675,8 +779,13 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _contextLock.EnterWriteLock();
 
             var previous = _units.TryGetValue(unitType, out var u) ? u : null;
-            if (previous != null && !previous.Equals(uidTrimmed))
-                throw new ArgumentException($"Unit '{unitType}' already set.");
+            if (previous != null)
+            {
+                if (!previous.Equals(uidTrimmed))
+                    throw new ArgumentException($"Unit '{unitType}' UID already set.");
+                // Same value, no-op
+                return;
+            }
 
             _units.Add(unitType, uidTrimmed);
         }
@@ -691,28 +800,68 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
     }
 
+    public Dictionary<string, string> Units
+    {
+        get
+        {
+            try
+            {
+                _contextLock.EnterReadLock();
+                return new Dictionary<string, string>(_units);
+            }
+            finally
+            {
+                _contextLock.ExitReadLock();
+            }
+        }
+    }
+
+    [Obsolete("Use the Units property instead.")]
+    public Dictionary<string, string> GetUnits() => Units;
+
     #endregion
 
     #region Variable
 
+    public Dictionary<string, List<string>> VariableKeys
+    {
+        get
+        {
+            CheckReady(true);
+
+            var variableKeys = new Dictionary<string, List<string>>(_indexVariables.Count);
+
+            try
+            {
+                _dataLock.EnterReadLock();
+
+                foreach (var kv in _indexVariables)
+                {
+                    var names = new List<string>(kv.Value.Count);
+                    foreach (var ev in kv.Value) names.Add(ev.Data.Name);
+                    variableKeys.Add(kv.Key, names);
+                }
+            }
+            finally
+            {
+                _dataLock.ExitReadLock();
+            }
+
+            return variableKeys;
+        }
+    }
+
+    [Obsolete("Use the VariableKeys property instead.")]
+    public Dictionary<string, List<string>> GetVariableExperimentKeys() => VariableKeys;
+
+    [Obsolete("Use the VariableKeys property instead.")]
     public Dictionary<string, string> GetVariableKeys()
     {
-        CheckReady(true);
-
-        var variableKeys = new Dictionary<string, string>(_indexVariables.Count);
-
-        try
-        {
-            _dataLock.EnterReadLock();
-
-            foreach (var kv in _indexVariables) variableKeys.Add(kv.Key, kv.Value.Data.Name);
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
-
-        return variableKeys;
+        var full = VariableKeys;
+        var result = new Dictionary<string, string>(full.Count);
+        foreach (var kv in full)
+            if (kv.Value.Count > 0) result[kv.Key] = kv.Value[0];
+        return result;
     }
 
     public object GetVariableValue(string key, object defaultValue)
@@ -815,14 +964,20 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private void CheckNotClosed()
     {
-        if (_closed) throw new InvalidOperationException("ABSmartly Context is closed");
-        if (_closing > 0) throw new InvalidOperationException("ABSmartly Context is closing");
+        if (_closed) throw new InvalidOperationException("ABsmartly Context is finalized.");
+        if (_closing > 0) throw new InvalidOperationException("ABsmartly Context is finalizing.");
     }
 
     private void CheckReady(bool expectNotClosed)
     {
-        if (!IsReady()) throw new Exception("ABSmartly Context is not yet ready");
-        if (expectNotClosed) CheckNotClosed();
+        if (!IsReady())
+        {
+            throw new InvalidOperationException("ABsmartly Context is not yet ready.");
+        }
+        if (expectNotClosed)
+        {
+            CheckNotClosed();
+        }
     }
 
     #endregion
@@ -844,11 +999,29 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _timeout = new CancellationTokenSource();
             var token = _timeout.Token;
 
-            Task.Run(async () =>
+            var task = Task.Run(async () =>
             {
-                await Task.Delay(_publishDelay, token).ConfigureUnboundContinuation();
-                await Flush().ConfigureUnboundContinuation();
+                try
+                {
+                    await Task.Delay(_publishDelay, token).ConfigureUnboundContinuation();
+                    await Flush().ConfigureUnboundContinuation();
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception e)
+                {
+                    _logger?.LogError(e, "Error during flush timeout");
+                }
             }, token);
+
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                {
+                    _logger?.LogError(t.Exception, "Unhandled exception in flush timeout task");
+                }
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
         finally
         {
@@ -867,6 +1040,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             if (_timeout == null) return;
 
             _timeout.Cancel();
+            _timeout.Dispose();
             _timeout = null;
         }
         finally
@@ -892,14 +1066,33 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _refreshTimer = new CancellationTokenSource();
             var token = _refreshTimer.Token;
 
-            Task.Run(async () =>
+            var task = Task.Run(async () =>
             {
                 while (!token.IsCancellationRequested)
                 {
-                    await Task.Delay(_refreshInterval, token).ConfigureUnboundContinuation();
-                    await RefreshAsync();
+                    try
+                    {
+                        await Task.Delay(_refreshInterval, token).ConfigureUnboundContinuation();
+                        await RefreshAsync();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception e)
+                    {
+                        _logger?.LogError(e, "Error during refresh timer");
+                    }
                 }
             }, token);
+
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                {
+                    _logger?.LogError(t.Exception, "Unhandled exception in refresh timer task");
+                }
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
         finally
         {
@@ -918,6 +1111,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             if (_refreshTimer == null) return;
 
             _refreshTimer.Cancel();
+            _refreshTimer.Dispose();
             _refreshTimer = null;
         }
         finally
@@ -933,7 +1127,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private void SetData(ContextData data)
     {
         var index = new Dictionary<string, ExperimentVariables>();
-        var indexVariables = new Dictionary<string, ExperimentVariables>();
+        var indexVariables = new Dictionary<string, List<ExperimentVariables>>();
         var contextCustomFields = new Dictionary<string, Dictionary<string, ContextCustomFieldValue>>();
 
         foreach (var experiment in data.Experiments)
@@ -947,11 +1141,39 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             foreach (var variant in experiment.Variants)
                 if (variant.Config != null && !string.IsNullOrWhiteSpace(variant.Config))
                 {
-                    var variables = _variableParser.Parse(this, experiment.Name, variant.Name, variant.Config);
+                    try
+                    {
+                        var variables = _variableParser.Parse(this, experiment.Name, variant.Name, variant.Config);
 
-                    foreach (var key in variables.Keys) indexVariables[key] = experimentVariables;
-
-                    experimentVariables.Variables.Add(variables);
+                        if (variables != null)
+                        {
+                            foreach (var key in variables.Keys)
+                            {
+                                if (!indexVariables.TryGetValue(key, out var list))
+                                {
+                                    list = new List<ExperimentVariables>();
+                                    indexVariables[key] = list;
+                                }
+                                if (list.Find(ev => ev.Data.Id == experiment.Id) == null)
+                                {
+                                    var insertAt = list.FindIndex(ev => ev.Data.Id > experiment.Id);
+                                    if (insertAt < 0) list.Add(experimentVariables);
+                                    else list.Insert(insertAt, experimentVariables);
+                                }
+                            }
+                            experimentVariables.Variables.Add(variables);
+                        }
+                        else
+                        {
+                            _logger?.LogWarning("Variable parser returned null for experiment '{ExperimentName}', variant '{VariantName}'", experiment.Name, variant.Name);
+                            experimentVariables.Variables.Add(new Dictionary<string, object>());
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        _logger?.LogError(e, "Failed to parse variables for experiment '{ExperimentName}', variant '{VariantName}'", experiment.Name, variant.Name);
+                        experimentVariables.Variables.Add(new Dictionary<string, object>());
+                    }
                 }
                 else
                 {
@@ -972,23 +1194,34 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
                 if (customFieldValue.Value != null)
                 {
-                    var customValue = customFieldValue.Value;
+                    try
+                    {
+                        var customValue = customFieldValue.Value;
 
-                    if (customFieldValue.Type.StartsWith("json"))
-                    {
-                        value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
+                        if (customFieldValue.Type.StartsWith("json"))
+                        {
+                            value.Value = DefaultVariableParser.ParseValue(customValue);
+                        }
+                        else if(customFieldValue.Type.StartsWith("boolean"))
+                        {
+                            value.Value = Convert.ToBoolean(customValue);
+                        }
+                        else if(customFieldValue.Type.StartsWith("number"))
+                        {
+                            value.Value = long.TryParse(customValue, out var longVal)
+                                ? (object)longVal
+                                : Convert.ToDouble(customValue);
+                        }
+                        else
+                        {
+                            value.Value = customValue;
+                        }
                     }
-                    else if(customFieldValue.Type.StartsWith("boolean"))
+                    catch (Exception e)
                     {
-                        value.Value = Convert.ToBoolean(customValue);
-                    }
-                    else if(customFieldValue.Type.StartsWith("number"))
-                    {
-                        value.Value = Convert.ToInt64(customValue);
-                    }
-                    else
-                    {
-                        value.Value = customValue;
+                        _logger?.LogWarning(e, "Failed to convert custom field '{FieldName}' of type '{FieldType}' for experiment '{ExperimentName}'. Value: '{Value}'",
+                            customFieldValue.Name, customFieldValue.Type, experiment.Name, customFieldValue.Value);
+                        value.Value = null;
                     }
                 }
 
@@ -1005,7 +1238,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _index = index;
             _contextCustomFields = contextCustomFields;
             _indexVariables =
-                new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock),
+                new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock),
                     indexVariables);
             _data = data;
 
@@ -1017,16 +1250,17 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
-    private void SetDataFailed()
+    private void SetDataFailed(Exception error = null)
     {
         try
         {
             _dataLock.EnterWriteLock();
             _index = new Dictionary<string, ExperimentVariables>();
             _indexVariables =
-                new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock));
+                new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock));
             _data = new ContextData();
             _failed = true;
+            _failedError = error;
         }
         finally
         {
@@ -1075,13 +1309,18 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
+    public void Close()
+    {
+        Dispose();
+    }
+
     public void Dispose()
     {
         Dispose(true);
         GC.SuppressFinalize(this);
     }
 
-    public void Dispose(bool disposing)
+    protected virtual void Dispose(bool disposing)
     {
         if (disposing)
         {
@@ -1120,9 +1359,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     
     public class ContextCustomFieldValue
     {
-        public String Name { get; set; }
-        public String Type { get; set; }
-        public Object Value { get; set; }
+        public string Name { get; set; }
+        public string Type { get; set; }
+        public object Value { get; set; }
     }
 
     public class Assignment
@@ -1144,6 +1383,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         public bool Custom { get; set; }
 
         public bool AudienceMismatch { get; set; }
+        public int AttrsSeq { get; set; }
     }
 
     #endregion
