@@ -72,10 +72,49 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private volatile CancellationTokenSource _timeout;
 
+    // Completes (never faults) once the initial data load of a pending context has
+    // settled as ready or failed. Null when the context was constructed with data.
+    private TaskCompletionSource<bool> _readyTcs;
+
     #region Constructor & Initialization
 
     public Context(ContextConfig config,
         ContextData data,
+        Clock clock,
+        IContextDataProvider dataProvider,
+        IContextPublisher eventHandler,
+        IContextEventLogger eventLogger,
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher,
+        ILoggerFactory loggerFactory)
+        : this(config, clock, dataProvider, eventHandler, eventLogger, variableParser, audienceMatcher,
+            loggerFactory)
+    {
+        SetInitialData(data, null);
+    }
+
+    // Creates a context that is not ready until dataTask settles: the load runs in
+    // the background, so calls made in the meantime see the not-ready state.
+    internal static Context CreatePending(ContextConfig config,
+        Task<ContextData> dataTask,
+        Clock clock,
+        IContextDataProvider dataProvider,
+        IContextPublisher eventHandler,
+        IContextEventLogger eventLogger,
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher,
+        ILoggerFactory loggerFactory)
+    {
+        if (dataTask == null) throw new ArgumentNullException(nameof(dataTask));
+
+        var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
+            audienceMatcher, loggerFactory);
+        context._readyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = context.LoadAsync(dataTask);
+        return context;
+    }
+
+    private Context(ContextConfig config,
         Clock clock,
         IContextDataProvider dataProvider,
         IContextPublisher eventHandler,
@@ -119,22 +158,84 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock),
                 config.CustomAssignments)
             : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
+    }
 
-        if (data != null)
+    // Settles the initial load: ready with data, or failed. A failed load keeps the
+    // error that caused it as ReadyError; null data with no error is the legacy
+    // "initialized with failed data" path.
+    private void SetInitialData(ContextData data, Exception error)
+    {
+        if (error == null && data != null)
         {
             SetData(data);
-            LogEvent(EventType.Ready, data);
-
-            if (_pendingCount > 0) SetTimeout();
+            try
+            {
+                LogEvent(EventType.Ready, data);
+            }
+            finally
+            {
+                // Events tracked before the context was ready still need a flush.
+                if (_pendingCount > 0) SetTimeout();
+            }
+        }
+        else if (error != null)
+        {
+            SetDataFailed(error);
+            _logger?.LogWarning(error, "Context data failed to load: {Message}", error.Message);
+            LogError(error);
         }
         else
         {
             const string errorMessage = "Context initialized with failed data.";
             SetDataFailed();
-            _logger.LogWarning(errorMessage);
+            _logger?.LogWarning(errorMessage);
             LogEvent(EventType.Error, errorMessage);
         }
     }
+
+    private async Task LoadAsync(Task<ContextData> dataTask)
+    {
+        try
+        {
+            ContextData data;
+            try
+            {
+                data = await dataTask.ConfigureUnboundContinuation();
+            }
+            catch (Exception e)
+            {
+                if (IsDisposing()) return;
+                SetInitialData(null, e);
+                return;
+            }
+
+            // Closed before the load settled: the context is sealed (and its locks
+            // may already be disposed), so the late data is dropped.
+            if (IsDisposing()) return;
+
+            try
+            {
+                SetInitialData(data, null);
+            }
+            catch (Exception e) when (!IsReady())
+            {
+                // The payload could not be applied (e.g. malformed data). Fail the
+                // context instead of leaving it pending forever.
+                SetInitialData(null, e);
+            }
+        }
+        catch (Exception e)
+        {
+            // The load has already settled; only an event logger callback gets here.
+            _logger?.LogError(e, "Error while settling the context data load");
+        }
+        finally
+        {
+            _readyTcs.TrySetResult(true);
+        }
+    }
+
+    private bool IsDisposing() => _closed || _closing > 0;
 
     #endregion
 
@@ -145,7 +246,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         get
         {
-            CheckReady(true);
+            if (!CheckReadyForRead()) return Array.Empty<string>();
 
             try
             {
@@ -547,6 +648,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     
     public List<string> GetCustomFieldKeys()
     {
+        if (!IsReady()) return new List<string>();
+
         try
         {
             _dataLock.EnterReadLock();
@@ -636,6 +739,21 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     }
 
     public Exception ReadyError => _failedError;
+
+    public async Task<IContext> WaitUntilReadyAsync()
+    {
+        var readyTcs = _readyTcs;
+        if (readyTcs != null) await readyTcs.Task.ConfigureUnboundContinuation();
+        return this;
+    }
+
+    public IContext WaitUntilReady()
+    {
+        // The load continuation never needs the caller's synchronization context,
+        // so blocking on it here cannot deadlock.
+        _readyTcs?.Task.GetAwaiter().GetResult();
+        return this;
+    }
 
     public bool IsClosed()
     {
@@ -753,7 +871,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private int? InternalGetTreatmentAsync(string experimentName, bool doExposure)
     {
-        CheckReady(true);
+        // Not ready yet: the control variant, and no exposure is queued.
+        if (!CheckReadyForRead()) return 0;
 
         var assignment = GetAssignment(experimentName);
         if (doExposure && assignment.Exposed == 0)
@@ -827,7 +946,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         get
         {
-            CheckReady(true);
+            if (!CheckReadyForRead()) return new Dictionary<string, List<string>>();
 
             var variableKeys = new Dictionary<string, List<string>>(_indexVariables.Count);
 
@@ -876,7 +995,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private object InternalGetVariableValueAsync(string key, object defaultValue, bool doExposure)
     {
-        CheckReady(true);
+        if (!CheckReadyForRead()) return defaultValue;
 
         var assignment = GetVariableAssignment(key);
         if (assignment?.Variables is null) return defaultValue;
@@ -980,6 +1099,15 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
+    // Guard for read methods: a finalized context still throws, but a context whose
+    // data has not loaded yet returns false so the caller can answer with its
+    // default (control variant, default value, empty collection) instead of throwing.
+    private bool CheckReadyForRead()
+    {
+        CheckNotClosed();
+        return IsReady();
+    }
+
     #endregion
 
 
@@ -1056,6 +1184,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private void SetRefreshTimer()
     {
         if (_refreshInterval <= 0 || _refreshTimer != null) return;
+        if (IsDisposing()) return;
 
         try
         {
@@ -1258,7 +1387,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _index = new Dictionary<string, ExperimentVariables>();
             _indexVariables =
                 new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock));
-            _data = new ContextData();
+            // Empty, not null, experiments: reads on a failed context (Experiments,
+            // GetCustomFieldKeys) return empty instead of throwing.
+            _data = new ContextData(Array.Empty<Experiment>());
             _failed = true;
             _failedError = error;
         }

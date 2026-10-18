@@ -20,6 +20,18 @@ public interface IContext
     Exception ReadyError { get; }
 #endif
 
+    // Wait for the initial data load to settle. Completes normally on a failed load
+    // too: check IsFailed() and ReadyError afterwards. Returns this context.
+#if !NETSTANDARD2_0
+    Task<IContext> WaitUntilReadyAsync() => Task.FromResult(this);
+
+    IContext WaitUntilReady() => this;
+#else
+    Task<IContext> WaitUntilReadyAsync();
+
+    IContext WaitUntilReady();
+#endif
+
     bool IsClosed();
 
     bool IsClosing();

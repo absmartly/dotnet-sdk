@@ -60,6 +60,9 @@ public class ABSmartlyService : IABSmartlyServiceClient
         _logger = loggerFactory?.CreateLogger<ABSmartlyService>();
     }
 
+    // Throws when the context data cannot be fetched or deserialized, so callers see
+    // the real cause: a context created from it fails with that error as ReadyError,
+    // and Context.Refresh rethrows it.
     public async Task<ContextData> GetContextDataAsync()
     {
         try
@@ -73,17 +76,15 @@ public class ABSmartlyService : IABSmartlyServiceClient
             var result = _dataDeserializer.Deserialize(responseStream);
 
             if (result == null)
-            {
-                var message = "Context data deserializer returned null - check logs for deserialization errors";
-                _logger?.LogError(message);
-            }
+                throw new InvalidOperationException(
+                    "Context data deserializer returned null - check logs for deserialization errors");
 
             return result;
         }
         catch (Exception e)
         {
             _logger?.LogError(e, "Error fetching context data: {Message}", e.Message);
-            return null;
+            throw;
         }
     }
 

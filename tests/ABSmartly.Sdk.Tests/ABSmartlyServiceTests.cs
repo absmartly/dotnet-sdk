@@ -135,11 +135,12 @@ public class ABSmartlyServiceTests
         var service = new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer);
 
         Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
-            .Throws<Exception>();
+            .Throws(new HttpRequestException("connection refused"));
 
-        var actual = await service.GetContextDataAsync();
+        var act = async () => await service.GetContextDataAsync();
 
-        actual.Should().BeNull();
+        // The real cause must reach the caller (it becomes the context's ReadyError).
+        await act.Should().ThrowAsync<HttpRequestException>().WithMessage("connection refused");
 
         Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
         Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
@@ -158,13 +159,32 @@ public class ABSmartlyServiceTests
         Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
             .Returns(() => GetResponse(HttpStatusCode.BadRequest, Array.Empty<byte>()));
 
-        var actual = await service.GetContextDataAsync();
+        var act = async () => await service.GetContextDataAsync();
 
-        actual.Should().BeNull();
+        await act.Should().ThrowAsync<HttpRequestException>();
 
         Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
         Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
         Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Never);
+    }
+
+    [Test]
+    public async Task TestGetContextData_DeserializerReturnsNull()
+    {
+        var endpoint = "https://localhost/v1";
+        var uri = $"{endpoint}/context?application=website&environment=dev";
+
+        var config = H.ServiceConfig("website", endpoint, "dev", "test-api-key");
+        var service = new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
+            .Returns(() => GetResponse(HttpStatusCode.OK, Encoding.UTF8.GetBytes("not json")));
+        Mock.Get(_deserializer).Setup(x => x.Deserialize(It.IsAny<Stream>()))
+            .Returns((ContextData)null!);
+
+        var act = async () => await service.GetContextDataAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*deserializer returned null*");
     }
 
     [Test]

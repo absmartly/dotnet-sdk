@@ -80,10 +80,28 @@ public class ABsmartly
         return AsyncHelpers.RunSync(async () => await CreateContextAsync(config));
     }
 
+    // Returns once the context data has loaded (ready) or failed to load (IsFailed()
+    // and ReadyError set). A failed load does not throw.
     public async Task<IContext> CreateContextAsync(ContextConfig config)
     {
-        var context = new Context(config,
-            await _contextDataProvider.GetContextDataAsync().ConfigureUnboundContinuation(),
+        return await CreatePendingContext(config).WaitUntilReadyAsync().ConfigureUnboundContinuation();
+    }
+
+    // Returns immediately with a context that is not ready yet; the data loads in
+    // the background. Until it is ready, GetTreatment returns 0 without queuing an
+    // exposure, variable reads return the default, key/experiment lists are empty,
+    // and Track/SetUnit/SetAttribute/SetOverride work as usual (goals are queued and
+    // published once ready). Use WaitUntilReady/WaitUntilReadyAsync to wait for it.
+    public IContext CreatePendingContext(ContextConfig config)
+    {
+        if (config == null) throw new ArgumentNullException(nameof(config), "Context configuration is required");
+
+        // Run the fetch off the caller's synchronization context, so a later blocking
+        // WaitUntilReady() cannot deadlock on a continuation posted back to it.
+        var dataTask = Task.Run(() => _contextDataProvider.GetContextDataAsync());
+
+        return Context.CreatePending(config,
+            dataTask,
             Clock.SystemUtc(),
             _contextDataProvider,
             _contextEventHandler,
@@ -91,8 +109,6 @@ public class ABsmartly
             _variableParser,
             new AudienceMatcher(_audienceDeserializer),
             _loggerFactory);
-
-        return context;
     }
 
     public IContext CreateContextWith(ContextConfig config, ContextData data)

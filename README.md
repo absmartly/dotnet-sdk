@@ -151,6 +151,21 @@ var config = new ContextConfig()
 var context = _absmartly.CreateContext(config);
 ```
 
+`CreateContext()` and `CreateContextAsync()` return once the context data has loaded. If the data cannot be fetched, they do not throw: the context is returned with `IsFailed()` set to `true`, `ReadyError` holding the error that caused the failure, and an `Error` event logged. A failed context returns the control variant (`0`) and the default variable values.
+
+### Without Waiting for the Data
+
+`CreatePendingContext()` returns at once with a context that is not ready yet, and loads the data in the background. Until the context is ready, `GetTreatment()` returns `0` and queues no exposure, `GetVariableValue()` returns the default value, and `VariableKeys` and `Experiments` are empty. `Track()`, `SetUnit()`, `SetAttribute()` and `SetOverride()` work as usual; tracked goals are published after the context is ready.
+
+```csharp
+var context = _absmartly.CreatePendingContext(config);
+context.Track("page_view", null); // queued before the context is ready
+
+await context.WaitUntilReadyAsync(); // or context.WaitUntilReady()
+if (context.IsFailed())
+    Console.WriteLine($"context failed to load: {context.ReadyError?.Message}");
+```
+
 ### With Pre-fetched Data
 
 When doing full-stack experimentation with A/B Smartly, we recommend creating a context only once on the server-side. Creating a context involves a round-trip to the A/B Smartly event collector. We can avoid repeating the round-trip on the client-side by re-using data previously retrieved.
