@@ -19,4 +19,16 @@ public class ABsmartlyConfig
     public IContextEventLogger ContextEventLogger { get; set; }
     public IVariableParser VariableParser { get; set; }
     public IAudienceDeserializer AudienceDeserializer { get; set; }
+
+    internal void CopyNonNullFrom(ABsmartlyConfig source)
+    {
+        if (source == null) return;
+        ContextDataProvider = source.ContextDataProvider ?? ContextDataProvider;
+        ContextDataDeserializer = source.ContextDataDeserializer ?? ContextDataDeserializer;
+        ContextEventSerializer = source.ContextEventSerializer ?? ContextEventSerializer;
+        ContextPublisher = source.ContextPublisher ?? ContextPublisher;
+        ContextEventLogger = source.ContextEventLogger ?? ContextEventLogger;
+        VariableParser = source.VariableParser ?? VariableParser;
+        AudienceDeserializer = source.AudienceDeserializer ?? AudienceDeserializer;
+    }
 }

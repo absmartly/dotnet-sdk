@@ -11,9 +11,10 @@ public class ABSdk : ABsmartly
     [ActivatorUtilitiesConstructor]
     public ABSdk(IABsmartlyHttpClientFactory httpClientFactory,
         IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
-        IOptions<ABsmartlyConfig> configOptions,
+        IOptions<ABSdkConfig> configOptions,
         ILoggerFactory loggerFactory)
-        : base(httpClientFactory, serviceConfiguration, configOptions, loggerFactory)
+        : base(httpClientFactory, serviceConfiguration,
+            Options.Create<ABsmartlyConfig>(configOptions?.Value), loggerFactory)
     {
     }
 

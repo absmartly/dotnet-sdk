@@ -5,6 +5,7 @@ using ABSmartly.Services;
 using ABSmartly.Services.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
 #if NETCOREAPP2_1_OR_GREATER || NETCOREAPP || NET
@@ -20,7 +21,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration abSmartlyServiceConfiguration,
         HttpClientConfig httpClientConfig,
-        Action<ABsmartlyConfig> setupSdkOptions = null,
+        Action<ABSdkConfig> setupSdkOptions = null,
         Func<PolicyBuilder<HttpResponseMessage>, IAsyncPolicy<HttpResponseMessage>> setupRetryPolicy = null
     )
     {
@@ -29,7 +30,24 @@ public static class ServiceCollectionExtensions
         if (httpClientConfig == null) throw new ArgumentNullException(nameof(httpClientConfig));
 
         services.Configure<ABSmartlyServiceConfiguration>(abSmartlyServiceConfiguration);
-        services.Configure(setupSdkOptions ?? (_ => { }));
+#pragma warning disable CS0618
+        // Action<ABsmartlyConfig> callbacks still convert here through delegate contravariance.
+        if (setupSdkOptions != null)
+        {
+            services.Configure<ABsmartlyConfig>(config =>
+            {
+                var legacy = new ABSdkConfig();
+                legacy.CopyNonNullFrom(config);
+                setupSdkOptions(legacy);
+                config.CopyNonNullFrom(legacy);
+            });
+        }
+
+        // Legacy ABSdkConfig options start from the ABsmartlyConfig values; later
+        // Configure<ABSdkConfig>(...) calls from existing applications override them.
+        services.AddOptions<ABSdkConfig>()
+            .Configure<IOptions<ABsmartlyConfig>>((legacy, baseOptions) => legacy.CopyNonNullFrom(baseOptions.Value));
+#pragma warning restore CS0618
 
         var builder = services.AddHttpClient(ABsmartly.HttpClientName);
 
