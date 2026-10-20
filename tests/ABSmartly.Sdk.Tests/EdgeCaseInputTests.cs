@@ -48,7 +48,7 @@ public class EdgeCaseInputTests
             Iteration = 1,
             SeedHi = 3603515,
             SeedLo = 233373850,
-            Split = new[] { 0.5, 0.5 },
+            Split = new[] { 0.0, 1.0 },
             TrafficSeedHi = 449867249,
             TrafficSeedLo = 455443629,
             TrafficSplit = new[] { 0.0, 1.0 },
@@ -77,7 +77,7 @@ public class EdgeCaseInputTests
         var treatment = context.GetTreatment(unicodeExperimentName);
         treatment.Should().BeGreaterThanOrEqualTo(0);
 
-        if (treatment == 1)
+        treatment.Should().Be(1);
         {
             var variableValue = context.GetVariableValue(unicodeVariableName, "default");
             variableValue.Should().Be(unicodeVariableValue);
@@ -104,7 +104,7 @@ public class EdgeCaseInputTests
             Iteration = 1,
             SeedHi = 3603515 + i,
             SeedLo = 233373850 + i,
-            Split = new[] { 0.5, 0.5 },
+            Split = new[] { 0.0, 1.0 },
             TrafficSeedHi = 449867249,
             TrafficSeedLo = 455443629,
             TrafficSplit = new[] { 0.0, 1.0 },
@@ -170,7 +170,7 @@ public class EdgeCaseInputTests
             Iteration = 1,
             SeedHi = 3603515,
             SeedLo = 233373850,
-            Split = new[] { 0.5, 0.5 },
+            Split = new[] { 0.0, 1.0 },
             TrafficSeedHi = 449867249,
             TrafficSeedLo = 455443629,
             TrafficSplit = new[] { 0.0, 1.0 },
@@ -192,7 +192,7 @@ public class EdgeCaseInputTests
         var treatment = context.GetTreatment("exp_nested");
         treatment.Should().BeGreaterThanOrEqualTo(0);
 
-        if (treatment == 1)
+        treatment.Should().Be(1);
         {
             var level1 = context.GetVariableValue("level1", null);
             level1.Should().NotBeNull();
@@ -228,7 +228,7 @@ public class EdgeCaseInputTests
             Iteration = 1,
             SeedHi = 3603515,
             SeedLo = 233373850,
-            Split = new[] { 0.5, 0.5 },
+            Split = new[] { 0.0, 1.0 },
             TrafficSeedHi = 449867249,
             TrafficSeedLo = 455443629,
             TrafficSplit = new[] { 0.0, 1.0 },
@@ -249,7 +249,7 @@ public class EdgeCaseInputTests
 
         var treatment = context.GetTreatment("exp_extreme_numbers");
 
-        if (treatment == 1)
+        treatment.Should().Be(1);
         {
             var maxInt = context.GetVariableValue("max_int", 0);
             maxInt.Should().Be(2147483647L);
@@ -284,7 +284,7 @@ public class EdgeCaseInputTests
             Iteration = 1,
             SeedHi = 3603515,
             SeedLo = 233373850,
-            Split = new[] { 0.5, 0.5 },
+            Split = new[] { 0.0, 1.0 },
             TrafficSeedHi = 449867249,
             TrafficSeedLo = 455443629,
             TrafficSplit = new[] { 0.0, 1.0 },
@@ -305,7 +305,7 @@ public class EdgeCaseInputTests
 
         var treatment = context.GetTreatment("exp_empty_values");
 
-        if (treatment == 1)
+        treatment.Should().Be(1);
         {
             var emptyString = context.GetVariableValue("empty_string", "default");
             emptyString.Should().Be("");
@@ -339,7 +339,7 @@ public class EdgeCaseInputTests
             Iteration = 1,
             SeedHi = 3603515,
             SeedLo = 233373850,
-            Split = new[] { 0.5, 0.5 },
+            Split = new[] { 0.0, 1.0 },
             TrafficSeedHi = 449867249,
             TrafficSeedLo = 455443629,
             TrafficSplit = new[] { 0.0, 1.0 },
@@ -360,7 +360,7 @@ public class EdgeCaseInputTests
 
         var treatment = context.GetTreatment("exp_bool_values");
 
-        if (treatment == 1)
+        treatment.Should().Be(1);
         {
             var trueValue = context.GetVariableValue("true_value", false);
             trueValue.Should().Be(true);
@@ -386,7 +386,7 @@ public class EdgeCaseInputTests
             Iteration = 1,
             SeedHi = 3603515,
             SeedLo = 233373850,
-            Split = new[] { 0.5, 0.5 },
+            Split = new[] { 0.0, 1.0 },
             TrafficSeedHi = 449867249,
             TrafficSeedLo = 455443629,
             TrafficSplit = new[] { 0.0, 1.0 },
@@ -407,7 +407,7 @@ public class EdgeCaseInputTests
 
         var treatment = context.GetTreatment("exp_long_strings");
 
-        if (treatment == 1)
+        treatment.Should().Be(1);
         {
             var value = context.GetVariableValue(longKeyName, "default");
             value.Should().Be(longString);
@@ -434,7 +434,7 @@ public class EdgeCaseInputTests
             Iteration = 1,
             SeedHi = 3603515,
             SeedLo = 233373850,
-            Split = new[] { 0.5, 0.5 },
+            Split = new[] { 0.0, 1.0 },
             TrafficSeedHi = 449867249,
             TrafficSeedLo = 455443629,
             TrafficSplit = new[] { 0.0, 1.0 },
@@ -455,7 +455,7 @@ public class EdgeCaseInputTests
 
         var treatment = context.GetTreatment("exp_escaped_chars");
 
-        if (treatment == 1)
+        treatment.Should().Be(1);
         {
             var withQuotes = context.GetVariableValue("with_quotes", "default");
             withQuotes.Should().Be("value with \"quotes\"");

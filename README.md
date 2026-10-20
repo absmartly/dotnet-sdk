@@ -10,9 +10,9 @@ prerelease: [![NuGet pre](https://img.shields.io/nuget/vpre/ABSmartly.Sdk?style=
 
 ## Compatibility
 
-The A/B Smartly .NET SDK targets .NET Standard 2.0 and .NET 5 and later.
+The A/B Smartly .NET SDK targets `netstandard2.0`, `net8.0` and `net9.0`.
 
-It is compatible with:
+Through .NET Standard 2.0 it is compatible with:
 - .NET 5.0+
 - .NET Core 2.0+
 - .NET Framework 4.6.1+
@@ -408,6 +408,9 @@ builder.Services.AddABSmartly(
 
 var app = builder.Build();
 
+// Sessions need a backing cache and middleware
+// builder.Services.AddDistributedMemoryCache(); builder.Services.AddSession();
+// app.UseSession();
 app.MapGet("/", async (ABsmartly absmartly, HttpContext httpContext) =>
 {
     var sessionId = httpContext.Session.GetString("SessionId")
@@ -603,12 +606,11 @@ else
 }
 ```
 
-### Component Lifecycle Cancellation Pattern
+### Component Lifecycle Navigation-Guard Pattern
 
-For Blazor or other component-based scenarios with navigation:
+For Blazor or other component-based scenarios with navigation. `CreateContextAsync` cannot be cancelled, so the context is always disposed once it is created, even if the component has already navigated away:
 
 ```csharp
-private Task<IContext> _contextTask;
 private bool _isNavigating = false;
 
 protected override async Task OnInitializedAsync()
@@ -616,21 +618,26 @@ protected override async Task OnInitializedAsync()
     var config = new ContextConfig()
         .SetUnit("session_id", Guid.NewGuid().ToString());
 
-    _contextTask = ABsmartly.CreateContextAsync(config);
-
+    IContext context = null;
     try
     {
-        var context = await _contextTask;
+        context = await ABsmartly.CreateContextAsync(config);
 
         if (!_isNavigating)
         {
             treatment = context.GetTreatment("exp_test_experiment");
-            await context.DisposeAsync();
         }
     }
     catch (Exception ex)
     {
         Console.WriteLine($"Error creating context: {ex.Message}");
+    }
+    finally
+    {
+        if (context != null)
+        {
+            await context.DisposeAsync();
+        }
     }
 }
 

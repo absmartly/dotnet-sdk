@@ -224,27 +224,27 @@ public class FixVerificationTests
     [Test]
     public void Fix2_NoConsoleErrorWriteLine_InServices()
     {
-        var sourceAssembly = typeof(ABSmartlyService).Assembly;
-        var sourceFiles = new[]
+        var original = Console.Error;
+        using var writer = new System.IO.StringWriter();
+        Console.SetError(writer);
+        try
         {
-            typeof(ABSmartlyService),
-            typeof(DefaultAudienceDeserializer),
-            typeof(DefaultContextDataDeserializer),
-            typeof(DefaultVariableParser)
-        };
+            var factory = Mock.Of<IABsmartlyHttpClientFactory>(f => f.CreateClient() == null);
+            var service = new ABSmartlyService(
+                H.ServiceConfig("1", "https://example.com/v1/", "1", "1"),
+                factory, Mock.Of<IContextDataDeserializer>(), Mock.Of<IContextEventSerializer>());
 
-        foreach (var type in sourceFiles)
-        {
-            var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            foreach (var method in methods)
-            {
-                var body = method.GetMethodBody();
-                if (body == null) continue;
-
-                var il = body.GetILAsByteArray();
-                if (il == null) continue;
-            }
+            service.PublishAsync(new PublishEvent()).GetAwaiter().GetResult().Should().BeFalse();
+            service.GetContextDataAsync().GetAwaiter().GetResult().Should().BeNull();
+            new DefaultVariableParser().Parse(null!, "e", "v", "{bad json").Should().BeNull();
+            new DefaultContextDataDeserializer().Deserialize(new System.IO.MemoryStream(new byte[] { 1 })).Should().BeNull();
         }
+        finally
+        {
+            Console.SetError(original);
+        }
+
+        writer.ToString().Should().BeEmpty();
     }
 
     [Test]

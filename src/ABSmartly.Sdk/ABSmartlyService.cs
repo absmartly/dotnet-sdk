@@ -69,7 +69,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
         {
             using var httpClient = _httpClientFactory.CreateClient();
             var uri = QueryHelpers.AddQueryString(_url, GetDefaultQueryParameters());
-            var response = await httpClient.GetAsync(uri).ConfigureUnboundContinuation();
+            using var response = await httpClient.GetAsync(uri).ConfigureUnboundContinuation();
             response.EnsureSuccessStatusCode();
 
             var responseStream = await response.Content.ReadAsStreamAsync().ConfigureUnboundContinuation();
@@ -106,7 +106,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
             var content = new ByteArrayContent(serializedEvent);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
-            var result = await httpClient.PutAsync(_url, content).ConfigureUnboundContinuation();
+            using var result = await httpClient.PutAsync(_url, content).ConfigureUnboundContinuation();
 
             if (!result.IsSuccessStatusCode)
             {

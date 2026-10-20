@@ -95,6 +95,10 @@ public class ABSmartlyServiceTests
         var ipv6Config = H.ServiceConfig("1", "http://[::1]:3000", "1", "1");
         act = () => new ABSmartlyService(ipv6Config, _httpClientFactory, _deserializer, _serializer);
         act.Should().NotThrow();
+
+        var remoteHttpConfig = H.ServiceConfig("1", "http://test.example.com", "1", "1");
+        act = () => new ABSmartlyService(remoteHttpConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().Throw<ArgumentException>();
     }
 
     [Test]

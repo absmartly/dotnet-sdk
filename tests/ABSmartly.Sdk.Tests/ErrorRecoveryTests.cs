@@ -15,10 +15,12 @@ public class ErrorRecoveryTests
 
         using var contextStream =
             GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.context.json");
+        contextStream.Should().NotBeNull("context.json must be embedded");
         _data = deserializer.Deserialize(contextStream);
 
         using var refreshedStream =
             GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.refreshed.json");
+        refreshedStream.Should().NotBeNull("refreshed.json must be embedded");
         _refreshedData = deserializer.Deserialize(refreshedStream);
 
         _dataProvider = Mock.Of<IContextDataProvider>();

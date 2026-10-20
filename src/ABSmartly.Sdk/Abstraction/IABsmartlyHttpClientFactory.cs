@@ -14,5 +14,5 @@ public interface IABsmartlyHttpClient : IDisposable
 {
     Task<HttpResponseMessage> GetAsync(string? requestUri);
     Task<HttpResponseMessage> PutAsync(string? requestUri, HttpContent content);
-    void AddHeader(string name, string? value);
+    void AddHeader(string name, string value);
 }
