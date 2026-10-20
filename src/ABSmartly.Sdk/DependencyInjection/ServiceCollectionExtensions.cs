@@ -68,6 +68,13 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IJsonOptionsProvider, JsonOptionsProvider>();
 
         services.AddSingleton<ABsmartly>();
+
+        // Legacy registrations so existing consumers of the obsolete aliases keep resolving.
+#pragma warning disable CS0618
+        services.AddTransient<IABSdkHttpClientFactory, ABSdkHttpClientFactory>();
+        services.AddSingleton<ABSdk>();
+        services.AddSingleton<Absmartly>();
+#pragma warning restore CS0618
     }
 
     private static Func<PolicyBuilder<HttpResponseMessage>, AsyncRetryPolicy<HttpResponseMessage>>

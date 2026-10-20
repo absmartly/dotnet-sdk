@@ -4,7 +4,9 @@ using System.Net.Http;
 namespace ABSmartly.Services;
 
 [Obsolete("ABSdkHttpClientFactory has been renamed to ABsmartlyHttpClientFactory. Please use ABsmartlyHttpClientFactory instead.")]
-public class ABSdkHttpClientFactory : ABsmartlyHttpClientFactory
+#pragma warning disable CS0618
+public class ABSdkHttpClientFactory : ABsmartlyHttpClientFactory, IABSdkHttpClientFactory
+#pragma warning restore CS0618
 {
     public ABSdkHttpClientFactory(IHttpClientFactory httpClientFactory)
         : base(httpClientFactory)
