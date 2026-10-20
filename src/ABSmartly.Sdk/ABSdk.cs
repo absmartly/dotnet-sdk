@@ -9,7 +9,7 @@ namespace ABSmartly;
 public class ABSdk : ABsmartly
 {
     [ActivatorUtilitiesConstructor]
-    public ABSdk(IABsmartlyHttpClientFactory httpClientFactory,
+    public ABSdk(IABSdkHttpClientFactory httpClientFactory,
         IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABSdkConfig> configOptions,
         ILoggerFactory loggerFactory)
@@ -31,7 +31,7 @@ public class ABSdk : ABsmartly
 public class Absmartly : ABsmartly
 {
     [ActivatorUtilitiesConstructor]
-    public Absmartly(IABsmartlyHttpClientFactory httpClientFactory,
+    public Absmartly(IABSdkHttpClientFactory httpClientFactory,
         IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABsmartlyConfig> configOptions,
         ILoggerFactory loggerFactory)

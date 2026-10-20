@@ -31,22 +31,16 @@ public static class ServiceCollectionExtensions
 
         services.Configure<ABSmartlyServiceConfiguration>(abSmartlyServiceConfiguration);
 #pragma warning disable CS0618
-        // Action<ABsmartlyConfig> callbacks still convert here through delegate contravariance.
+        // The setup callback is a plain Configure<ABSdkConfig>, so it composes with existing
+        // Configure<ABSdkConfig> registrations in registration order. The resulting legacy values
+        // are then propagated to ABsmartlyConfig so the current SDK type sees them as well.
         if (setupSdkOptions != null)
         {
-            services.Configure<ABsmartlyConfig>(config =>
-            {
-                var legacy = new ABSdkConfig();
-                legacy.CopyNonNullFrom(config);
-                setupSdkOptions(legacy);
-                config.CopyNonNullFrom(legacy);
-            });
+            services.Configure(setupSdkOptions);
         }
 
-        // Legacy ABSdkConfig options start from the ABsmartlyConfig values; later
-        // Configure<ABSdkConfig>(...) calls from existing applications override them.
-        services.AddOptions<ABSdkConfig>()
-            .Configure<IOptions<ABsmartlyConfig>>((legacy, baseOptions) => legacy.CopyNonNullFrom(baseOptions.Value));
+        services.AddOptions<ABsmartlyConfig>()
+            .PostConfigure<IOptions<ABSdkConfig>>((config, legacy) => config.CopyNonNullFrom(legacy.Value));
 #pragma warning restore CS0618
 
         var builder = services.AddHttpClient(ABsmartly.HttpClientName);

@@ -94,4 +94,51 @@ public class LegacyCompatibilityTests
         field.Should().NotBeNull();
         field!.GetValue(sdk).Should().BeSameAs(provider);
     }
+
+    [Test]
+    public void CustomLegacyFactoryRegistration_IsUsedByABSdk()
+    {
+        var custom = Moq.Mock.Of<IABSdkHttpClientFactory>();
+        using var sp = BuildProvider(s => s.AddSingleton(custom), null);
+        // AddABSmartly registers its own legacy factory too; a later registration wins.
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddABSmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
+        {
+            ["Endpoint"] = "https://example.absmartly.io/v1", ["ApiKey"] = "k", ["Application"] = "a", ["Environment"] = "e"
+        }).Build(), HttpClientConfig.CreateDefault());
+        services.AddSingleton(custom);
+        using var provider = services.BuildServiceProvider();
+
+        var sdk = provider.GetRequiredService<ABSdk>();
+        var field = typeof(ABsmartly).GetField("_httpClientFactory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        field!.GetValue(sdk).Should().BeSameAs(custom);
+    }
+
+    [Test]
+    public void LegacyConfigureAndSetupCallback_ComposeInRegistrationOrder()
+    {
+        var providerA = Moq.Mock.Of<IContextDataProvider>();
+        var providerB = Moq.Mock.Of<IContextDataProvider>();
+        bool callbackSawA = false;
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.Configure<ABSdkConfig>(c => c.ContextDataProvider = providerA);
+        services.AddABSmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
+        {
+            ["Endpoint"] = "https://example.absmartly.io/v1", ["ApiKey"] = "k", ["Application"] = "a", ["Environment"] = "e"
+        }).Build(), HttpClientConfig.CreateDefault(), (Action<ABSdkConfig>)(c =>
+        {
+            callbackSawA = ReferenceEquals(c.ContextDataProvider, providerA);
+            c.ContextDataProvider ??= providerB;
+        }));
+        using var sp = services.BuildServiceProvider();
+
+        sp.GetRequiredService<IOptions<ABSdkConfig>>().Value.ContextDataProvider.Should().BeSameAs(providerA);
+        callbackSawA.Should().BeTrue();
+        var sdk = sp.GetRequiredService<ABSdk>();
+        var field = typeof(ABsmartly).GetField("_contextDataProvider", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        field!.GetValue(sdk).Should().BeSameAs(providerA);
+    }
 }
