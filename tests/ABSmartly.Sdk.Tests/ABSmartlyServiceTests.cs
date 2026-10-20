@@ -11,18 +11,18 @@ public class ABSmartlyServiceTests
     [SetUp]
     public void SetUp()
     {
-        _httpClient = Mock.Of<IABSdkHttpClient>();
-        _httpClientFactory = Mock.Of<IABSdkHttpClientFactory>(x => x.CreateClient() == _httpClient);
+        _httpClient = Mock.Of<IABsmartlyHttpClient>();
+        _httpClientFactory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == _httpClient);
         _deserializer = Mock.Of<IContextDataDeserializer>();
         _serializer = Mock.Of<IContextEventSerializer>();
         _loggerFactory = Mock.Of<ILoggerFactory>();
     }
 
-    private IABSdkHttpClientFactory _httpClientFactory = null!;
+    private IABsmartlyHttpClientFactory _httpClientFactory = null!;
     private IContextDataDeserializer _deserializer = null!;
     private IContextEventSerializer _serializer = null!;
     private ILoggerFactory _loggerFactory = null!;
-    private IABSdkHttpClient _httpClient = null!;
+    private IABsmartlyHttpClient _httpClient = null!;
 
     [Test]
     public void TestCreateWithInvalidConfiguration()
@@ -260,7 +260,7 @@ public class ABSmartlyServiceTests
         VerifyDefaultHeaders(Mock.Get(_httpClient));
     }
 
-    private void VerifyDefaultHeaders(Mock<IABSdkHttpClient> httpClientMock)
+    private void VerifyDefaultHeaders(Mock<IABsmartlyHttpClient> httpClientMock)
     {
         httpClientMock.Verify(x => x.AddHeader("X-API-Key", "test-api-key"));
         httpClientMock.Verify(x => x.AddHeader("X-Application", "website"));

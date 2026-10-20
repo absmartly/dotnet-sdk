@@ -112,7 +112,10 @@ public class LegacyCompatibilityTests
 
         var sdk = provider.GetRequiredService<ABSdk>();
         var field = typeof(ABsmartly).GetField("_httpClientFactory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        field!.GetValue(sdk).Should().BeSameAs(custom);
+        var wrapped = (IABsmartlyHttpClientFactory)field!.GetValue(sdk)!;
+        Moq.Mock.Get(custom).Setup(f => f.CreateClient()).Returns(Moq.Mock.Of<IABSdkHttpClient>());
+        using var client = wrapped.CreateClient();
+        Moq.Mock.Get(custom).Verify(f => f.CreateClient(), Moq.Times.Once);
     }
 
     [Test]
@@ -140,5 +143,44 @@ public class LegacyCompatibilityTests
         var sdk = sp.GetRequiredService<ABSdk>();
         var field = typeof(ABsmartly).GetField("_contextDataProvider", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         field!.GetValue(sdk).Should().BeSameAs(providerA);
+    }
+
+    private sealed class OriginalShapeClient : IABSdkHttpClient
+    {
+        public System.Threading.Tasks.Task<System.Net.Http.HttpResponseMessage> GetAsync(string requestUri) =>
+            System.Threading.Tasks.Task.FromResult(new System.Net.Http.HttpResponseMessage());
+        public System.Threading.Tasks.Task<System.Net.Http.HttpResponseMessage> PutAsync(string requestUri, System.Net.Http.HttpContent content) =>
+            System.Threading.Tasks.Task.FromResult(new System.Net.Http.HttpResponseMessage());
+        public void AddHeader(string name, string value) { }
+        public void Dispose() { }
+    }
+
+    private sealed class OriginalShapeFactory : IABSdkHttpClientFactory
+    {
+        public int Calls;
+        public IABSdkHttpClient CreateClient() { Calls++; return new OriginalShapeClient(); }
+    }
+
+    [Test]
+    public void OriginalShapeLegacyFactory_CompilesAndIsUsedThroughAdapter()
+    {
+        var factory = new OriginalShapeFactory();
+        var cfg = new ABSmartlyServiceConfiguration { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
+        var sdk = new ABSdk(factory, cfg);
+        var field = typeof(ABsmartly).GetField("_httpClientFactory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var wrapped = (IABsmartlyHttpClientFactory)field!.GetValue(sdk)!;
+        using var client = wrapped.CreateClient();
+        factory.Calls.Should().Be(1);
+        client.Should().NotBeNull();
+    }
+
+    [Test]
+    public void ConcreteLegacyFactory_ConstructsABSdkWithoutAmbiguity()
+    {
+        var cfg = new ABSmartlyServiceConfiguration { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
+        var sdk = new ABSdk(new ABSdkHttpClientFactory(null!), cfg);
+        sdk.Should().NotBeNull();
+        IABSdkHttpClientFactory legacy = new ABSdkHttpClientFactory(null!);
+        legacy.Should().NotBeNull();
     }
 }

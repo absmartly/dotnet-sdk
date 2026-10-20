@@ -12,6 +12,13 @@ public class ABSdkHttpClientFactory : ABsmartlyHttpClientFactory, IABSdkHttpClie
         : base(httpClientFactory)
     {
     }
+
+#pragma warning disable CS0618
+    IABSdkHttpClient IABSdkHttpClientFactory.CreateClient()
+    {
+        return (IABSdkHttpClient)base.CreateClient();
+    }
+#pragma warning restore CS0618
 }
 
 [Obsolete("AbsmartlyHttpClientFactory has been renamed to ABsmartlyHttpClientFactory. Please use ABsmartlyHttpClientFactory instead.")]

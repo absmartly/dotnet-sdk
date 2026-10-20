@@ -1,4 +1,5 @@
 using System;
+using ABSmartly.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,8 +14,24 @@ public class ABSdk : ABsmartly
         IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABSdkConfig> configOptions,
         ILoggerFactory loggerFactory)
-        : base(httpClientFactory, serviceConfiguration,
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration,
             Options.Create<ABsmartlyConfig>(configOptions?.Value), loggerFactory)
+    {
+    }
+
+    public ABSdk(IABSdkHttpClientFactory httpClientFactory,
+        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyConfig config = null,
+        ILoggerFactory loggerFactory = null)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, config, loggerFactory)
+    {
+    }
+
+    public ABSdk(ABSdkHttpClientFactory httpClientFactory,
+        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyConfig config = null,
+        ILoggerFactory loggerFactory = null)
+        : base(httpClientFactory, serviceConfiguration, config, loggerFactory)
     {
     }
 
@@ -35,7 +52,23 @@ public class Absmartly : ABsmartly
         IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABsmartlyConfig> configOptions,
         ILoggerFactory loggerFactory)
-        : base(httpClientFactory, serviceConfiguration, configOptions, loggerFactory)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, configOptions, loggerFactory)
+    {
+    }
+
+    public Absmartly(IABSdkHttpClientFactory httpClientFactory,
+        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyConfig config = null,
+        ILoggerFactory loggerFactory = null)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, config, loggerFactory)
+    {
+    }
+
+    public Absmartly(ABSdkHttpClientFactory httpClientFactory,
+        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyConfig config = null,
+        ILoggerFactory loggerFactory = null)
+        : base(httpClientFactory, serviceConfiguration, config, loggerFactory)
     {
     }
 
