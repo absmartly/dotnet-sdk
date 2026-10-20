@@ -311,4 +311,19 @@ public class ErrorRecoveryTests
             _variableParser, _audienceMatcher, new LoggerFactory());
 
     private Context CreateReadyContext() => CreateContext(_data);
+    [Test]
+    public void Publish_WithNullLoggerFactory_RethrowsOriginalPublishException()
+    {
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }.SetUnits(_units);
+        Mock.Get(_eventHandler)
+            .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(() => throw new InvalidOperationException("publish transport failure"));
+        var context = new Context(config, _data, _clock, _dataProvider, _eventHandler, _eventLogger,
+            _variableParser, _audienceMatcher, null!);
+        context.GetTreatment("exp_test_ab");
+
+        var act = () => context.Publish();
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("publish transport failure");
+    }
 }

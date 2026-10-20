@@ -401,7 +401,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                         }
                         catch (Exception e)
                         {
-                            _logger.LogError(e, "{Publish}", EventType.Publish);
+                            _logger?.LogError(e, "{Publish}", EventType.Publish);
                             LogError(e);
                             throw;
                         }
