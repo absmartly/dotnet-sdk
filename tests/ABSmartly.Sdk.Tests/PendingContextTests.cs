@@ -353,6 +353,8 @@ public class PendingContextTests
 
         var dispose = ((Context)context).DisposeAsync().AsTask();
         gate.SetResult(_data);
+        await context.WaitUntilReadyAsync();
+        context.IsReady().Should().BeTrue();
         publish.SetException(new InvalidOperationException("publish failed"));
 
         Assert.ThrowsAsync<InvalidOperationException>(() => dispose);
@@ -369,12 +371,13 @@ public class PendingContextTests
     [Timeout(5000)]
     public async Task FailedCloseResumesAutomaticRefresh()
     {
-        var calls = 0;
+        var refreshed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var armed = false;
         var provider = Mock.Of<IContextDataProvider>();
         Mock.Get(provider).Setup(x => x.GetContextDataAsync())
             .Returns(() =>
             {
-                Interlocked.Increment(ref calls);
+                if (Volatile.Read(ref armed)) refreshed.TrySetResult(true);
                 return Task.FromResult(_data);
             });
         Mock.Get(_publisher)
@@ -387,11 +390,10 @@ public class PendingContextTests
         context.Track("purchase", null);
 
         Assert.ThrowsAsync<InvalidOperationException>(() => ((Context)context).DisposeAsync().AsTask());
-        var before = Volatile.Read(ref calls);
-        await Task.Delay(300);
+        Volatile.Write(ref armed, true);
 
+        (await Task.WhenAny(refreshed.Task, Task.Delay(3000))).Should().BeSameAs(refreshed.Task);
         context.IsFinalized.Should().BeFalse();
-        Volatile.Read(ref calls).Should().BeGreaterThan(before);
 
         Mock.Get(_publisher)
             .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
@@ -402,7 +404,9 @@ public class PendingContextTests
 
     [Test]
     [Timeout(5000)]
-    public async Task ErrorLoggerWaitingForReadyDuringFailedCloseDoesNotDeadlock()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task ErrorLoggerWaitingForReadyDuringFailedCloseDoesNotDeadlock(bool fetchFails)
     {
         var gate = new TaskCompletionSource<ContextData>(TaskCreationOptions.RunContinuationsAsynchronously);
         var errorEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -424,13 +428,16 @@ public class PendingContextTests
 
         var dispose = Task.Run(() => ((Context)context).DisposeAsync().AsTask());
         await errorEntered.Task;
-        gate.SetResult(_data);
+        if (fetchFails) gate.SetException(new InvalidOperationException("fetch failed"));
+        else gate.SetResult(_data);
 
         (await Task.WhenAny(dispose, Task.Delay(3000))).Should().BeSameAs(dispose);
         Assert.ThrowsAsync<InvalidOperationException>(() => dispose);
+        await context.WaitUntilReadyAsync();
         context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().Be(fetchFails);
         context.IsFinalized.Should().BeFalse();
-        context.PendingCount.Should().Be(1);
+        if (!fetchFails) context.PendingCount.Should().Be(1);
     }
 
     [Test]

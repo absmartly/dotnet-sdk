@@ -171,7 +171,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
     }
 
-    // Settles the initial load: ready with data, or failed. A failed load keeps the
+    // Settles the initial load: ready with data, or failed. Readiness completes before
+    // the Ready/Error event, so a callback may wait for it. A failed load keeps the
     // error that caused it as ReadyError; null data with no error is the legacy
     // "initialized with failed data" path.
     private void SetInitialData(ContextData data, Exception error)
@@ -179,6 +180,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         if (error == null && data != null)
         {
             SetData(data);
+            _readyTcs?.TrySetResult(true);
             try
             {
                 LogEvent(EventType.Ready, data);
@@ -192,6 +194,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         else if (error != null)
         {
             SetDataFailed(error);
+            _readyTcs?.TrySetResult(true);
             _logger?.LogWarning(error, "Context data failed to load: {Message}", error.Message);
             LogError(error);
         }
@@ -199,6 +202,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         {
             const string errorMessage = "Context initialized with failed data.";
             SetDataFailed();
+            _readyTcs?.TrySetResult(true);
             _logger?.LogWarning(errorMessage);
             LogEvent(EventType.Error, errorMessage);
         }
@@ -230,15 +234,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
             try
             {
-                if (loadError != null)
-                {
-                    SetInitialData(null, loadError);
-                    return;
-                }
-
                 try
                 {
-                    SetInitialData(data, null);
+                    SetInitialData(data, loadError);
                 }
                 catch (Exception e) when (!IsReady())
                 {
