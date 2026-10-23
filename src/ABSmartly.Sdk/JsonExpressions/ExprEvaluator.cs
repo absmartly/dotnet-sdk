@@ -154,7 +154,7 @@ public class ExprEvaluator : IEvaluator
 
         if (GetNumber(lhs) is { } lhsNumber)
             return GetNumber(rhs) is { } rhsNumber &&
-                   (lhsNumber.Equals(rhsNumber) || (double.IsNaN(lhsNumber) && double.IsNaN(rhsNumber)));
+                   lhsNumber.Equals(rhsNumber);
 
         switch (lhs)
         {

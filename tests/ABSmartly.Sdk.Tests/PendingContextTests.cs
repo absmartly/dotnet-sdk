@@ -70,8 +70,7 @@ public class PendingContextTests
         _published[0].Goals.Should().ContainSingle().Which.Name.Should().Be("purchase");
     }
 
-    // Scenario 201: read methods before ready throw "not yet ready" (matching the JS SDK)
-    // and queue no exposures.
+    // Scenario 201.
     [Test]
     public async Task ReadMethodsBeforeReadyThrowWithoutExposure()
     {
@@ -318,6 +317,85 @@ public class PendingContextTests
     }
 
     [Test]
+    [Timeout(5000)]
+    public async Task LoggerClosingFromPublishCallbackDoesNotDeadlock()
+    {
+        var sdk = BuildSdk(Task.FromResult(_data));
+        var logger = new CallbackLogger();
+        var config = Config();
+        config.ContextEventLogger = logger;
+        var context = sdk.CreateContextWith(config, _data);
+        logger.OnEvent = (ctx, type) =>
+        {
+            if (type == EventType.Publish) ctx.Close();
+        };
+        context.Track("purchase", null);
+
+        var dispose = ((Context)context).DisposeAsync().AsTask();
+        (await Task.WhenAny(dispose, Task.Delay(3000))).Should().BeSameAs(dispose);
+        await dispose;
+
+        context.IsFinalized.Should().BeTrue();
+        _published.Should().ContainSingle();
+    }
+
+    [Test]
+    [Timeout(5000)]
+    public async Task FailedCloseKeepsPendingInitialLoad()
+    {
+        var gate = new TaskCompletionSource<ContextData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var publish = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sdk = BuildSdk(gate.Task);
+        Mock.Get(_publisher)
+            .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(publish.Task);
+        var context = sdk.CreatePendingContext(Config());
+        context.Track("purchase", null);
+
+        var dispose = ((Context)context).DisposeAsync().AsTask();
+        gate.SetResult(_data);
+        publish.SetException(new InvalidOperationException("publish failed"));
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => dispose);
+        await context.WaitUntilReadyAsync();
+
+        context.IsFinalized.Should().BeFalse();
+        context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().BeFalse();
+        context.Experiments.Should().NotBeEmpty();
+        context.PendingCount.Should().Be(1);
+    }
+
+    [Test]
+    [Timeout(5000)]
+    public async Task FailedCloseResumesAutomaticRefresh()
+    {
+        var calls = 0;
+        var provider = Mock.Of<IContextDataProvider>();
+        Mock.Get(provider).Setup(x => x.GetContextDataAsync())
+            .Returns(() =>
+            {
+                Interlocked.Increment(ref calls);
+                return Task.FromResult(_data);
+            });
+        Mock.Get(_publisher)
+            .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(Task.FromException(new InvalidOperationException("publish failed")));
+        var sdk = BuildSdk(provider);
+        var config = Config();
+        config.RefreshInterval = TimeSpan.FromMilliseconds(20);
+        var context = sdk.CreateContextWith(config, _data);
+        context.Track("purchase", null);
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => ((Context)context).DisposeAsync().AsTask());
+        var before = Volatile.Read(ref calls);
+        await Task.Delay(300);
+
+        context.IsFinalized.Should().BeFalse();
+        Volatile.Read(ref calls).Should().BeGreaterThan(before);
+    }
+
+    [Test]
     public void WaitUntilReadyOnReadyContextReturnsImmediately()
     {
         var sdk = BuildSdk(Task.FromResult(_data));
@@ -347,6 +425,13 @@ public class PendingContextTests
                 ContextEventLogger = _logger,
                 ContextPublisher = _publisher
             });
+    }
+
+    private sealed class CallbackLogger : IContextEventLogger
+    {
+        public Action<IContext, EventType>? OnEvent { get; set; }
+
+        public void HandleEvent(IContext context, EventType eventType, object? data) => OnEvent?.Invoke(context, eventType);
     }
 
     private sealed class RecordingLogger : IContextEventLogger

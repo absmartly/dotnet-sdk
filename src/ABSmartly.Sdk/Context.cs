@@ -58,6 +58,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private int _closing;
     private readonly object _closeLock = new();
     private TaskCompletionSource<bool> _closeAttempt;
+    // Set in the async flow of the close attempt's owner, so an event logger
+    // callback it runs (e.g. on Publish) can tell its Close() is nested.
+    private readonly AsyncLocal<bool> _inCloseAttempt = new();
 
     private volatile ContextData _data;
 
@@ -207,14 +210,15 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             }
             catch (Exception e)
             {
-                if (IsDisposing()) return;
+                if (await ClosedBeforeLoadSettled().ConfigureUnboundContinuation()) return;
                 SetInitialData(null, e);
                 return;
             }
 
             // Closed before the load settled: the context is sealed (and its locks
-            // may already be disposed), so the late data is dropped.
-            if (IsDisposing()) return;
+            // may already be disposed), so the late data is dropped. A close still
+            // in progress may fail and reopen the context, so its outcome is awaited.
+            if (await ClosedBeforeLoadSettled().ConfigureUnboundContinuation()) return;
 
             try
             {
@@ -239,6 +243,30 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     }
 
     private bool IsDisposing() => _closed || _closing > 0;
+
+    private async Task<bool> ClosedBeforeLoadSettled()
+    {
+        while (true)
+        {
+            Task attempt;
+            lock (_closeLock)
+            {
+                if (_closed) return true;
+                attempt = _closeAttempt?.Task;
+            }
+
+            if (attempt == null) return false;
+
+            try
+            {
+                await attempt.ConfigureUnboundContinuation();
+            }
+            catch
+            {
+                // A failed close leaves the context open; check again.
+            }
+        }
+    }
 
     #endregion
 
@@ -415,7 +443,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                         }
                         catch (Exception e)
                         {
-                            // The events stay queued for the next flush.
                             publishError = e;
                         }
                 }
@@ -1473,10 +1500,14 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
         if (!owner)
         {
+            // Called from a callback of this close attempt: the attempt cannot
+            // complete until the callback returns, so do not wait on it.
+            if (_inCloseAttempt.Value) return;
             await attempt.Task.ConfigureUnboundContinuation();
             return;
         }
 
+        _inCloseAttempt.Value = true;
         Interlocked.Exchange(ref _closing, 1);
         ClearRefreshTimer();
 
@@ -1491,6 +1522,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 _closeAttempt = null;
                 Interlocked.Exchange(ref _closing, 0);
             }
+
+            // The context stays open: resume the automatic refresh the attempt stopped.
+            if (IsReady() && !_failed) SetRefreshTimer();
 
             attempt.TrySetException(e);
             throw;
@@ -1523,6 +1557,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         {
             AsyncHelpers.RunSync(async () => await CloseAsync());
 
+            // Nested in the owner's close: the owner disposes once it completes.
+            if (!_closed) return;
+
             _dataLock?.Dispose();
             _contextLock?.Dispose();
             _timeout?.Dispose();
@@ -1533,6 +1570,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await CloseAsync().ConfigureUnboundContinuation();
+
+        if (!_closed) return;
 
         _dataLock?.Dispose();
         _contextLock?.Dispose();
