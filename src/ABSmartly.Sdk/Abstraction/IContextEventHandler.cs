@@ -1,9 +1,13 @@
-﻿using System.Threading.Tasks;
+using System;
+using System.Threading.Tasks;
 using ABSmartly.Models;
 
 namespace ABSmartly;
 
-public interface IContextEventHandler
+/// <summary>
+/// Obsolete: Use <see cref="IContextPublisher"/> instead.
+/// </summary>
+[Obsolete("Use IContextPublisher instead.")]
+public interface IContextEventHandler : IContextPublisher
 {
-    Task PublishAsync(IContext context, PublishEvent publishEvent);
 }

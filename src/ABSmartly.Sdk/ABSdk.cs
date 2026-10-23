@@ -1,112 +1,82 @@
-﻿using System;
-using System.Threading.Tasks;
-using ABSmartly.Concurrency;
-using ABSmartly.Extensions;
-using ABSmartly.Models;
+using System;
 using ABSmartly.Services;
-using ABSmartly.Time;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ABSmartly;
 
-public class ABSdk
+[Obsolete("ABSdk has been renamed to ABsmartly. Please use ABsmartly instead.")]
+public class ABSdk : ABsmartly
 {
-    public const string HttpClientName = "ABSmartlySDK.HttpClient";
-
-    private IAudienceDeserializer _audienceDeserializer;
-
-    private IABSmartlyServiceClient _client;
-
-    private IContextDataDeserializer _contextDataDeserializer;
-    private IContextDataProvider _contextDataProvider;
-    private IContextEventHandler _contextEventHandler;
-    private IContextEventLogger _contextEventLogger;
-    private IContextEventSerializer _contextEventSerializer;
-    private IABSdkHttpClientFactory _httpClientFactory;
-
-    private ILoggerFactory _loggerFactory;
-    private IVariableParser _variableParser;
-
     [ActivatorUtilitiesConstructor]
     public ABSdk(IABSdkHttpClientFactory httpClientFactory,
         IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABSdkConfig> configOptions,
         ILoggerFactory loggerFactory)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration,
+            Options.Create<ABsmartlyConfig>(configOptions?.Value), loggerFactory)
     {
-        Init(httpClientFactory, serviceConfiguration.Value, configOptions?.Value, loggerFactory);
     }
 
     public ABSdk(IABSdkHttpClientFactory httpClientFactory,
         ABSmartlyServiceConfiguration serviceConfiguration,
-        ABSdkConfig config = null,
+        ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, config, loggerFactory)
     {
-        Init(httpClientFactory, serviceConfiguration, config, loggerFactory);
     }
 
-    private void Init(IABSdkHttpClientFactory httpClientFactory,
+    public ABSdk(ABSdkHttpClientFactory httpClientFactory,
         ABSmartlyServiceConfiguration serviceConfiguration,
-        ABSdkConfig config = null,
+        ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
+        : base(httpClientFactory, serviceConfiguration, config, loggerFactory)
     {
-        _loggerFactory = loggerFactory ?? new LoggerFactory();
-        _httpClientFactory = httpClientFactory ??
-                             throw new ArgumentNullException(nameof(httpClientFactory),
-                                 "Missing HTTP client factory configuration");
-
-        _contextDataDeserializer =
-            config?.ContextDataDeserializer ?? new DefaultContextDataDeserializer(_loggerFactory);
-        _contextEventSerializer = config?.ContextEventSerializer ?? new DefaultContextEventSerializer(_loggerFactory);
-
-        _client = new ABSmartlyService(
-            serviceConfiguration,
-            _httpClientFactory,
-            _contextDataDeserializer,
-            _contextEventSerializer,
-            _loggerFactory);
-
-        _contextDataProvider = config?.ContextDataProvider ?? new DefaultContextDataProvider(_client);
-        _contextEventHandler = config?.ContextEventHandler ?? new DefaultContextEventHandler(_client);
-        _contextEventLogger = config?.ContextEventLogger;
-
-        _variableParser = config?.VariableParser ?? new DefaultVariableParser(_loggerFactory);
-        _audienceDeserializer = config?.AudienceDeserializer ?? new DefaultAudienceDeserializer(_loggerFactory);
     }
 
-    public IContext CreateContext(ContextConfig config)
+    public ABSdk(IABsmartlyHttpClientFactory httpClientFactory,
+        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyConfig config = null,
+        ILoggerFactory loggerFactory = null)
+        : base(httpClientFactory, serviceConfiguration, config, loggerFactory)
     {
-        return AsyncHelpers.RunSync(async () => await CreateContextAsync(config));
+    }
+}
+
+[Obsolete("Absmartly has been renamed to ABsmartly. Please use ABsmartly instead.")]
+public class Absmartly : ABsmartly
+{
+    [ActivatorUtilitiesConstructor]
+    public Absmartly(IABSdkHttpClientFactory httpClientFactory,
+        IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
+        IOptions<ABsmartlyConfig> configOptions,
+        ILoggerFactory loggerFactory)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, configOptions, loggerFactory)
+    {
     }
 
-    public async Task<IContext> CreateContextAsync(ContextConfig config)
+    public Absmartly(IABSdkHttpClientFactory httpClientFactory,
+        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyConfig config = null,
+        ILoggerFactory loggerFactory = null)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, config, loggerFactory)
     {
-        var context = new Context(config,
-            await _contextDataProvider.GetContextDataAsync().ConfigureUnboundContinuation(),
-            Clock.SystemUtc(),
-            _contextDataProvider,
-            _contextEventHandler,
-            _contextEventLogger,
-            _variableParser,
-            new AudienceMatcher(_audienceDeserializer),
-            _loggerFactory);
-
-        return context;
     }
 
-    public IContext CreateContextWith(ContextConfig config, ContextData data)
+    public Absmartly(ABSdkHttpClientFactory httpClientFactory,
+        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyConfig config = null,
+        ILoggerFactory loggerFactory = null)
+        : base(httpClientFactory, serviceConfiguration, config, loggerFactory)
     {
-        var context = new Context(config,
-            data,
-            Clock.SystemUtc(),
-            _contextDataProvider,
-            _contextEventHandler,
-            _contextEventLogger,
-            _variableParser,
-            new AudienceMatcher(_audienceDeserializer),
-            _loggerFactory);
+    }
 
-        return context;
+    public Absmartly(IABsmartlyHttpClientFactory httpClientFactory,
+        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyConfig config = null,
+        ILoggerFactory loggerFactory = null)
+        : base(httpClientFactory, serviceConfiguration, config, loggerFactory)
+    {
     }
 }

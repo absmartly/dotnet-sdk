@@ -1,12 +1,13 @@
-﻿namespace ABSmartly;
+using System;
 
-public class ABSdkConfig
+namespace ABSmartly;
+
+[Obsolete("ABSdkConfig has been renamed to ABsmartlyConfig. Please use ABsmartlyConfig instead.")]
+public class ABSdkConfig : ABsmartlyConfig
 {
-    public IContextDataProvider ContextDataProvider { get; set; }
-    public IContextDataDeserializer ContextDataDeserializer { get; set; }
-    public IContextEventSerializer ContextEventSerializer { get; set; }
-    public IContextEventHandler ContextEventHandler { get; set; }
-    public IContextEventLogger ContextEventLogger { get; set; }
-    public IVariableParser VariableParser { get; set; }
-    public IAudienceDeserializer AudienceDeserializer { get; set; }
+}
+
+[Obsolete("AbsmartlyConfig has been renamed to ABsmartlyConfig. Please use ABsmartlyConfig instead.")]
+public class AbsmartlyConfig : ABsmartlyConfig
+{
 }

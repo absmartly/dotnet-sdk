@@ -8,27 +8,27 @@ public class ABSdkTests
     [SetUp]
     public void SetUp()
     {
-        _httpClient = Mock.Of<IABSdkHttpClient>();
-        _httpClientFactory = Mock.Of<IABSdkHttpClientFactory>(x => x.CreateClient() == _httpClient);
+        _httpClient = Mock.Of<IABsmartlyHttpClient>();
+        _httpClientFactory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == _httpClient);
 
         _serviceConfig = H.ServiceConfig("website", "http://localhost/v1", "dev", "test-api-key");
     }
 
-    private IABSdkHttpClientFactory _httpClientFactory = null!;
+    private IABsmartlyHttpClientFactory _httpClientFactory = null!;
 
-    private IABSdkHttpClient _httpClient = null!;
+    private IABsmartlyHttpClient _httpClient = null!;
     private ABSmartlyServiceConfiguration _serviceConfig = null!;
 
     [Test]
     public void TestCreateThrowsWithInvalidConfig()
     {
-        Func<ABSdk> act;
+        Func<ABsmartly> act;
 
-        act = () => new ABSdk(null, _serviceConfig);
+        act = () => new ABsmartly(null, _serviceConfig);
         act.Should().Throw<ArgumentNullException>()
             .WithMessage("Missing HTTP client factory configuration (Parameter 'httpClientFactory')");
 
-        act = () => new ABSdk(_httpClientFactory, null);
+        act = () => new ABsmartly(_httpClientFactory, null);
         act.Should().Throw<ArgumentNullException>()
             .WithMessage($"{nameof(ABSmartlyService)} config is required (Parameter 'config')");
     }
@@ -36,8 +36,8 @@ public class ABSdkTests
     [Test]
     public void TestCreateContext_DefaultConfig()
     {
-        var abSdk = new ABSdk(_httpClientFactory, _serviceConfig);
-        var context = abSdk.CreateContext(new ContextConfig());
+        var absmartly = new ABsmartly(_httpClientFactory, _serviceConfig);
+        var context = absmartly.CreateContext(new ContextConfig());
 
         context.Should().NotBeNull();
     }
@@ -45,8 +45,8 @@ public class ABSdkTests
     [Test]
     public async Task TestCreateContextAsync_DefaultConfig()
     {
-        var abSdk = new ABSdk(_httpClientFactory, _serviceConfig);
-        var context = await abSdk.CreateContextAsync(new ContextConfig());
+        var absmartly = new ABsmartly(_httpClientFactory, _serviceConfig);
+        var context = await absmartly.CreateContextAsync(new ContextConfig());
 
         context.Should().NotBeNull();
     }
@@ -58,9 +58,9 @@ public class ABSdkTests
         var dataProvider = Mock.Of<IContextDataProvider>();
         Mock.Get(dataProvider).Setup(x => x.GetContextDataAsync()).Returns(GetDataFn);
 
-        var abSdk = new ABSdk(_httpClientFactory, _serviceConfig,
-            new ABSdkConfig { ContextDataProvider = dataProvider });
-        var context = abSdk.CreateContextWith(new ContextConfig(), expected);
+        var absmartly = new ABsmartly(_httpClientFactory, _serviceConfig,
+            new ABsmartlyConfig { ContextDataProvider = dataProvider });
+        var context = absmartly.CreateContextWith(new ContextConfig(), expected);
 
         context.Should().NotBeNull();
         context.GetContextData().Should().BeSameAs(expected);

@@ -15,7 +15,7 @@ namespace ABSmartlyExamples.NETFramework461
             var serviceProvider = new ServiceCollection().AddHttpClient().BuildServiceProvider();
             var httpClientFactory = serviceProvider.GetService<IHttpClientFactory>();
 
-            var abSdk = new ABSdk(new ABSdkHttpClientFactory(httpClientFactory), new ABSmartlyServiceConfiguration
+            var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory), new ABSmartlyServiceConfiguration
             {
                 Environment = "prod",
                 Application = "www",
@@ -25,7 +25,7 @@ namespace ABSmartlyExamples.NETFramework461
 
             var config = new ContextConfig().SetUnit("user_id", "test_classic_dotnet_2");
 
-            var context = await abSdk.CreateContextAsync(config);
+            var context = await absmartly.CreateContextAsync(config);
 
             var treatment = context.GetTreatment("net_seasons");
 
