@@ -155,7 +155,7 @@ var context = _absmartly.CreateContext(config);
 
 ### Without Waiting for the Data
 
-`CreatePendingContext()` returns at once with a context that is not ready yet, and loads the data in the background. Until the context is ready, `GetTreatment()` returns `0` and queues no exposure, `GetVariableValue()` returns the default value, and `VariableKeys` and `Experiments` are empty. `Track()`, `SetUnit()`, `SetAttribute()` and `SetOverride()` work as usual; tracked goals are published after the context is ready.
+`CreatePendingContext()` returns at once with a context that is not ready yet, and loads the data in the background. Until the context is ready, the read methods (`GetTreatment()`, `PeekTreatment()`, `GetVariableValue()`, `PeekVariableValue()`, `VariableKeys`, `Experiments` and the custom field methods) throw an `InvalidOperationException` with the message `ABsmartly Context is not yet ready.` and queue no exposure. Call `WaitUntilReady()` or `WaitUntilReadyAsync()` first. `Track()`, `SetUnit()`, `SetAttribute()` and `SetOverride()` work as usual; tracked goals are published after the context is ready.
 
 ```csharp
 var context = _absmartly.CreatePendingContext(config);

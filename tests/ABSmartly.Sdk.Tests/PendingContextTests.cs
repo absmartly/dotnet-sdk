@@ -70,10 +70,10 @@ public class PendingContextTests
         _published[0].Goals.Should().ContainSingle().Which.Name.Should().Be("purchase");
     }
 
-    // Scenario 201: read methods before ready return defaults, without throwing and
-    // without queuing exposures.
+    // Scenario 201: read methods before ready throw "not yet ready" (matching the JS SDK)
+    // and queue no exposures.
     [Test]
-    public async Task ReadMethodsBeforeReadyReturnDefaultsWithoutExposure()
+    public async Task ReadMethodsBeforeReadyThrowWithoutExposure()
     {
         var gate = new TaskCompletionSource<ContextData>(TaskCreationOptions.RunContinuationsAsynchronously);
         var sdk = BuildSdk(gate.Task);
@@ -81,14 +81,23 @@ public class PendingContextTests
         var context = (Context)sdk.CreatePendingContext(Config());
 
         context.IsReady().Should().BeFalse();
-        context.GetTreatment("exp_test_ab").Should().Be(0);
-        context.PeekTreatment("exp_test_ab").Should().Be(0);
-        context.GetVariableValue("banner.border", "blue").Should().Be("blue");
-        context.PeekVariableValue("banner.border", "blue").Should().Be("blue");
-        context.VariableKeys.Should().BeEmpty();
-        context.Experiments.Should().BeEmpty();
-        context.GetCustomFieldKeys().Should().BeEmpty();
-        context.GetCustomFieldValue("exp_test_ab", "country").Should().BeNull();
+
+        var reads = new Dictionary<string, Action>
+        {
+            ["GetTreatment"] = () => context.GetTreatment("exp_test_ab"),
+            ["PeekTreatment"] = () => context.PeekTreatment("exp_test_ab"),
+            ["GetVariableValue"] = () => context.GetVariableValue("banner.border", "blue"),
+            ["PeekVariableValue"] = () => context.PeekVariableValue("banner.border", "blue"),
+            ["VariableKeys"] = () => _ = context.VariableKeys,
+            ["Experiments"] = () => _ = context.Experiments,
+            ["GetCustomFieldKeys"] = () => context.GetCustomFieldKeys(),
+            ["GetCustomFieldValue"] = () => context.GetCustomFieldValue("exp_test_ab", "country"),
+            ["GetCustomFieldValueType"] = () => context.GetCustomFieldValueType("exp_test_ab", "country"),
+        };
+
+        foreach (var (name, read) in reads)
+            read.Should().Throw<InvalidOperationException>(name)
+                .Which.Message.Should().Be("ABsmartly Context is not yet ready.", name);
 
         context.PendingCount.Should().Be(0, "a not-ready read must not queue an exposure");
         _logger.Types.Should().BeEmpty();

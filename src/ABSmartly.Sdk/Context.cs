@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -55,6 +56,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private readonly IVariableParser _variableParser;
     private volatile bool _closed;
     private int _closing;
+    private readonly object _closeLock = new();
+    private TaskCompletionSource<bool> _closeAttempt;
 
     private volatile ContextData _data;
 
@@ -246,11 +249,14 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         get
         {
-            if (!CheckReadyForRead()) return Array.Empty<string>();
+            CheckReady(false);
 
+            // Data locks are disposed once the context is finalized; no writer can run then.
+            if (IsClosed()) return _data.Experiments.Select(x => x.Name).ToArray();
+
+            _dataLock.EnterReadLock();
             try
             {
-                _dataLock.EnterReadLock();
                 return _data.Experiments.Select(x => x.Name).ToArray();
             }
             finally
@@ -325,6 +331,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         // flushes both snapshot the event lists, then each calls RemoveRange with
         // its (now stale) snapshot count, throwing ArgumentException, or the
         // publish is duplicated/skipped.
+        // The event logger is called only after the gate is released: a logger that
+        // calls Publish/Close from its callback would otherwise wait on the gate it
+        // is running under and deadlock.
+        PublishEvent published = null;
+        Exception publishError = null;
+
         await _flushLock.WaitAsync().ConfigureUnboundContinuation();
         try
         {
@@ -378,8 +390,10 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                                 Goals = achievements
                             };
 
-                            await _eventHandler.PublishAsync(this, publishEvent).ConfigureUnboundContinuation();
-                            LogEvent(EventType.Publish, publishEvent);
+                            var publishTask = _eventHandler.PublishAsync(this, publishEvent) ??
+                                              throw new InvalidOperationException("Context publisher returned no task.");
+                            await publishTask.ConfigureUnboundContinuation();
+                            published = publishEvent;
 
                             try
                             {
@@ -401,9 +415,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                         }
                         catch (Exception e)
                         {
-                            _logger?.LogError(e, "{Publish}", EventType.Publish);
-                            LogError(e);
-                            throw;
+                            // The events stay queued for the next flush.
+                            publishError = e;
                         }
                 }
             }
@@ -427,6 +440,15 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         {
             _flushLock.Release();
         }
+
+        if (publishError != null)
+        {
+            _logger?.LogError(publishError, "{Publish}", EventType.Publish);
+            LogError(publishError);
+            ExceptionDispatchInfo.Capture(publishError).Throw();
+        }
+
+        if (published != null) LogEvent(EventType.Publish, published);
     }
 
     private byte[] GetUnitHash(string unitType, string unitUid)
@@ -648,7 +670,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     
     public List<string> GetCustomFieldKeys()
     {
-        if (!IsReady()) return new List<string>();
+        CheckReady(true);
 
         try
         {
@@ -700,12 +722,16 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     public object GetCustomFieldValue(string experimentName, string key)
     {
+        CheckReady(true);
+
         var field = GetCustomField(experimentName, key);
         return field?.Value;
     }
 
     public object GetCustomFieldValueType(string experimentName, string key)
     {
+        CheckReady(true);
+
         var field = GetCustomField(experimentName, key);
         return field?.Type;
     }
@@ -871,8 +897,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private int? InternalGetTreatmentAsync(string experimentName, bool doExposure)
     {
-        // Not ready yet: the control variant, and no exposure is queued.
-        if (!CheckReadyForRead()) return 0;
+        CheckReady(true);
 
         var assignment = GetAssignment(experimentName);
         if (doExposure && assignment.Exposed == 0)
@@ -946,7 +971,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         get
         {
-            if (!CheckReadyForRead()) return new Dictionary<string, List<string>>();
+            CheckReady(true);
 
             var variableKeys = new Dictionary<string, List<string>>(_indexVariables.Count);
 
@@ -995,7 +1020,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private object InternalGetVariableValueAsync(string key, object defaultValue, bool doExposure)
     {
-        if (!CheckReadyForRead()) return defaultValue;
+        CheckReady(true);
 
         var assignment = GetVariableAssignment(key);
         if (assignment?.Variables is null) return defaultValue;
@@ -1027,14 +1052,23 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         AsyncHelpers.RunSync(async () => await RefreshAsync());
     }
 
+    // Like the JavaScript SDK: throws when the context is not ready or is finalized,
+    // and is a successful no-op on a failed context (a failed context is not recovered).
     public async Task RefreshAsync()
     {
-        CheckNotClosed();
+        CheckReady(true);
+
+        if (_failed) return;
 
         if (Interlocked.CompareExchange(ref _refreshing, 1, 0) == 0)
             try
             {
                 var data = await _dataProvider.GetContextDataAsync().ConfigureUnboundContinuation();
+
+                // Closed while the fetch was in flight: the context is sealed (and its
+                // locks may already be disposed), so the late data is dropped.
+                if (IsDisposing()) return;
+
                 SetData(data);
                 LogEvent(EventType.Refresh, data);
             }
@@ -1097,15 +1131,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         {
             CheckNotClosed();
         }
-    }
-
-    // Guard for read methods: a finalized context still throws, but a context whose
-    // data has not loaded yet returns false so the caller can answer with its
-    // default (control variant, default value, empty collection) instead of throwing.
-    private bool CheckReadyForRead()
-    {
-        CheckNotClosed();
-        return IsReady();
     }
 
     #endregion
@@ -1403,14 +1428,24 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     #region Log
 
+    // A throwing event logger must not change the outcome of the operation it
+    // observes (e.g. turn a delivered publish into a failure that resends the batch),
+    // so its exceptions are logged and swallowed, as in the JavaScript SDK.
     private void LogEvent(EventType eventType, object data)
     {
-        _eventLogger?.HandleEvent(this, eventType, data);
+        try
+        {
+            _eventLogger?.HandleEvent(this, eventType, data);
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, "Context event logger threw while handling {EventType}", eventType);
+        }
     }
 
     private void LogError(Exception error)
     {
-        _eventLogger?.HandleEvent(this, EventType.Error, error.Message);
+        LogEvent(EventType.Error, error.Message);
     }
 
     #endregion
@@ -1418,26 +1453,57 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     #region Close & Dispose
 
+    // Concurrent callers share one close attempt. If the final publish fails, the
+    // context stays open with its events queued and the error is rethrown, so a
+    // later Close/Dispose retries the publish (as finalize() in the JavaScript SDK).
     private async Task CloseAsync()
     {
         if (_closed) return;
 
-        if (Interlocked.CompareExchange(ref _closing, 1, 0) == 0)
+        TaskCompletionSource<bool> attempt;
+        bool owner;
+        lock (_closeLock)
         {
-            ClearRefreshTimer();
+            if (_closed) return;
+            owner = _closeAttempt == null;
+            if (owner)
+                _closeAttempt = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            attempt = _closeAttempt;
+        }
 
-            try
-            {
-                if (_pendingCount > 0) await Flush().ConfigureUnboundContinuation();
+        if (!owner)
+        {
+            await attempt.Task.ConfigureUnboundContinuation();
+            return;
+        }
 
-                LogEvent(EventType.Close, null);
-            }
-            finally
+        Interlocked.Exchange(ref _closing, 1);
+        ClearRefreshTimer();
+
+        try
+        {
+            if (_pendingCount > 0) await Flush().ConfigureUnboundContinuation();
+        }
+        catch (Exception e)
+        {
+            lock (_closeLock)
             {
-                _closed = true;
+                _closeAttempt = null;
                 Interlocked.Exchange(ref _closing, 0);
             }
+
+            attempt.TrySetException(e);
+            throw;
         }
+
+        lock (_closeLock)
+        {
+            _closed = true;
+            Interlocked.Exchange(ref _closing, 0);
+        }
+
+        attempt.TrySetResult(true);
+        LogEvent(EventType.Close, null);
     }
 
     public void Close()

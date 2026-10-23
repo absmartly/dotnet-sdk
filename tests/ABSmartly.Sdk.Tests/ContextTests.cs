@@ -203,7 +203,7 @@ public class ContextTests
         VerifyThrows(() => context.Publish());
         VerifyThrows(() => context.Refresh());
         VerifyThrows(() => context.GetContextData());
-        VerifyThrows(() => _ = context.Experiments);
+        context.Experiments.Should().NotBeEmpty("Experiments only requires ready, like the JS SDK");
         VerifyThrows(() => context.GetVariableValue("banner.border", 17));
         VerifyThrows(() => context.PeekVariableValue("banner.border", 17));
         VerifyThrows(() => _ = context.VariableKeys);
@@ -248,7 +248,7 @@ public class ContextTests
         VerifyThrows(() => context.Publish());
         VerifyThrows(() => context.Refresh());
         VerifyThrows(() => context.GetContextData());
-        VerifyThrows(() => _ = context.Experiments);
+        context.Experiments.Should().NotBeEmpty("Experiments only requires ready, like the JS SDK");
         VerifyThrows(() => context.GetVariableValue("banner.border", 17));
         VerifyThrows(() => context.PeekVariableValue("banner.border", 17));
         VerifyThrows(() => _ = context.VariableKeys);
