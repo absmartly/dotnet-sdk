@@ -70,7 +70,6 @@ public class PendingContextTests
         _published[0].Goals.Should().ContainSingle().Which.Name.Should().Be("purchase");
     }
 
-    // Scenario 201.
     [Test]
     public async Task ReadMethodsBeforeReadyThrowWithoutExposure()
     {
@@ -393,6 +392,45 @@ public class PendingContextTests
 
         context.IsFinalized.Should().BeFalse();
         Volatile.Read(ref calls).Should().BeGreaterThan(before);
+
+        Mock.Get(_publisher)
+            .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(Task.CompletedTask);
+        await ((Context)context).DisposeAsync();
+        context.IsFinalized.Should().BeTrue();
+    }
+
+    [Test]
+    [Timeout(5000)]
+    public async Task ErrorLoggerWaitingForReadyDuringFailedCloseDoesNotDeadlock()
+    {
+        var gate = new TaskCompletionSource<ContextData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var errorEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Mock.Get(_publisher)
+            .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(Task.FromException(new InvalidOperationException("publish failed")));
+        var sdk = BuildSdk(gate.Task);
+        var logger = new CallbackLogger();
+        var config = Config();
+        config.ContextEventLogger = logger;
+        var context = sdk.CreatePendingContext(config);
+        logger.OnEvent = (ctx, type) =>
+        {
+            if (type != EventType.Error) return;
+            errorEntered.TrySetResult(true);
+            ctx.WaitUntilReady();
+        };
+        context.Track("purchase", null);
+
+        var dispose = Task.Run(() => ((Context)context).DisposeAsync().AsTask());
+        await errorEntered.Task;
+        gate.SetResult(_data);
+
+        (await Task.WhenAny(dispose, Task.Delay(3000))).Should().BeSameAs(dispose);
+        Assert.ThrowsAsync<InvalidOperationException>(() => dispose);
+        context.IsReady().Should().BeTrue();
+        context.IsFinalized.Should().BeFalse();
+        context.PendingCount.Should().Be(1);
     }
 
     [Test]

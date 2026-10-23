@@ -61,6 +61,11 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     // Set in the async flow of the close attempt's owner, so an event logger
     // callback it runs (e.g. on Publish) can tell its Close() is nested.
     private readonly AsyncLocal<bool> _inCloseAttempt = new();
+    // Guarded by _closeLock: an initial load being applied defers disposal of the
+    // locks it uses until it has settled.
+    private bool _settlingLoad;
+    private bool _locksDisposePending;
+    private bool _locksDisposed;
 
     private volatile ContextData _data;
 
@@ -181,7 +186,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             finally
             {
                 // Events tracked before the context was ready still need a flush.
-                if (_pendingCount > 0) SetTimeout();
+                if (_pendingCount > 0 && !IsDisposing()) SetTimeout();
             }
         }
         else if (error != null)
@@ -203,32 +208,55 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         try
         {
-            ContextData data;
+            Exception loadError = null;
+            ContextData data = null;
             try
             {
                 data = await dataTask.ConfigureUnboundContinuation();
             }
             catch (Exception e)
             {
-                if (await ClosedBeforeLoadSettled().ConfigureUnboundContinuation()) return;
-                SetInitialData(null, e);
-                return;
+                loadError = e;
             }
 
-            // Closed before the load settled: the context is sealed (and its locks
-            // may already be disposed), so the late data is dropped. A close still
-            // in progress may fail and reopen the context, so its outcome is awaited.
-            if (await ClosedBeforeLoadSettled().ConfigureUnboundContinuation()) return;
+            // Closed before the load settled: the context is sealed, so the late data
+            // is dropped. During a close still in progress the data is applied, since
+            // the close may fail and leave the context open.
+            lock (_closeLock)
+            {
+                if (_closed) return;
+                _settlingLoad = true;
+            }
 
             try
             {
-                SetInitialData(data, null);
+                if (loadError != null)
+                {
+                    SetInitialData(null, loadError);
+                    return;
+                }
+
+                try
+                {
+                    SetInitialData(data, null);
+                }
+                catch (Exception e) when (!IsReady())
+                {
+                    // The payload could not be applied (e.g. malformed data). Fail the
+                    // context instead of leaving it pending forever.
+                    SetInitialData(null, e);
+                }
             }
-            catch (Exception e) when (!IsReady())
+            finally
             {
-                // The payload could not be applied (e.g. malformed data). Fail the
-                // context instead of leaving it pending forever.
-                SetInitialData(null, e);
+                bool disposeLocks;
+                lock (_closeLock)
+                {
+                    _settlingLoad = false;
+                    disposeLocks = _locksDisposePending;
+                }
+
+                if (disposeLocks) DisposeLocks();
             }
         }
         catch (Exception e)
@@ -243,30 +271,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     }
 
     private bool IsDisposing() => _closed || _closing > 0;
-
-    private async Task<bool> ClosedBeforeLoadSettled()
-    {
-        while (true)
-        {
-            Task attempt;
-            lock (_closeLock)
-            {
-                if (_closed) return true;
-                attempt = _closeAttempt?.Task;
-            }
-
-            if (attempt == null) return false;
-
-            try
-            {
-                await attempt.ConfigureUnboundContinuation();
-            }
-            catch
-            {
-                // A failed close leaves the context open; check again.
-            }
-        }
-    }
 
     #endregion
 
@@ -1523,7 +1527,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 Interlocked.Exchange(ref _closing, 0);
             }
 
-            // The context stays open: resume the automatic refresh the attempt stopped.
             if (IsReady() && !_failed) SetRefreshTimer();
 
             attempt.TrySetException(e);
@@ -1560,11 +1563,36 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             // Nested in the owner's close: the owner disposes once it completes.
             if (!_closed) return;
 
-            _dataLock?.Dispose();
-            _contextLock?.Dispose();
-            _timeout?.Dispose();
-            _refreshTimer?.Dispose();
+            RequestDisposeLocks();
         }
+    }
+
+    private void RequestDisposeLocks()
+    {
+        lock (_closeLock)
+        {
+            if (_settlingLoad)
+            {
+                _locksDisposePending = true;
+                return;
+            }
+        }
+
+        DisposeLocks();
+    }
+
+    private void DisposeLocks()
+    {
+        lock (_closeLock)
+        {
+            if (_locksDisposed) return;
+            _locksDisposed = true;
+        }
+
+        _dataLock?.Dispose();
+        _contextLock?.Dispose();
+        _timeout?.Dispose();
+        _refreshTimer?.Dispose();
     }
 
     public async ValueTask DisposeAsync()
@@ -1573,10 +1601,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
         if (!_closed) return;
 
-        _dataLock?.Dispose();
-        _contextLock?.Dispose();
-        _timeout?.Dispose();
-        _refreshTimer?.Dispose();
+        RequestDisposeLocks();
 
         Dispose(false);
         GC.SuppressFinalize(this);
