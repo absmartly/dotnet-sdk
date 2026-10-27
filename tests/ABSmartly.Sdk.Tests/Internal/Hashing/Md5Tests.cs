@@ -39,4 +39,21 @@ public class Md5Tests
 
         actualStringHash.Should().Be(expectedHash);
     }
+
+    [TestCase("", "")]
+    [TestCase("f", "Zg")]
+    [TestCase("fo", "Zm8")]
+    [TestCase("foo", "Zm9v")]
+    [TestCase("\u00fb\u00ff", "w7vDvw")]
+    public void TestBase64UrlNoPadding(string input, string expected)
+    {
+        Md5.Base64UrlNoPadding(Md5.Utf8Bytes(input)).Should().Be(expected);
+    }
+
+    [Test]
+    public void TestUtf8Bytes()
+    {
+        Md5.Utf8Bytes("a\u00e7\u2193\U0001F600").Should().Equal(
+            0x61, 0xC3, 0xA7, 0xE2, 0x86, 0x93, 0xF0, 0x9F, 0x98, 0x80);
+    }
 }

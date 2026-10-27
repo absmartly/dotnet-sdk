@@ -440,6 +440,67 @@ public class PendingContextTests
         if (!fetchFails) context.PendingCount.Should().Be(1);
     }
 
+    // A finalized context stays readable: units, attributes and experiments, as in
+    // the JavaScript SDK. Finalize must not release the locks those reads take.
+    [Test]
+    public async Task FinalizeAsyncKeepsUnitAndAttributeReadsWorking()
+    {
+        var sdk = BuildSdk(Task.FromResult(_data));
+        var context = sdk.CreateContextWith(Config(), _data);
+        context.SetAttribute("country", "PT");
+        context.Track("purchase", null);
+
+        await context.FinalizeAsync();
+
+        context.IsFinalized.Should().BeTrue();
+        _published.Should().HaveCount(1);
+        _logger.Types.Last().Should().Be(EventType.Close);
+        context.Units.Should().Equal(_units);
+        context.GetAttribute("country").Should().Be("PT");
+        context.Attributes.Should().ContainKey("country");
+        context.Experiments.Should().NotBeEmpty();
+        context.Invoking(c => c.GetTreatment("exp_test_ab")).Should()
+            .Throw<InvalidOperationException>().WithMessage("ABsmartly Context is finalized.");
+    }
+
+    [Test]
+    public void CloseKeepsUnitReadsWorking()
+    {
+        var sdk = BuildSdk(Task.FromResult(_data));
+        var context = sdk.CreateContextWith(Config(), _data);
+
+        context.Close();
+
+        context.IsFinalized.Should().BeTrue();
+        context.Units.Should().Equal(_units);
+    }
+
+    // CreateContext returns only after the Ready/Error event was logged, so a caller
+    // that inspects its event log right after creation sees it.
+    [TestCase(false)]
+    [TestCase(true)]
+    [Timeout(5000)]
+    public async Task CreateContextReturnsAfterTheLoadEventWasLogged(bool fetchFails)
+    {
+        var sdk = BuildSdk(fetchFails ? Task.FromException<ContextData>(new HttpRequestException("down")) : Task.FromResult(_data));
+        var logger = new CallbackLogger();
+        var logged = 0;
+        logger.OnEvent = (_, type) =>
+        {
+            if (type is EventType.Ready or EventType.Error)
+            {
+                Thread.Sleep(200);
+                Interlocked.Exchange(ref logged, 1);
+            }
+        };
+        var config = Config();
+        config.ContextEventLogger = logger;
+
+        await sdk.CreateContextAsync(config);
+
+        logged.Should().Be(1);
+    }
+
     [Test]
     public void WaitUntilReadyOnReadyContextReturnsImmediately()
     {

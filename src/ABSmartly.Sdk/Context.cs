@@ -86,6 +86,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     // Completes (never faults) once the initial data load of a pending context has
     // settled as ready or failed. Null when the context was constructed with data.
     private TaskCompletionSource<bool> _readyTcs;
+    // Completes after the load has settled AND its Ready/Error event was logged.
+    private TaskCompletionSource<bool> _loadSettledTcs;
 
     #region Constructor & Initialization
 
@@ -121,6 +123,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
             audienceMatcher, loggerFactory);
         context._readyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        context._loadSettledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = context.LoadAsync(dataTask);
         return context;
     }
@@ -265,7 +268,17 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         finally
         {
             _readyTcs.TrySetResult(true);
+            _loadSettledTcs.TrySetResult(true);
         }
+    }
+
+    // Waits until the load has settled and its Ready/Error event was logged, so a
+    // caller that returns afterwards has observed that event (as the JavaScript SDK
+    // logs "ready" before resolving ready()).
+    internal async Task WaitUntilLoadSettledAsync()
+    {
+        var settled = _loadSettledTcs;
+        if (settled != null) await settled.Task.ConfigureUnboundContinuation();
     }
 
     private bool IsDisposing() => _closed || _closing > 0;
@@ -1541,9 +1554,13 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         LogEvent(EventType.Close, null);
     }
 
+    // Finalizes the context (publishes pending events, then seals it) without
+    // releasing its locks, so units, attributes and experiments stay readable.
+    public Task FinalizeAsync() => CloseAsync();
+
     public void Close()
     {
-        Dispose();
+        AsyncHelpers.RunSync(async () => await CloseAsync());
     }
 
     public void Dispose()

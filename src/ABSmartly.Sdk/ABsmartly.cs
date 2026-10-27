@@ -84,7 +84,9 @@ public class ABsmartly
     // and ReadyError set). A failed load does not throw.
     public async Task<IContext> CreateContextAsync(ContextConfig config)
     {
-        return await CreatePendingContext(config).WaitUntilReadyAsync().ConfigureUnboundContinuation();
+        var context = (Context)CreatePendingContext(config);
+        await context.WaitUntilLoadSettledAsync().ConfigureUnboundContinuation();
+        return context;
     }
 
     // Returns immediately with a context that is not ready yet; the data loads in

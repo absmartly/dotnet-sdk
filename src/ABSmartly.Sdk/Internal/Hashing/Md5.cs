@@ -18,7 +18,7 @@ public static class Md5
 
     public static string Hash(string unit)
     {
-        var bytes = Encoding.UTF8.GetBytes(unit);
+        var bytes = Utf8Bytes(unit);
 
 #if NET5_0_OR_GREATER
         var hashBytes = DotNetMD5.HashData(bytes);
@@ -31,9 +31,19 @@ public static class Md5
         }
 #endif
 
-        var rawHashedString = Convert.ToBase64String(hashBytes);
-        var hashedString = rawHashedString.Replace('+', '-').Replace('/', '_').Replace("=", "");
-        return hashedString;
+        return Base64UrlNoPadding(hashBytes);
+    }
+
+    // The UTF-8 encoding used for unit hashing.
+    public static byte[] Utf8Bytes(string value)
+    {
+        return Encoding.UTF8.GetBytes(value);
+    }
+
+    // URL-safe base64 without padding, the encoding of unit hashes.
+    public static string Base64UrlNoPadding(byte[] bytes)
+    {
+        return Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').Replace("=", "");
     }
 
     public static byte[] HashToUtf8Bytes(string unit)

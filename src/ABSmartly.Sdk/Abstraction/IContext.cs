@@ -149,7 +149,15 @@ public interface IContext
 
 #if !NETSTANDARD2_0
     void Close() { }
+
+    Task FinalizeAsync()
+    {
+        Close();
+        return Task.CompletedTask;
+    }
 #else
     void Close();
+
+    Task FinalizeAsync();
 #endif
 }
