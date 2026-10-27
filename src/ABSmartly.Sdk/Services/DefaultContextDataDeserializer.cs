@@ -27,6 +27,11 @@ public class DefaultContextDataDeserializer : IContextDataDeserializer
             }
             return result;
         }
+        catch (JsonException e)
+        {
+            _logger?.LogError(e, "Failed to deserialize context data: {Message}", e.Message);
+            throw;
+        }
         catch (Exception e)
         {
             _logger?.LogError(e, "Failed to deserialize context data: {Message}", e.Message);

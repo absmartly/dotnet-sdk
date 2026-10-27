@@ -40,30 +40,15 @@ public class EdgeCaseInputTests
         var unicodeVariableName = "设置.颜色";
         var unicodeVariableValue = "中文值_العربية_עברית_🌍";
 
-        var experiment = new Experiment
+        var experiment = CreateExperiment(unicodeExperimentName, new[]
         {
-            Id = 1,
-            Name = unicodeExperimentName,
-            UnitType = "session_id",
-            Iteration = 1,
-            SeedHi = 3603515,
-            SeedLo = 233373850,
-            Split = new[] { 0.0, 1.0 },
-            TrafficSeedHi = 449867249,
-            TrafficSeedLo = 455443629,
-            TrafficSplit = new[] { 0.0, 1.0 },
-            FullOnVariant = 0,
-            Applications = new[] { new ExperimentApplication { Name = "website" } },
-            Variants = new[]
+            new ExperimentVariant { Name = "Control", Config = null },
+            new ExperimentVariant
             {
-                new ExperimentVariant { Name = "Control", Config = null },
-                new ExperimentVariant
-                {
-                    Name = "Treatment_测试",
-                    Config = $"{{\"{unicodeVariableName}\":\"{unicodeVariableValue}\"}}"
-                }
+                Name = "Treatment_测试",
+                Config = $"{{\"{unicodeVariableName}\":\"{unicodeVariableValue}\"}}"
             }
-        };
+        });
 
         var data = new ContextData(new[] { experiment });
         var config = new ContextConfig().SetUnits(_units);
@@ -162,26 +147,11 @@ public class EdgeCaseInputTests
             ]
         }".Replace("\n", "").Replace("\r", "").Replace("  ", "");
 
-        var experiment = new Experiment
+        var experiment = CreateExperiment("exp_nested", new[]
         {
-            Id = 1,
-            Name = "exp_nested",
-            UnitType = "session_id",
-            Iteration = 1,
-            SeedHi = 3603515,
-            SeedLo = 233373850,
-            Split = new[] { 0.0, 1.0 },
-            TrafficSeedHi = 449867249,
-            TrafficSeedLo = 455443629,
-            TrafficSplit = new[] { 0.0, 1.0 },
-            FullOnVariant = 0,
-            Applications = new[] { new ExperimentApplication { Name = "website" } },
-            Variants = new[]
-            {
-                new ExperimentVariant { Name = "A", Config = null },
-                new ExperimentVariant { Name = "B", Config = nestedConfig }
-            }
-        };
+            new ExperimentVariant { Name = "A", Config = null },
+            new ExperimentVariant { Name = "B", Config = nestedConfig }
+        });
 
         var data = new ContextData(new[] { experiment });
         var config = new ContextConfig().SetUnits(_units);
@@ -220,26 +190,11 @@ public class EdgeCaseInputTests
             ""scientific_notation"": 1.23e10
         }".Replace("\n", "").Replace("\r", "").Replace("  ", "");
 
-        var experiment = new Experiment
+        var experiment = CreateExperiment("exp_extreme_numbers", new[]
         {
-            Id = 1,
-            Name = "exp_extreme_numbers",
-            UnitType = "session_id",
-            Iteration = 1,
-            SeedHi = 3603515,
-            SeedLo = 233373850,
-            Split = new[] { 0.0, 1.0 },
-            TrafficSeedHi = 449867249,
-            TrafficSeedLo = 455443629,
-            TrafficSplit = new[] { 0.0, 1.0 },
-            FullOnVariant = 0,
-            Applications = new[] { new ExperimentApplication { Name = "website" } },
-            Variants = new[]
-            {
-                new ExperimentVariant { Name = "A", Config = null },
-                new ExperimentVariant { Name = "B", Config = extremeConfig }
-            }
-        };
+            new ExperimentVariant { Name = "A", Config = null },
+            new ExperimentVariant { Name = "B", Config = extremeConfig }
+        });
 
         var data = new ContextData(new[] { experiment });
         var config = new ContextConfig().SetUnits(_units);
@@ -276,26 +231,11 @@ public class EdgeCaseInputTests
             ""whitespace_string"": ""   ""
         }".Replace("\n", "").Replace("\r", "").Replace("  ", "");
 
-        var experiment = new Experiment
+        var experiment = CreateExperiment("exp_empty_values", new[]
         {
-            Id = 1,
-            Name = "exp_empty_values",
-            UnitType = "session_id",
-            Iteration = 1,
-            SeedHi = 3603515,
-            SeedLo = 233373850,
-            Split = new[] { 0.0, 1.0 },
-            TrafficSeedHi = 449867249,
-            TrafficSeedLo = 455443629,
-            TrafficSplit = new[] { 0.0, 1.0 },
-            FullOnVariant = 0,
-            Applications = new[] { new ExperimentApplication { Name = "website" } },
-            Variants = new[]
-            {
-                new ExperimentVariant { Name = "A", Config = null },
-                new ExperimentVariant { Name = "B", Config = emptyConfig }
-            }
-        };
+            new ExperimentVariant { Name = "A", Config = null },
+            new ExperimentVariant { Name = "B", Config = emptyConfig }
+        });
 
         var data = new ContextData(new[] { experiment });
         var config = new ContextConfig().SetUnits(_units);
@@ -331,26 +271,11 @@ public class EdgeCaseInputTests
             ""false_value"": false
         }".Replace("\n", "").Replace("\r", "").Replace("  ", "");
 
-        var experiment = new Experiment
+        var experiment = CreateExperiment("exp_bool_values", new[]
         {
-            Id = 1,
-            Name = "exp_bool_values",
-            UnitType = "session_id",
-            Iteration = 1,
-            SeedHi = 3603515,
-            SeedLo = 233373850,
-            Split = new[] { 0.0, 1.0 },
-            TrafficSeedHi = 449867249,
-            TrafficSeedLo = 455443629,
-            TrafficSplit = new[] { 0.0, 1.0 },
-            FullOnVariant = 0,
-            Applications = new[] { new ExperimentApplication { Name = "website" } },
-            Variants = new[]
-            {
-                new ExperimentVariant { Name = "A", Config = null },
-                new ExperimentVariant { Name = "B", Config = boolConfig }
-            }
-        };
+            new ExperimentVariant { Name = "A", Config = null },
+            new ExperimentVariant { Name = "B", Config = boolConfig }
+        });
 
         var data = new ContextData(new[] { experiment });
         var config = new ContextConfig().SetUnits(_units);
@@ -378,26 +303,11 @@ public class EdgeCaseInputTests
 
         var longConfig = $"{{\"{longKeyName}\":\"{longString}\"}}";
 
-        var experiment = new Experiment
+        var experiment = CreateExperiment("exp_long_strings", new[]
         {
-            Id = 1,
-            Name = "exp_long_strings",
-            UnitType = "session_id",
-            Iteration = 1,
-            SeedHi = 3603515,
-            SeedLo = 233373850,
-            Split = new[] { 0.0, 1.0 },
-            TrafficSeedHi = 449867249,
-            TrafficSeedLo = 455443629,
-            TrafficSplit = new[] { 0.0, 1.0 },
-            FullOnVariant = 0,
-            Applications = new[] { new ExperimentApplication { Name = "website" } },
-            Variants = new[]
-            {
-                new ExperimentVariant { Name = "A", Config = null },
-                new ExperimentVariant { Name = "B", Config = longConfig }
-            }
-        };
+            new ExperimentVariant { Name = "A", Config = null },
+            new ExperimentVariant { Name = "B", Config = longConfig }
+        });
 
         var data = new ContextData(new[] { experiment });
         var config = new ContextConfig().SetUnits(_units);
@@ -426,26 +336,11 @@ public class EdgeCaseInputTests
             ""with_unicode_escape"": ""\u0048\u0065\u006C\u006C\u006F""
         }".Replace("\n", "").Replace("\r", "").Replace("  ", "");
 
-        var experiment = new Experiment
+        var experiment = CreateExperiment("exp_escaped_chars", new[]
         {
-            Id = 1,
-            Name = "exp_escaped_chars",
-            UnitType = "session_id",
-            Iteration = 1,
-            SeedHi = 3603515,
-            SeedLo = 233373850,
-            Split = new[] { 0.0, 1.0 },
-            TrafficSeedHi = 449867249,
-            TrafficSeedLo = 455443629,
-            TrafficSplit = new[] { 0.0, 1.0 },
-            FullOnVariant = 0,
-            Applications = new[] { new ExperimentApplication { Name = "website" } },
-            Variants = new[]
-            {
-                new ExperimentVariant { Name = "A", Config = null },
-                new ExperimentVariant { Name = "B", Config = escapedConfig }
-            }
-        };
+            new ExperimentVariant { Name = "A", Config = null },
+            new ExperimentVariant { Name = "B", Config = escapedConfig }
+        });
 
         var data = new ContextData(new[] { experiment });
         var config = new ContextConfig().SetUnits(_units);
@@ -467,6 +362,23 @@ public class EdgeCaseInputTests
             withUnicodeEscape.Should().Be("Hello");
         }
     }
+
+    private static Experiment CreateExperiment(string name, ExperimentVariant[] variants) => new()
+    {
+        Id = 1,
+        Name = name,
+        UnitType = "session_id",
+        Iteration = 1,
+        SeedHi = 3603515,
+        SeedLo = 233373850,
+        Split = new[] { 0.0, 1.0 },
+        TrafficSeedHi = 449867249,
+        TrafficSeedLo = 455443629,
+        TrafficSplit = new[] { 0.0, 1.0 },
+        FullOnVariant = 0,
+        Applications = new[] { new ExperimentApplication { Name = "website" } },
+        Variants = variants
+    };
 
     private Context CreateContext(ContextConfig config, ContextData data) =>
         new(config, data, _clock, _dataProvider, _eventHandler, _eventLogger, _variableParser,

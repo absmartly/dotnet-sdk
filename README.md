@@ -129,7 +129,7 @@ var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory),
 
 When injecting `IABsmartlyHttpClientFactory`, ensure it creates instances of the `IABsmartlyHttpClient` interface, which is a wrapper on top of `HttpClient`. The SDK provides `ABSmartly.Services.ABsmartlyHttpClientFactory.HttpClientWrapper` for this purpose.
 
-When injecting `IHttpClientFactory`, ensure it creates named `IHttpClient` instances with the name `ABSmartlySDK.HttpClient` (available as `ABsmartly.HttpClientName`).
+When injecting `IHttpClientFactory`, ensure it creates named `HttpClient` instances with the name `ABSmartlySDK.HttpClient` (available as `ABsmartly.HttpClientName`).
 
 ## Creating a New Context
 
@@ -578,9 +578,9 @@ builder.Services.AddABSmartly(
     httpConfig);
 ```
 
-### Task-Based Cancellation Pattern
+### Task-Based Navigation-Guard Pattern
 
-For scenarios requiring cancellation (e.g., user navigation), use Task.WhenAny with timeout:
+`Task.WhenAny` with a timeout limits how long navigation waits; it does not cancel `CreateContextAsync`. This overload has no cancellation token. Always observe the eventual result and dispose the created context, including after a timeout:
 
 ```csharp
 using ABSmartly;
@@ -593,16 +593,34 @@ var contextTask = _absmartly.CreateContextAsync(config);
 var timeoutTask = Task.Delay(TimeSpan.FromMilliseconds(1500));
 
 var completedTask = await Task.WhenAny(contextTask, timeoutTask);
-
 if (completedTask == contextTask)
-{
-    var context = await contextTask;
-    Console.WriteLine("Context ready!");
-    await context.DisposeAsync();
-}
+    await ObserveAndDisposeAsync(contextTask, reportReady: true);
 else
 {
-    Console.WriteLine("Context creation timed out");
+    Console.WriteLine("Context creation timed out; creation continues in the background");
+    _ = ObserveAndDisposeAsync(contextTask, reportReady: false);
+}
+
+static async Task ObserveAndDisposeAsync(Task<IContext> creation, bool reportReady)
+{
+    IContext context = null;
+    try
+    {
+        context = await creation;
+        if (reportReady) Console.WriteLine("Context ready!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Context creation failed: {ex.Message}");
+    }
+    finally
+    {
+        if (context != null)
+        {
+            try { await context.DisposeAsync(); }
+            catch (Exception ex) { Console.WriteLine($"Context disposal failed: {ex.Message}"); }
+        }
+    }
 }
 ```
 

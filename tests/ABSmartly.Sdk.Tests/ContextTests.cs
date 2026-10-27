@@ -9,6 +9,7 @@ namespace ABSmartly.Sdk.Tests;
 [TestFixture]
 public class ContextTests
 {
+    private static readonly TimeSpan DefaultTestPublishDelay = TimeSpan.FromSeconds(60);
     [SetUp]
     public void SetUp()
     {
@@ -1896,7 +1897,7 @@ public class ContextTests
             _audienceMatcher, new LoggerFactory());
 
     private Context CreateContext(ContextData data) =>
-        new(new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }.SetUnits(_units), data, _clock, _dataProvider, _eventHandler, _eventLogger,
+        new(new ContextConfig { PublishDelay = DefaultTestPublishDelay }.SetUnits(_units), data, _clock, _dataProvider, _eventHandler, _eventLogger,
             _variableParser,
             _audienceMatcher, new LoggerFactory());
 
@@ -2074,7 +2075,7 @@ public class ContextTests
     [Test]
     public void TestGetAttributeReturnsValue()
     {
-        var config = new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }
+        var config = new ContextConfig { PublishDelay = DefaultTestPublishDelay }
             .SetUnits(_units)
             .SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1", ["attr2"] = 42 });
         var context = CreateContext(config, _data);
@@ -2094,7 +2095,7 @@ public class ContextTests
     [Test]
     public void TestGetAttributesReturnsAllAttributes()
     {
-        var config = new ContextConfig { PublishDelay = TimeSpan.FromSeconds(60) }
+        var config = new ContextConfig { PublishDelay = DefaultTestPublishDelay }
             .SetUnits(_units)
             .SetAttributes(new Dictionary<string, object> { ["attr1"] = "value1", ["attr2"] = 42 });
         var context = CreateContext(config, _data);

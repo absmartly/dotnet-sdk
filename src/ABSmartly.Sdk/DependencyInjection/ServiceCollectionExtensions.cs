@@ -81,7 +81,6 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<ABsmartly>();
 
-        // Legacy registrations so existing consumers of the obsolete aliases keep resolving.
 #pragma warning disable CS0618
         services.AddTransient<IABSdkHttpClientFactory, ABSdkHttpClientFactory>();
         services.AddSingleton<ABSdk>();

@@ -27,6 +27,17 @@ public class DefaultContextDataDeserializerTests
         act.Should().NotThrow();
     }
 
+    [Test]
+    public void MalformedJsonRemainsDistinguishableFromJsonNull()
+    {
+        using var malformed = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("{broken"));
+        Action parse = () => _deserializer.Deserialize(malformed);
+        parse.Should().Throw<System.Text.Json.JsonException>();
+
+        using var validNull = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("null"));
+        _deserializer.Deserialize(validNull).Should().BeNull();
+    }
+
     private ContextData ExpectedData()
     {
         var experiment0 = new Experiment

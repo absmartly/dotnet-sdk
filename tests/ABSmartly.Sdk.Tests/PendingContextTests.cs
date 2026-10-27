@@ -4,12 +4,6 @@ using ABSmartly.Services;
 
 namespace ABSmartly.Sdk.Tests;
 
-// Regression tests for the not-ready context state and the failed-load error.
-//
-// Before this fix, CreateContext/CreateContextAsync awaited the data fetch before
-// constructing the Context, so no caller could observe a context that was not ready
-// yet, and ABSmartlyService swallowed fetch errors and returned null, so ReadyError
-// was never set. Cross-SDK scenarios 67, 200 and 201 cover this behaviour.
 [TestFixture]
 public class PendingContextTests
 {
@@ -36,7 +30,6 @@ public class PendingContextTests
             .Returns(Task.CompletedTask);
     }
 
-    // Scenario 67: track() before ready queues the goal; it is published once ready.
     [Test]
     public async Task TrackBeforeReadyQueuesGoalAndPublishesItOnceReady()
     {
@@ -100,7 +93,6 @@ public class PendingContextTests
         context.PendingCount.Should().Be(0, "a not-ready read must not queue an exposure");
         _logger.Types.Should().BeEmpty();
 
-        // Once ready, the same call assigns and exposes for real.
         gate.SetResult(_data);
         await context.WaitUntilReadyAsync();
 
@@ -153,8 +145,6 @@ public class PendingContextTests
         context.GetTreatment("exp_test_abc").Should().Be(2);
     }
 
-    // Scenario 200: a failed load sets IsFailed(), keeps the real error as
-    // ReadyError, and logs an Error event carrying that error.
     [Test]
     public async Task FailedLoadExposesRealErrorAsReadyError()
     {
@@ -169,7 +159,6 @@ public class PendingContextTests
         _logger.Events.Should().ContainSingle(e => e.Type == EventType.Error)
             .Which.Data.Should().Be("connection refused");
 
-        // A failed context keeps returning defaults.
         context.GetTreatment("exp_test_ab").Should().Be(0);
         context.Experiments.Should().BeEmpty();
     }
@@ -475,8 +464,6 @@ public class PendingContextTests
         context.Units.Should().Equal(_units);
     }
 
-    // CreateContext returns only after the Ready/Error event was logged, so a caller
-    // that inspects its event log right after creation sees it.
     [TestCase(false)]
     [TestCase(true)]
     [Timeout(5000)]

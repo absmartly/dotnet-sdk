@@ -38,7 +38,6 @@ public class HermeticHttpServerTests
     [SetUp]
     public void SetUp()
     {
-        // Bind to a free ephemeral port on the loopback interface.
         var port = GetFreePort();
         _baseUrl = $"http://127.0.0.1:{port}";
 
@@ -61,7 +60,6 @@ public class HermeticHttpServerTests
         }
         catch
         {
-            // ignored - listener already torn down
         }
     }
 
@@ -70,24 +68,18 @@ public class HermeticHttpServerTests
     {
         var sdk = BuildSdk();
 
-        // 1. createContext -> SDK fires a REAL GET /context and deserializes the body.
         var config = new ContextConfig();
         config.SetUnit("session_id", "bleh@absmartly.com");
 
-        // CreateContextAsync awaits the data fetch, so the GET completes here and the
-        // context is ready once it returns.
         var context = await sdk.CreateContextAsync(config);
         context.IsReady().Should().BeTrue("the context should be ready after the GET completes");
 
-        // Assert the GET landed with the right path + query params.
         var get = WaitForRequest(r => r.Method == "GET");
         get.Should().NotBeNull("the SDK should have performed a real GET /context");
         get!.Path.Should().Be("/context");
         get.Query.Should().ContainKey("application").WhoseValue.Should().Be(Application);
         get.Query.Should().ContainKey("environment").WhoseValue.Should().Be(Environment);
 
-        // 2. Drive a treatment (queues an exposure) + track (queues a goal), then publish
-        //    -> SDK fires a REAL PUT /context with the serialized event body.
         context.GetTreatment("exp_test_ab");
         context.Track("payment", new Dictionary<string, object> { ["amount"] = 100 });
 
@@ -98,7 +90,6 @@ public class HermeticHttpServerTests
         put!.Path.Should().Be("/context");
         put.Query.Should().BeEmpty("publish must not append query params");
 
-        // Headers (exact names per wire contract).
         put.Headers.Should().ContainKey("X-API-Key").WhoseValue.Should().Be(ApiKey);
         put.Headers.Should().ContainKey("X-Application").WhoseValue.Should().Be(Application);
         put.Headers.Should().ContainKey("X-Environment").WhoseValue.Should().Be(Environment);
@@ -108,7 +99,6 @@ public class HermeticHttpServerTests
         put.Headers.Should().ContainKey("Content-Type");
         put.Headers["Content-Type"].Should().StartWith("application/json");
 
-        // Body JSON fields.
         var body = JObject.Parse(put.Body);
         body.Should().ContainKey("hashed");
         body.Should().ContainKey("units");
@@ -117,7 +107,6 @@ public class HermeticHttpServerTests
         body["units"].Should().BeOfType<JArray>();
         ((JArray)body["units"]!).Count.Should().BeGreaterThan(0, "the published units must be present");
 
-        // Goal we tracked must be present in the goals array.
         body.Should().ContainKey("goals");
         body["goals"].Should().BeOfType<JArray>();
         ((JArray)body["goals"]!).Count.Should().BeGreaterThan(0, "the tracked goal must be published");

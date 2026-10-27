@@ -100,7 +100,6 @@ public class LegacyCompatibilityTests
     {
         var custom = Moq.Mock.Of<IABSdkHttpClientFactory>();
         using var sp = BuildProvider(s => s.AddSingleton(custom), null);
-        // AddABSmartly registers its own legacy factory too; a later registration wins.
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddABSmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>

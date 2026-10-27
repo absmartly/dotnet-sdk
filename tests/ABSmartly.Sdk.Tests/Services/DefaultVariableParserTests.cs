@@ -37,6 +37,15 @@ public class DefaultVariableParserTests
         actual.Should().BeEquivalentTo(expected);
     }
 
+    [TestCase("{broken")]
+    [TestCase("1 2")]
+    public void ParseValueReportsMalformedJson(string json)
+    {
+        Action parse = () => DefaultVariableParser.ParseValue(json);
+        parse.Should().Throw<Newtonsoft.Json.JsonException>();
+        DefaultVariableParser.ParseValue("null").Should().BeNull();
+    }
+
     [Test]
     public void TestParseDoesNotThrow()
     {

@@ -53,7 +53,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
         if (!_config.Endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
             !IsLocalEndpoint(_config.Endpoint))
         {
-            throw new ArgumentException("Endpoint must use HTTPS to protect API key (localhost and private hosts are exempt for testing)", nameof(_config.Endpoint));
+            throw new ArgumentException("Endpoint must use HTTPS to protect API key (only localhost/loopback endpoints are exempt for testing)", nameof(_config.Endpoint));
         }
 
         _url = config.Endpoint.TrimEnd('/') + "/context";

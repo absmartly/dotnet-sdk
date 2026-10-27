@@ -86,7 +86,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     // Completes (never faults) once the initial data load of a pending context has
     // settled as ready or failed. Null when the context was constructed with data.
     private TaskCompletionSource<bool> _readyTcs;
-    // Completes after the load has settled AND its Ready/Error event was logged.
     private TaskCompletionSource<bool> _loadSettledTcs;
 
     #region Constructor & Initialization
@@ -190,7 +189,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             }
             finally
             {
-                // Events tracked before the context was ready still need a flush.
                 if (_pendingCount > 0 && !IsDisposing()) SetTimeout();
             }
         }
@@ -237,16 +235,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
             try
             {
-                try
-                {
-                    SetInitialData(data, loadError);
-                }
-                catch (Exception e) when (!IsReady())
-                {
-                    // The payload could not be applied (e.g. malformed data). Fail the
-                    // context instead of leaving it pending forever.
-                    SetInitialData(null, e);
-                }
+                SetInitialData(data, loadError);
+            }
+            catch (Exception e) when (!IsReady())
+            {
+                // A malformed payload must settle readiness as failed rather than hang.
+                SetInitialData(null, e);
             }
             finally
             {
@@ -294,7 +288,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         {
             CheckReady(false);
 
-            // Data locks are disposed once the context is finalized; no writer can run then.
             if (IsClosed()) return _data.Experiments.Select(x => x.Name).ToArray();
 
             _dataLock.EnterReadLock();
@@ -969,7 +962,6 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             {
                 if (!previous.Equals(uidTrimmed))
                     throw new ArgumentException($"Unit '{unitType}' UID already set.");
-                // Same value, no-op
                 return;
             }
 
