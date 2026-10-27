@@ -1,0 +1,14 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0
+
+RUN curl -fsSL -o /tmp/dotnet-install.sh https://dot.net/v1/dotnet-install.sh \
+    && bash /tmp/dotnet-install.sh --runtime dotnet --channel 8.0 --install-dir /usr/share/dotnet \
+    && rm /tmp/dotnet-install.sh
+
+RUN useradd --uid 10001 --create-home testuser
+WORKDIR /src
+RUN chown testuser:testuser /src
+COPY --chown=testuser:testuser . .
+USER testuser
+RUN dotnet restore
+
+ENTRYPOINT ["dotnet", "test", "--no-restore", "--logger:console;verbosity=detailed"]

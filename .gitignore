@@ -354,3 +354,7 @@ MigrationBackup/
 *.csproj.DotSettings
 dotCover.Output
 dotCover.output.*
+.claude/
+.DS_Store
+AUDIT_REPORT.md
+FIXES_IMPLEMENTED.md

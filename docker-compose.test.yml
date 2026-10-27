@@ -1,0 +1,18 @@
+services:
+  test-net8:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    command: ["--framework", "net8.0"]
+
+  test-net9:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    command: ["--framework", "net9.0"]
+
+  test-bleeding-edge:
+    build:
+      context: .
+      dockerfile: Dockerfile.test.bleeding-edge
+    command: ["--framework", "net9.0"]

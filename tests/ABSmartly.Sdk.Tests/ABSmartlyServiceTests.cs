@@ -11,18 +11,18 @@ public class ABSmartlyServiceTests
     [SetUp]
     public void SetUp()
     {
-        _httpClient = Mock.Of<IABSdkHttpClient>();
-        _httpClientFactory = Mock.Of<IABSdkHttpClientFactory>(x => x.CreateClient() == _httpClient);
+        _httpClient = Mock.Of<IABsmartlyHttpClient>();
+        _httpClientFactory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == _httpClient);
         _deserializer = Mock.Of<IContextDataDeserializer>();
         _serializer = Mock.Of<IContextEventSerializer>();
         _loggerFactory = Mock.Of<ILoggerFactory>();
     }
 
-    private IABSdkHttpClientFactory _httpClientFactory = null!;
+    private IABsmartlyHttpClientFactory _httpClientFactory = null!;
     private IContextDataDeserializer _deserializer = null!;
     private IContextEventSerializer _serializer = null!;
     private ILoggerFactory _loggerFactory = null!;
-    private IABSdkHttpClient _httpClient = null!;
+    private IABsmartlyHttpClient _httpClient = null!;
 
     [Test]
     public void TestCreateWithInvalidConfiguration()
@@ -73,16 +73,32 @@ public class ABSmartlyServiceTests
     {
         Func<ABSmartlyService> act;
 
-        var config = H.ServiceConfig("1", "1", "1", "1");
+        var httpsConfig = H.ServiceConfig("1", "https://test.example.com", "1", "1");
 
-        act = () => new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+        act = () => new ABSmartlyService(httpsConfig, _httpClientFactory, _deserializer, _serializer);
         act.Should().NotThrow();
 
-        act = () => new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer, null);
+        act = () => new ABSmartlyService(httpsConfig, _httpClientFactory, _deserializer, _serializer, null);
         act.Should().NotThrow();
 
-        act = () => new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer, _loggerFactory);
+        act = () => new ABSmartlyService(httpsConfig, _httpClientFactory, _deserializer, _serializer, _loggerFactory);
         act.Should().NotThrow();
+
+        var localhostConfig = H.ServiceConfig("1", "http://localhost:8080", "1", "1");
+        act = () => new ABSmartlyService(localhostConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        var loopbackConfig = H.ServiceConfig("1", "http://127.0.0.1:8080", "1", "1");
+        act = () => new ABSmartlyService(loopbackConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        var ipv6Config = H.ServiceConfig("1", "http://[::1]:3000", "1", "1");
+        act = () => new ABSmartlyService(ipv6Config, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        var remoteHttpConfig = H.ServiceConfig("1", "http://test.example.com", "1", "1");
+        act = () => new ABSmartlyService(remoteHttpConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().Throw<ArgumentException>();
     }
 
     [Test]
@@ -123,11 +139,12 @@ public class ABSmartlyServiceTests
         var service = new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer);
 
         Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
-            .Throws<Exception>();
+            .Throws(new HttpRequestException("connection refused"));
 
-        var actual = await service.GetContextDataAsync();
+        var act = async () => await service.GetContextDataAsync();
 
-        actual.Should().BeNull();
+        // The real cause must reach the caller (it becomes the context's ReadyError).
+        await act.Should().ThrowAsync<HttpRequestException>().WithMessage("connection refused");
 
         Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
         Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
@@ -146,13 +163,32 @@ public class ABSmartlyServiceTests
         Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
             .Returns(() => GetResponse(HttpStatusCode.BadRequest, Array.Empty<byte>()));
 
-        var actual = await service.GetContextDataAsync();
+        var act = async () => await service.GetContextDataAsync();
 
-        actual.Should().BeNull();
+        await act.Should().ThrowAsync<HttpRequestException>();
 
         Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
         Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
         Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Never);
+    }
+
+    [Test]
+    public async Task TestGetContextData_DeserializerReturnsNull()
+    {
+        var endpoint = "https://localhost/v1";
+        var uri = $"{endpoint}/context?application=website&environment=dev";
+
+        var config = H.ServiceConfig("website", endpoint, "dev", "test-api-key");
+        var service = new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
+            .Returns(() => GetResponse(HttpStatusCode.OK, Encoding.UTF8.GetBytes("not json")));
+        Mock.Get(_deserializer).Setup(x => x.Deserialize(It.IsAny<Stream>()))
+            .Returns((ContextData)null!);
+
+        var act = async () => await service.GetContextDataAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*deserializer returned null*");
     }
 
     [Test]
@@ -224,7 +260,7 @@ public class ABSmartlyServiceTests
         VerifyDefaultHeaders(Mock.Get(_httpClient));
     }
 
-    private void VerifyDefaultHeaders(Mock<IABSdkHttpClient> httpClientMock)
+    private void VerifyDefaultHeaders(Mock<IABsmartlyHttpClient> httpClientMock)
     {
         httpClientMock.Verify(x => x.AddHeader("X-API-Key", "test-api-key"));
         httpClientMock.Verify(x => x.AddHeader("X-Application", "website"));

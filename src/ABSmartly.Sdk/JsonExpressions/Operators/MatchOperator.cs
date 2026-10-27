@@ -15,10 +15,14 @@ public class MatchOperator : BinaryOperator
 
         try
         {
-            var match = Regex.Match(text, pattern);
+            var match = Regex.Match(text, pattern, RegexOptions.None, TimeSpan.FromMilliseconds(100));
             return match.Success;
         }
-        catch (Exception)
+        catch (RegexMatchTimeoutException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
         {
             return null;
         }
