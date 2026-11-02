@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Text;
@@ -1431,9 +1432,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                         }
                         else if(customFieldValue.Type.StartsWith("number"))
                         {
-                            value.Value = long.TryParse(customValue, out var longVal)
+                            // Invariant culture: the payload is JSON-formatted ("1.5"), whatever
+                            // the server's culture is.
+                            value.Value = long.TryParse(customValue, NumberStyles.Integer,
+                                CultureInfo.InvariantCulture, out var longVal)
                                 ? (object)longVal
-                                : Convert.ToDouble(customValue);
+                                : double.Parse(customValue, NumberStyles.Float, CultureInfo.InvariantCulture);
                         }
                         else
                         {
