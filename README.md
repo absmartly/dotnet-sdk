@@ -17,7 +17,7 @@ Through .NET Standard 2.0 it is compatible with:
 - .NET Core 2.0+
 - .NET Framework 4.6.1+
 
-**Note on Naming:** The main SDK class has been renamed from `ABSdk` to `ABsmartly` (with uppercase AB and lowercase smartly) to standardize naming across all SDKs. The old class names (`ABSdk`, `ABSmartly`, `Absmartly`, `ABSdkConfig`, etc.) are still available as obsolete aliases for backwards compatibility, but new code should use the updated naming: `ABsmartly`.
+**Note on Naming:** The main SDK class has been renamed from `ABSdk` to `ABsmartly` (with uppercase AB and lowercase smartly) to standardize naming across all SDKs. The old class names (`ABSdk`, `ABSdkConfig`, `ABSdkHttpClientFactory`, etc.) are still available as obsolete aliases for backwards compatibility, but new code should use the updated naming: `ABsmartly`.
 
 ## Installation
 

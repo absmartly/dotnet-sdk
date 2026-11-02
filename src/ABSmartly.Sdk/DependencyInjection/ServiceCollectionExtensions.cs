@@ -84,7 +84,6 @@ public static class ServiceCollectionExtensions
 #pragma warning disable CS0618
         services.AddTransient<IABSdkHttpClientFactory, ABSdkHttpClientFactory>();
         services.AddSingleton<ABSdk>();
-        services.AddSingleton<Absmartly>();
 #pragma warning restore CS0618
     }
 

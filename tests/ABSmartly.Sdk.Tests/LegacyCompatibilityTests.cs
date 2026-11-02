@@ -32,7 +32,6 @@ public class LegacyCompatibilityTests
 
         provider.GetRequiredService<ABsmartly>().Should().NotBeNull();
         provider.GetRequiredService<ABSdk>().Should().NotBeNull();
-        provider.GetRequiredService<Absmartly>().Should().NotBeNull();
         provider.GetRequiredService<IABSdkHttpClientFactory>().Should().BeOfType<ABSdkHttpClientFactory>();
     }
 
