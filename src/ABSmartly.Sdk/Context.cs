@@ -1171,15 +1171,15 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     private void CheckNotClosed()
     {
-        if (_closed) throw new InvalidOperationException("ABsmartly Context is finalized.");
-        if (_closing > 0) throw new InvalidOperationException("ABsmartly Context is finalizing.");
+        if (_closed) throw new InvalidOperationException("ABSmartly Context is closed");
+        if (_closing > 0) throw new InvalidOperationException("ABSmartly Context is closing");
     }
 
     private void CheckReady(bool expectNotClosed)
     {
         if (!IsReady())
         {
-            throw new InvalidOperationException("ABsmartly Context is not yet ready.");
+            throw new InvalidOperationException("ABSmartly Context is not yet ready");
         }
         if (expectNotClosed)
         {

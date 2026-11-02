@@ -88,7 +88,7 @@ public class PendingContextTests
 
         foreach (var (name, read) in reads)
             read.Should().Throw<InvalidOperationException>(name)
-                .Which.Message.Should().Be("ABsmartly Context is not yet ready.", name);
+                .Which.Message.Should().Be("ABSmartly Context is not yet ready", name);
 
         context.PendingCount.Should().Be(0, "a not-ready read must not queue an exposure");
         _logger.Types.Should().BeEmpty();
@@ -108,7 +108,7 @@ public class PendingContextTests
         context.Close();
 
         var act = () => context.GetTreatment("exp_test_ab");
-        act.Should().Throw<InvalidOperationException>().WithMessage("*finalized*");
+        act.Should().Throw<InvalidOperationException>().WithMessage("ABSmartly Context is closed");
     }
 
     [Test]
@@ -449,7 +449,7 @@ public class PendingContextTests
         context.Attributes.Should().ContainKey("country");
         context.Experiments.Should().NotBeEmpty();
         context.Invoking(c => c.GetTreatment("exp_test_ab")).Should()
-            .Throw<InvalidOperationException>().WithMessage("ABsmartly Context is finalized.");
+            .Throw<InvalidOperationException>().WithMessage("ABSmartly Context is closed");
     }
 
     [Test]

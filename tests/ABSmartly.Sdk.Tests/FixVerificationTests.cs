@@ -313,7 +313,7 @@ public class FixVerificationTests
         context.Close();
 
         var act = () => context.SetAttribute("attr1", "value1");
-        act.Should().Throw<InvalidOperationException>().WithMessage("ABsmartly Context is finalized.");
+        act.Should().Throw<InvalidOperationException>().WithMessage("ABSmartly Context is closed");
     }
 
     [Test]
