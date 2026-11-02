@@ -18,6 +18,8 @@
         <TargetFrameworks>net9.0;net8.0;netstandard2.0</TargetFrameworks>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
         <FileVersion>1.3.0.0</FileVersion>
+        <EnablePackageValidation>true</EnablePackageValidation>
+        <PackageValidationBaselineVersion>1.3.0</PackageValidationBaselineVersion>
     </PropertyGroup>
 
     <ItemGroup>
