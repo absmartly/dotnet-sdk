@@ -17,7 +17,7 @@ namespace ABSmartly.DependencyInjection;
 // ReSharper disable once UnusedType.Global
 public static class ServiceCollectionExtensions
 {
-    public static void AddABSmartly(
+    public static void AddABsmartly(
         this IServiceCollection services,
         IConfiguration abSmartlyServiceConfiguration,
         HttpClientConfig httpClientConfig,
@@ -29,8 +29,9 @@ public static class ServiceCollectionExtensions
             throw new ArgumentNullException(nameof(abSmartlyServiceConfiguration));
         if (httpClientConfig == null) throw new ArgumentNullException(nameof(httpClientConfig));
 
-        services.Configure<ABSmartlyServiceConfiguration>(abSmartlyServiceConfiguration);
+        services.Configure<ABsmartlyServiceConfiguration>(abSmartlyServiceConfiguration);
 #pragma warning disable CS0618
+        services.Configure<ABSmartlyServiceConfiguration>(abSmartlyServiceConfiguration);
         // The setup callback is a plain Configure<ABSdkConfig>, so it composes with existing
         // Configure<ABSdkConfig> registrations in registration order. The resulting legacy values
         // are then propagated to ABsmartlyConfig so the current SDK type sees them as well.
@@ -86,6 +87,18 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ABSdk>();
         services.AddSingleton<Absmartly>();
 #pragma warning restore CS0618
+    }
+
+    [Obsolete("AddABSmartly has been renamed to AddABsmartly. Please use AddABsmartly instead.")]
+    public static void AddABSmartly(
+        this IServiceCollection services,
+        IConfiguration abSmartlyServiceConfiguration,
+        HttpClientConfig httpClientConfig,
+        Action<ABSdkConfig> setupSdkOptions = null,
+        Func<PolicyBuilder<HttpResponseMessage>, IAsyncPolicy<HttpResponseMessage>> setupRetryPolicy = null
+    )
+    {
+        services.AddABsmartly(abSmartlyServiceConfiguration, httpClientConfig, setupSdkOptions, setupRetryPolicy);
     }
 
     private static Func<PolicyBuilder<HttpResponseMessage>, AsyncRetryPolicy<HttpResponseMessage>>

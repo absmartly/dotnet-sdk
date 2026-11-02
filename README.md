@@ -17,7 +17,7 @@ Through .NET Standard 2.0 it is compatible with:
 - .NET Core 2.0+
 - .NET Framework 4.6.1+
 
-**Note on Naming:** The main SDK class has been renamed from `ABSdk` to `ABsmartly` (with uppercase AB and lowercase smartly) to standardize naming across all SDKs. The old class names (`ABSdk`, `ABSmartly`, `Absmartly`, `ABSdkConfig`, etc.) are still available as obsolete aliases for backwards compatibility, but new code should use the updated naming: `ABsmartly`.
+**Note on Naming:** The main SDK class has been renamed from `ABSdk` to `ABsmartly` (with uppercase AB and lowercase smartly) to standardize naming across all SDKs. The old class names (`ABSdk`, `Absmartly`, `ABSdkConfig`, `AbsmartlyConfig`, etc.) are still available as obsolete aliases for backwards compatibility, but new code should use the updated naming: `ABsmartly`.
 
 ## Installation
 
@@ -49,7 +49,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 ...
 
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
@@ -88,7 +88,7 @@ public class Test : ControllerBase
 }
 ```
 
-The `AddABSmartly` extension method allows you to configure SDK settings, HTTP connection settings, inject custom implementations of context-specific services, and configure additional HTTP request policies using Polly.
+The `AddABsmartly` extension method allows you to configure SDK settings, HTTP connection settings, inject custom implementations of context-specific services, and configure additional HTTP request policies using Polly.
 
 #### Alternative: Manual SDK Configuration
 
@@ -102,7 +102,7 @@ using Microsoft.Extensions.DependencyInjection;
 var serviceProvider = new ServiceCollection().AddHttpClient().BuildServiceProvider();
 var httpClientFactory = serviceProvider.GetService<IHttpClientFactory>();
 
-var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory), new ABSmartlyServiceConfiguration
+var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory), new ABsmartlyServiceConfiguration
 {
     Environment = "development",
     Application = "website",
@@ -360,7 +360,7 @@ public class CustomEventLogger : IContextEventLogger
 ```csharp
 // For all contexts, during SDK initialization
 // When using dependency injection
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault(),
     config => config.ContextEventLogger = new CustomEventLogger());
@@ -368,7 +368,7 @@ builder.Services.AddABSmartly(
 // Or when creating SDK instance manually
 var absmartly = new ABsmartly(
     new ABsmartlyHttpClientFactory(...),
-    new ABSmartlyServiceConfiguration { ... },
+    new ABsmartlyServiceConfiguration { ... },
     new ABsmartlyConfig { ContextEventLogger = new CustomEventLogger() });
 
 // OR, alternatively, during a particular context initialization
@@ -402,7 +402,7 @@ using ABSmartly.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
@@ -447,7 +447,7 @@ public class Startup
     {
         services.AddControllersWithViews();
 
-        services.AddABSmartly(
+        services.AddABsmartly(
             Configuration.GetSection("ABSmartly"),
             HttpClientConfig.CreateDefault());
     }
@@ -533,7 +533,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
@@ -573,7 +573,7 @@ var builder = WebApplication.CreateBuilder(args);
 var httpConfig = HttpClientConfig.CreateDefault();
 httpConfig.ConnectTimeout = 1500;
 
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     httpConfig);
 ```

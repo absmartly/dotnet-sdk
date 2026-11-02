@@ -1,0 +1,279 @@
+﻿using System.Net;
+using System.Text;
+using ABSmartly.Models;
+using Microsoft.Extensions.Logging;
+
+namespace ABSmartly.Sdk.Tests;
+
+[TestFixture]
+public class ABsmartlyServiceTests
+{
+    [SetUp]
+    public void SetUp()
+    {
+        _httpClient = Mock.Of<IABsmartlyHttpClient>();
+        _httpClientFactory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == _httpClient);
+        _deserializer = Mock.Of<IContextDataDeserializer>();
+        _serializer = Mock.Of<IContextEventSerializer>();
+        _loggerFactory = Mock.Of<ILoggerFactory>();
+    }
+
+    private IABsmartlyHttpClientFactory _httpClientFactory = null!;
+    private IContextDataDeserializer _deserializer = null!;
+    private IContextEventSerializer _serializer = null!;
+    private ILoggerFactory _loggerFactory = null!;
+    private IABsmartlyHttpClient _httpClient = null!;
+
+    [Test]
+    public void TestCreateWithInvalidConfiguration()
+    {
+        Func<ABsmartlyService> act;
+
+        act = () => new ABsmartlyService(null, _httpClientFactory, _deserializer, _serializer, _loggerFactory);
+        act.Should().Throw<ArgumentNullException>()
+            .WithMessage($"{nameof(ABsmartlyService)} config is required (Parameter 'config')");
+
+        act = () => new ABsmartlyService(H.ServiceConfig("1", "1", "1", "1"), null, _deserializer, _serializer,
+            _loggerFactory);
+        act.Should().Throw<ArgumentNullException>()
+            .WithMessage("HTTP client factory is required (Parameter 'httpClientFactory')");
+
+        act = () => new ABsmartlyService(H.ServiceConfig("1", "1", "1", "1"), _httpClientFactory, null, _serializer,
+            _loggerFactory);
+        act.Should().Throw<ArgumentNullException>()
+            .WithMessage("Data deserializer is required (Parameter 'dataDeserializer')");
+
+        act = () => new ABsmartlyService(H.ServiceConfig("1", "1", "1", "1"), _httpClientFactory, _deserializer, null,
+            _loggerFactory);
+        act.Should().Throw<ArgumentNullException>()
+            .WithMessage("Event serializer is required (Parameter 'eventSerializer')");
+
+        act = () => new ABsmartlyService(H.ServiceConfig(null!, "1", "1", "1"), _httpClientFactory, _deserializer,
+            _serializer, _loggerFactory);
+        act.Should().Throw<ArgumentNullException>()
+            .WithMessage("Missing Application configuration (Parameter 'Application')");
+
+        act = () => new ABsmartlyService(H.ServiceConfig("1", null!, "1", "1"), _httpClientFactory, _deserializer,
+            _serializer, _loggerFactory);
+        act.Should().Throw<ArgumentNullException>()
+            .WithMessage("Missing Endpoint configuration (Parameter 'Endpoint')");
+
+        act = () => new ABsmartlyService(H.ServiceConfig("1", "1", null!, "1"), _httpClientFactory, _deserializer,
+            _serializer, _loggerFactory);
+        act.Should().Throw<ArgumentNullException>()
+            .WithMessage("Missing Environment configuration (Parameter 'Environment')");
+
+        act = () => new ABsmartlyService(H.ServiceConfig("1", "1", "1", null!), _httpClientFactory, _deserializer,
+            _serializer, _loggerFactory);
+        act.Should().Throw<ArgumentNullException>().WithMessage("Missing APIKey configuration (Parameter 'ApiKey')");
+    }
+
+    [Test]
+    public void TestCreateWithValidConfiguration()
+    {
+        Func<ABsmartlyService> act;
+
+        var httpsConfig = H.ServiceConfig("1", "https://test.example.com", "1", "1");
+
+        act = () => new ABsmartlyService(httpsConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        act = () => new ABsmartlyService(httpsConfig, _httpClientFactory, _deserializer, _serializer, null);
+        act.Should().NotThrow();
+
+        act = () => new ABsmartlyService(httpsConfig, _httpClientFactory, _deserializer, _serializer, _loggerFactory);
+        act.Should().NotThrow();
+
+        var localhostConfig = H.ServiceConfig("1", "http://localhost:8080", "1", "1");
+        act = () => new ABsmartlyService(localhostConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        var loopbackConfig = H.ServiceConfig("1", "http://127.0.0.1:8080", "1", "1");
+        act = () => new ABsmartlyService(loopbackConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        var ipv6Config = H.ServiceConfig("1", "http://[::1]:3000", "1", "1");
+        act = () => new ABsmartlyService(ipv6Config, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        var remoteHttpConfig = H.ServiceConfig("1", "http://test.example.com", "1", "1");
+        act = () => new ABsmartlyService(remoteHttpConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Test]
+    public async Task TestGetContextData()
+    {
+        var endpoint = "https://localhost/v1";
+        var uri = $"{endpoint}/context?application=website&environment=dev";
+
+        var config = H.ServiceConfig("website", endpoint, "dev", "test-api-key");
+        var service = new ABsmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        var bytes = Encoding.UTF8.GetBytes("{}");
+
+        Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
+            .Returns(() => GetResponse(HttpStatusCode.OK, bytes));
+
+        var expected = new ContextData();
+        Mock.Get(_deserializer).Setup(x => x.Deserialize(It.IsAny<Stream>()))
+            .Returns(() => expected);
+
+        var actual = await service.GetContextDataAsync();
+
+        actual.Should().BeSameAs(expected);
+        actual.Should().BeEquivalentTo(expected);
+
+        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
+        Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
+        Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Once);
+    }
+
+    [Test]
+    public async Task TestGetContextData_ConnectionError()
+    {
+        var endpoint = "https://localhost/v1";
+        var uri = $"{endpoint}/context?application=website&environment=dev";
+
+        var config = H.ServiceConfig("website", endpoint, "dev", "test-api-key");
+        var service = new ABsmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
+            .Throws(new HttpRequestException("connection refused"));
+
+        var act = async () => await service.GetContextDataAsync();
+
+        // The real cause must reach the caller (it becomes the context's ReadyError).
+        await act.Should().ThrowAsync<HttpRequestException>().WithMessage("connection refused");
+
+        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
+        Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
+        Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Never);
+    }
+
+    [Test]
+    public async Task TestGetContextData_HttpError()
+    {
+        var endpoint = "https://localhost/v1";
+        var uri = $"{endpoint}/context?application=website&environment=dev";
+
+        var config = H.ServiceConfig("website", endpoint, "dev", "test-api-key");
+        var service = new ABsmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
+            .Returns(() => GetResponse(HttpStatusCode.BadRequest, Array.Empty<byte>()));
+
+        var act = async () => await service.GetContextDataAsync();
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+
+        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
+        Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
+        Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Never);
+    }
+
+    [Test]
+    public async Task TestGetContextData_DeserializerReturnsNull()
+    {
+        var endpoint = "https://localhost/v1";
+        var uri = $"{endpoint}/context?application=website&environment=dev";
+
+        var config = H.ServiceConfig("website", endpoint, "dev", "test-api-key");
+        var service = new ABsmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
+            .Returns(() => GetResponse(HttpStatusCode.OK, Encoding.UTF8.GetBytes("not json")));
+        Mock.Get(_deserializer).Setup(x => x.Deserialize(It.IsAny<Stream>()))
+            .Returns((ContextData)null!);
+
+        var act = async () => await service.GetContextDataAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*deserializer returned null*");
+    }
+
+    [Test]
+    public async Task TestPublish()
+    {
+        var config = H.ServiceConfig("website", "https://localhost/v1", "dev", "test-api-key");
+        var service = new ABsmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        var publishEvent = new PublishEvent();
+        var eventBytes = Array.Empty<byte>();
+
+        Mock.Get(_serializer).Setup(x => x.Serialize(publishEvent)).Returns(eventBytes);
+        Mock.Get(_httpClient).Setup(x => x.PutAsync("https://localhost/v1/context", It.IsAny<HttpContent>()))
+            .Returns(() => GetResponse(HttpStatusCode.OK, Array.Empty<byte>()));
+
+        var actual = await service.PublishAsync(publishEvent);
+
+        actual.Should().BeTrue();
+
+        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
+        Mock.Get(_httpClient).Verify(x =>
+            x.PutAsync("https://localhost/v1/context", It.IsAny<HttpContent>()), Times.Once);
+        VerifyDefaultHeaders(Mock.Get(_httpClient));
+    }
+
+    [Test]
+    public async Task TestPublish_ConnectionError()
+    {
+        var config = H.ServiceConfig("website", "https://localhost/v1", "dev", "test-api-key");
+        var service = new ABsmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        var publishEvent = new PublishEvent();
+        var eventBytes = Array.Empty<byte>();
+
+        Mock.Get(_serializer).Setup(x => x.Serialize(publishEvent)).Returns(eventBytes);
+        Mock.Get(_httpClient).Setup(x => x.PutAsync("https://localhost/v1/context", It.IsAny<HttpContent>()))
+            .Throws<Exception>();
+
+        var actual = await service.PublishAsync(publishEvent);
+
+        actual.Should().BeFalse();
+
+        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
+        Mock.Get(_httpClient).Verify(x =>
+            x.PutAsync("https://localhost/v1/context", It.IsAny<HttpContent>()), Times.Once);
+        VerifyDefaultHeaders(Mock.Get(_httpClient));
+    }
+
+    [Test]
+    public async Task TestPublish_HttpError()
+    {
+        var config = H.ServiceConfig("website", "https://localhost/v1", "dev", "test-api-key");
+        var service = new ABsmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        var publishEvent = new PublishEvent();
+        var eventBytes = Array.Empty<byte>();
+
+        Mock.Get(_serializer).Setup(x => x.Serialize(publishEvent)).Returns(eventBytes);
+        Mock.Get(_httpClient).Setup(x => x.PutAsync("https://localhost/v1/context", It.IsAny<HttpContent>()))
+            .Returns(() => GetResponse(HttpStatusCode.BadRequest, Array.Empty<byte>()));
+
+        var actual = await service.PublishAsync(publishEvent);
+
+        actual.Should().BeFalse();
+
+        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
+        Mock.Get(_httpClient).Verify(x =>
+            x.PutAsync("https://localhost/v1/context", It.IsAny<HttpContent>()), Times.Once);
+        VerifyDefaultHeaders(Mock.Get(_httpClient));
+    }
+
+    private void VerifyDefaultHeaders(Mock<IABsmartlyHttpClient> httpClientMock)
+    {
+        httpClientMock.Verify(x => x.AddHeader("X-API-Key", "test-api-key"));
+        httpClientMock.Verify(x => x.AddHeader("X-Application", "website"));
+        httpClientMock.Verify(x => x.AddHeader("X-Environment", "dev"));
+        httpClientMock.Verify(x => x.AddHeader("X-Application-Version", "0"));
+        httpClientMock.Verify(x => x.AddHeader("X-Agent", "absmartly-dotnet-sdk"));
+    }
+
+    private Task<HttpResponseMessage> GetResponse(HttpStatusCode statusCode, byte[] bytes)
+    {
+        return Task.FromResult(new HttpResponseMessage(statusCode)
+        {
+            Content = new ByteArrayContent(bytes)
+        });
+    }
+}

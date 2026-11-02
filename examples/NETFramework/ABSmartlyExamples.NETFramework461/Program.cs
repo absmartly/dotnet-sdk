@@ -15,7 +15,7 @@ namespace ABSmartlyExamples.NETFramework461
             var serviceProvider = new ServiceCollection().AddHttpClient().BuildServiceProvider();
             var httpClientFactory = serviceProvider.GetService<IHttpClientFactory>();
 
-            var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory), new ABSmartlyServiceConfiguration
+            var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory), new ABsmartlyServiceConfiguration
             {
                 Environment = "prod",
                 Application = "www",

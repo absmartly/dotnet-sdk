@@ -17,7 +17,7 @@ public class ABsmartly
 
     private IAudienceDeserializer _audienceDeserializer;
 
-    private IABSmartlyServiceClient _client;
+    private IABsmartlyServiceClient _client;
 
     private IContextDataDeserializer _contextDataDeserializer;
     private IContextDataProvider _contextDataProvider;
@@ -31,7 +31,7 @@ public class ABsmartly
 
     [ActivatorUtilitiesConstructor]
     public ABsmartly(IABsmartlyHttpClientFactory httpClientFactory,
-        IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
+        IOptions<ABsmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABsmartlyConfig> configOptions,
         ILoggerFactory loggerFactory)
     {
@@ -39,7 +39,7 @@ public class ABsmartly
     }
 
     public ABsmartly(IABsmartlyHttpClientFactory httpClientFactory,
-        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyServiceConfiguration serviceConfiguration,
         ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
     {
@@ -47,7 +47,7 @@ public class ABsmartly
     }
 
     private void Init(IABsmartlyHttpClientFactory httpClientFactory,
-        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyServiceConfiguration serviceConfiguration,
         ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
     {
@@ -60,7 +60,7 @@ public class ABsmartly
             config?.ContextDataDeserializer ?? new DefaultContextDataDeserializer(_loggerFactory);
         _contextEventSerializer = config?.ContextEventSerializer ?? new DefaultContextEventSerializer(_loggerFactory);
 
-        _client = new ABSmartlyService(
+        _client = new ABsmartlyService(
             serviceConfiguration,
             _httpClientFactory,
             _contextDataDeserializer,

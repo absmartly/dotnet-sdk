@@ -11,7 +11,7 @@ public class ABSdk : ABsmartly
 {
     [ActivatorUtilitiesConstructor]
     public ABSdk(IABSdkHttpClientFactory httpClientFactory,
-        IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
+        IOptions<ABsmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABSdkConfig> configOptions,
         ILoggerFactory loggerFactory)
         : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration,
@@ -20,7 +20,7 @@ public class ABSdk : ABsmartly
     }
 
     public ABSdk(IABSdkHttpClientFactory httpClientFactory,
-        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyServiceConfiguration serviceConfiguration,
         ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
         : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, config, loggerFactory)
@@ -28,7 +28,7 @@ public class ABSdk : ABsmartly
     }
 
     public ABSdk(ABSdkHttpClientFactory httpClientFactory,
-        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyServiceConfiguration serviceConfiguration,
         ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
         : base(httpClientFactory, serviceConfiguration, config, loggerFactory)
@@ -36,7 +36,7 @@ public class ABSdk : ABsmartly
     }
 
     public ABSdk(IABsmartlyHttpClientFactory httpClientFactory,
-        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyServiceConfiguration serviceConfiguration,
         ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
         : base(httpClientFactory, serviceConfiguration, config, loggerFactory)
@@ -49,7 +49,7 @@ public class Absmartly : ABsmartly
 {
     [ActivatorUtilitiesConstructor]
     public Absmartly(IABSdkHttpClientFactory httpClientFactory,
-        IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
+        IOptions<ABsmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABsmartlyConfig> configOptions,
         ILoggerFactory loggerFactory)
         : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, configOptions, loggerFactory)
@@ -57,7 +57,7 @@ public class Absmartly : ABsmartly
     }
 
     public Absmartly(IABSdkHttpClientFactory httpClientFactory,
-        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyServiceConfiguration serviceConfiguration,
         ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
         : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, config, loggerFactory)
@@ -65,7 +65,7 @@ public class Absmartly : ABsmartly
     }
 
     public Absmartly(ABSdkHttpClientFactory httpClientFactory,
-        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyServiceConfiguration serviceConfiguration,
         ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
         : base(httpClientFactory, serviceConfiguration, config, loggerFactory)
@@ -73,7 +73,7 @@ public class Absmartly : ABsmartly
     }
 
     public Absmartly(IABsmartlyHttpClientFactory httpClientFactory,
-        ABSmartlyServiceConfiguration serviceConfiguration,
+        ABsmartlyServiceConfiguration serviceConfiguration,
         ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)
         : base(httpClientFactory, serviceConfiguration, config, loggerFactory)

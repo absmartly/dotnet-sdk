@@ -2,7 +2,7 @@
 
 public static class H
 {
-    public static ABSmartlyServiceConfiguration ServiceConfig(string application, string endpoint, string environment,
+    public static ABsmartlyServiceConfiguration ServiceConfig(string application, string endpoint, string environment,
         string apiKey)
     {
         return new()

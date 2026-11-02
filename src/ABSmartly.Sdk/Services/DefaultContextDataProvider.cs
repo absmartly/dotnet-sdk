@@ -5,9 +5,9 @@ namespace ABSmartly.Services;
 
 public class DefaultContextDataProvider : IContextDataProvider
 {
-    private readonly IABSmartlyServiceClient _client;
+    private readonly IABsmartlyServiceClient _client;
 
-    public DefaultContextDataProvider(IABSmartlyServiceClient client)
+    public DefaultContextDataProvider(IABsmartlyServiceClient client)
     {
         _client = client;
     }

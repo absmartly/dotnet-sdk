@@ -5,9 +5,9 @@ namespace ABSmartly.Services;
 
 public class DefaultContextPublisher : IContextPublisher
 {
-    private readonly IABSmartlyServiceClient _client;
+    private readonly IABsmartlyServiceClient _client;
 
-    public DefaultContextPublisher(IABSmartlyServiceClient client)
+    public DefaultContextPublisher(IABsmartlyServiceClient client)
     {
         _client = client;
     }

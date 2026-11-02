@@ -84,7 +84,7 @@ public class FixVerificationTests
         var deserializer = Mock.Of<IContextDataDeserializer>();
         var serializer = Mock.Of<IContextEventSerializer>();
 
-        var act = () => new ABSmartlyService(
+        var act = () => new ABsmartlyService(
             H.ServiceConfig("1", "http://evil.com", "1", "1"),
             httpClientFactory, deserializer, serializer);
         act.Should().Throw<ArgumentException>();
@@ -97,7 +97,7 @@ public class FixVerificationTests
         var deserializer = Mock.Of<IContextDataDeserializer>();
         var serializer = Mock.Of<IContextEventSerializer>();
 
-        var act = () => new ABSmartlyService(
+        var act = () => new ABsmartlyService(
             H.ServiceConfig("1", "http://localhost:8080", "1", "1"),
             httpClientFactory, deserializer, serializer);
         act.Should().NotThrow();
@@ -110,7 +110,7 @@ public class FixVerificationTests
         var deserializer = Mock.Of<IContextDataDeserializer>();
         var serializer = Mock.Of<IContextEventSerializer>();
 
-        var act = () => new ABSmartlyService(
+        var act = () => new ABsmartlyService(
             H.ServiceConfig("1", "http://127.0.0.1:8080", "1", "1"),
             httpClientFactory, deserializer, serializer);
         act.Should().NotThrow();
@@ -123,7 +123,7 @@ public class FixVerificationTests
         var deserializer = Mock.Of<IContextDataDeserializer>();
         var serializer = Mock.Of<IContextEventSerializer>();
 
-        var act = () => new ABSmartlyService(
+        var act = () => new ABsmartlyService(
             H.ServiceConfig("1", "http://[::1]:8080", "1", "1"),
             httpClientFactory, deserializer, serializer);
         act.Should().NotThrow();
@@ -136,7 +136,7 @@ public class FixVerificationTests
         var deserializer = Mock.Of<IContextDataDeserializer>();
         var serializer = Mock.Of<IContextEventSerializer>();
 
-        var act = () => new ABSmartlyService(
+        var act = () => new ABsmartlyService(
             H.ServiceConfig("1", "http://evil-localhost.com", "1", "1"),
             httpClientFactory, deserializer, serializer);
         act.Should().Throw<ArgumentException>();
@@ -149,7 +149,7 @@ public class FixVerificationTests
         var deserializer = Mock.Of<IContextDataDeserializer>();
         var serializer = Mock.Of<IContextEventSerializer>();
 
-        var act = () => new ABSmartlyService(
+        var act = () => new ABsmartlyService(
             H.ServiceConfig("1", "not-a-uri", "1", "1"),
             httpClientFactory, deserializer, serializer);
         act.Should().Throw<ArgumentException>();
@@ -194,7 +194,7 @@ public class FixVerificationTests
         var deserializer = Mock.Of<IContextDataDeserializer>();
         var serializer = Mock.Of<IContextEventSerializer>();
 
-        var service = new ABSmartlyService(
+        var service = new ABsmartlyService(
             H.ServiceConfig("1", "https://example.com/v1/", "1", "1"),
             httpClientFactory, deserializer, serializer);
 
@@ -230,7 +230,7 @@ public class FixVerificationTests
         try
         {
             var factory = Mock.Of<IABsmartlyHttpClientFactory>(f => f.CreateClient() == null);
-            var service = new ABSmartlyService(
+            var service = new ABsmartlyService(
                 H.ServiceConfig("1", "https://example.com/v1/", "1", "1"),
                 factory, Mock.Of<IContextDataDeserializer>(), Mock.Of<IContextEventSerializer>());
 

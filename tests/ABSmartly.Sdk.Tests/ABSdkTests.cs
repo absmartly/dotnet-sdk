@@ -17,7 +17,7 @@ public class ABSdkTests
     private IABsmartlyHttpClientFactory _httpClientFactory = null!;
 
     private IABsmartlyHttpClient _httpClient = null!;
-    private ABSmartlyServiceConfiguration _serviceConfig = null!;
+    private ABsmartlyServiceConfiguration _serviceConfig = null!;
 
     [Test]
     public void TestCreateThrowsWithInvalidConfig()
@@ -30,7 +30,7 @@ public class ABSdkTests
 
         act = () => new ABsmartly(_httpClientFactory, null);
         act.Should().Throw<ArgumentNullException>()
-            .WithMessage($"{nameof(ABSmartlyService)} config is required (Parameter 'config')");
+            .WithMessage($"{nameof(ABsmartlyService)} config is required (Parameter 'config')");
     }
 
     [Test]

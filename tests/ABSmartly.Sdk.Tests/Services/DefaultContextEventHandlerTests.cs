@@ -10,13 +10,13 @@ public class DefaultContextEventHandlerTests
     public void SetUp()
     {
         _event = Mock.Of<PublishEvent>();
-        _client = Mock.Of<IABSmartlyServiceClient>();
+        _client = Mock.Of<IABsmartlyServiceClient>();
         _handler = new DefaultContextEventHandler(_client);
         _context = Mock.Of<IContext>();
     }
 
     private PublishEvent _event = null!;
-    private IABSmartlyServiceClient _client = null!;
+    private IABsmartlyServiceClient _client = null!;
     private DefaultContextEventHandler _handler = null!;
     private IContext _context = null!;
 

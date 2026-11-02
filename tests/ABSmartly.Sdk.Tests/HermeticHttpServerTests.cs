@@ -124,7 +124,7 @@ public class HermeticHttpServerTests
 
         var httpClientFactory = provider.GetRequiredService<IABsmartlyHttpClientFactory>();
 
-        var serviceConfig = new ABSmartlyServiceConfiguration
+        var serviceConfig = new ABsmartlyServiceConfiguration
         {
             Endpoint = _baseUrl,
             ApiKey = ApiKey,

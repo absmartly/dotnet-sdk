@@ -8,7 +8,7 @@ public class DefaultContextDataProviderTests
     [Test]
     public async Task TestCallsServiceClient()
     {
-        var client = Mock.Of<IABSmartlyServiceClient>();
+        var client = Mock.Of<IABsmartlyServiceClient>();
         var provider = new DefaultContextDataProvider(client);
 
         await provider.GetContextDataAsync();
@@ -20,7 +20,7 @@ public class DefaultContextDataProviderTests
     public async Task TestThrowsIfServiceClientThrows()
     {
         var exception = new Exception();
-        var client = Mock.Of<IABSmartlyServiceClient>();
+        var client = Mock.Of<IABsmartlyServiceClient>();
         Mock.Get(client).Setup(x => x.GetContextDataAsync()).Throws(exception);
         var provider = new DefaultContextDataProvider(client);
 

@@ -10,7 +10,7 @@ namespace ABSmartly.Services;
 [Obsolete("Use DefaultContextPublisher instead.")]
 public class DefaultContextEventHandler : DefaultContextPublisher, IContextEventHandler
 {
-    public DefaultContextEventHandler(IABSmartlyServiceClient client) : base(client)
+    public DefaultContextEventHandler(IABsmartlyServiceClient client) : base(client)
     {
     }
 }
