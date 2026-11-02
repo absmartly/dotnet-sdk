@@ -96,4 +96,54 @@ public class BehaviourParityTests
     }
 
     #endregion
+
+    #region Attributes
+
+    [Test]
+    public void AttributeReadsAreSafeAgainstConcurrentSetAttribute()
+    {
+        var context = CreateContext(_data);
+        using var stop = new CancellationTokenSource();
+        Exception? readError = null;
+
+        var reader = Task.Run(() =>
+        {
+            try
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    _ = context.Attributes;
+                    _ = context.GetAttribute("attr");
+                }
+            }
+            catch (Exception e)
+            {
+                readError = e;
+            }
+        });
+
+        for (var i = 0; i < 20_000 && readError == null; i++)
+            context.SetAttribute("attr", i);
+
+        stop.Cancel();
+        reader.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+
+        readError.Should().BeNull();
+        context.GetAttribute("attr").Should().NotBeNull();
+    }
+
+    [Test]
+    public void AttributesStayReadableAfterDispose()
+    {
+        var context = CreateContext(_data);
+        context.SetAttribute("a", 1);
+        context.SetAttribute("a", 2);
+        context.Dispose();
+
+        context.GetAttribute("a").Should().Be(2);
+        context.Attributes.Should().BeEquivalentTo(new Dictionary<string, object> { ["a"] = 2 });
+    }
+
+    #endregion
+
 }

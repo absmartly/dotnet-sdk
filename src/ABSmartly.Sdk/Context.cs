@@ -885,27 +885,48 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         foreach (var kvp in attributes) SetAttribute(kvp.Key, kvp.Value);
     }
 
+    // Read under the context read lock, as Context.java getAttribute(s): SetAttribute
+    // appends under the write lock, and enumerating a List<T> while it is appended
+    // to throws InvalidOperationException.
     public object GetAttribute(string name)
     {
-        object result = null;
-        foreach (var attribute in _attributes)
+        return ReadAttributes(attributes =>
         {
-            if (attribute.Name == name)
-                result = attribute.Value;
-        }
-        return result;
+            for (var i = attributes.Count - 1; i >= 0; i--)
+                if (attributes[i].Name == name)
+                    return attributes[i].Value;
+            return null;
+        });
     }
 
     public Dictionary<string, object> Attributes
     {
         get
         {
-            var result = new Dictionary<string, object>();
-            foreach (var attribute in _attributes)
+            return ReadAttributes(attributes =>
             {
-                result[attribute.Name] = attribute.Value;
-            }
-            return result;
+                var result = new Dictionary<string, object>(attributes.Count);
+                foreach (var attribute in attributes)
+                    result[attribute.Name] = attribute.Value;
+                return result;
+            });
+        }
+    }
+
+    private T ReadAttributes<T>(Func<List<Attribute>, T> read)
+    {
+        // Once closed no writer can run (SetAttribute throws), and Dispose may have
+        // released the lock, so read without it.
+        if (IsClosed()) return read(_attributes);
+
+        _contextLock.EnterReadLock();
+        try
+        {
+            return read(_attributes);
+        }
+        finally
+        {
+            _contextLock.ExitReadLock();
         }
     }
 
