@@ -24,7 +24,7 @@ Through .NET Standard 2.0 it is compatible with:
 Install the A/B Smartly .NET SDK from NuGet:
 
 ```shell
-dotnet add package ABSmartly.Sdk --version 1.0.0
+dotnet add package ABSmartly.Sdk
 ```
 
 ## Getting Started
@@ -47,13 +47,14 @@ using ABSmartly.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-...
-
+// AddABSmartly registers its own named HttpClient (ABsmartly.HttpClientName),
+// so no separate AddHttpClient() call is needed.
 builder.Services.AddABSmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
-...
+var app = builder.Build();
+app.Run();
 ```
 
 **appsettings.json:**
@@ -77,11 +78,11 @@ using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("[controller]")]
-public class Test : ControllerBase
+public class TestController : ControllerBase
 {
     private readonly ABsmartly _absmartly;
 
-    public Test(ABsmartly absmartly)
+    public TestController(ABsmartly absmartly)
     {
         _absmartly = absmartly;
     }
@@ -95,12 +96,13 @@ The `AddABSmartly` extension method allows you to configure SDK settings, HTTP c
 The SDK instance can also be created manually:
 
 ```csharp
+using System.Net.Http;
 using ABSmartly;
 using ABSmartly.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 var serviceProvider = new ServiceCollection().AddHttpClient().BuildServiceProvider();
-var httpClientFactory = serviceProvider.GetService<IHttpClientFactory>();
+var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
 
 var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory), new ABSmartlyServiceConfiguration
 {
@@ -109,8 +111,6 @@ var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory),
     Endpoint = "https://your-company.absmartly.io/v1",
     ApiKey = "YOUR-API-KEY"
 });
-
-...
 ```
 
 **SDK Options**
@@ -123,7 +123,7 @@ var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory),
 | Application         | `string`                     | &#9989;   | `null`  | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running. |
 | ContextEventLogger  | `IContextEventLogger`        | &#10060;  | `null`  | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
 | ContextDataProvider | `IContextDataProvider`       | &#10060;  | auto    | Custom provider for context data (advanced usage)                                                                                                                             |
-| ContextEventHandler | `IContextEventHandler`       | &#10060;  | auto    | Custom handler for publishing events (advanced usage)                                                                                                                         |
+| ContextPublisher    | `IContextPublisher`          | &#10060;  | auto    | Custom publisher for events (advanced usage). `ContextEventHandler` (`IContextEventHandler`) still works but is obsolete.                                                     |
 
 **Note:** The SDK uses `IHttpClientFactory` abstraction to effectively manage HTTP connection pools. This factory is injected using `IABsmartlyHttpClientFactory` as seen in the example above. If custom behavior or implementation is required, inject your own implementation of either `IHttpClientFactory` or `IABsmartlyHttpClientFactory`.
 
@@ -160,7 +160,7 @@ These methods return `IContext`, whose members are unchanged since 1.3.0. Member
 `CreatePendingContext()` returns at once with an `IContextV2` context that is not ready yet, and loads the data in the background. Until the context is ready, the read methods (`GetTreatment()`, `PeekTreatment()`, `GetVariableValue()`, `PeekVariableValue()`, `VariableKeys`, `Experiments` and the custom field methods) throw an `InvalidOperationException` with the message `ABSmartly Context is not yet ready` and queue no exposure. Call `WaitUntilReady()` or `WaitUntilReadyAsync()` first. `Track()`, `SetUnit()`, `SetAttribute()` and `SetOverride()` work as usual; tracked goals are published after the context is ready.
 
 ```csharp
-var context = _absmartly.CreatePendingContext(config);
+IContextV2 context = _absmartly.CreatePendingContext(config);
 context.Track("page_view", null); // queued before the context is ready
 
 await context.WaitUntilReadyAsync(); // or context.WaitUntilReady()
@@ -316,22 +316,27 @@ context.Publish();
 
 ### Finalizing (Disposing)
 
-The `Context` implements `IDisposable` and `IAsyncDisposable` interfaces to ensure all events have been published to the A/B Smartly collector, like `Publish()`, and will also "seal" the context, throwing an error if any method that could generate an event is called.
+The `Context` class implements `IDisposable` and `IAsyncDisposable` to ensure all events have been published to the A/B Smartly collector, like `Publish()`, and will also "seal" the context, throwing an error if any method that could generate an event is called.
 
-Instead of calling `Publish()` directly, the `using` pattern can be used:
+The `IContext` and `IContextV2` interfaces are not disposable themselves (so that they stay compatible with 1.3.0), but the object returned by `CreateContext*()` and `CreatePendingContext()` is a `Context`. Cast it to use `using` / `await using`:
 
 ```csharp
-using var context = _absmartly.CreateContext(config);
+using var context = (Context)_absmartly.CreateContext(config);
 
 // or asynchronously
-await using var context = await _absmartly.CreateContextAsync(config);
+await using var asyncContext = (Context)await _absmartly.CreateContextAsync(config);
 ```
+
+`IContextV2.FinalizeAsync()` publishes pending events and seals the context without disposing it, so units, attributes and experiments stay readable afterwards. `IContextV2.Close()` does the same synchronously.
 
 ### Custom Event Logger
 
 The A/B Smartly SDK can be instantiated with an event logger used for all contexts. In addition, an event logger can be specified when creating a particular context in the `ContextConfig`.
 
 ```csharp
+using ABSmartly;
+using ABSmartly.Models;
+
 public class CustomEventLogger : IContextEventLogger
 {
     public void HandleEvent(IContext context, EventType eventType, object data)
@@ -369,8 +374,8 @@ builder.Services.AddABSmartly(
 
 // Or when creating SDK instance manually
 var absmartly = new ABsmartly(
-    new ABsmartlyHttpClientFactory(...),
-    new ABSmartlyServiceConfiguration { ... },
+    new ABsmartlyHttpClientFactory(httpClientFactory),
+    new ABSmartlyServiceConfiguration { /* Endpoint, ApiKey, Environment, Application */ },
     new ABsmartlyConfig { ContextEventLogger = new CustomEventLogger() });
 
 // OR, alternatively, during a particular context initialization
@@ -392,9 +397,13 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 | `Publish`  | `Publish()` or `PublishAsync()` method succeeds             | `PublishEvent` sent to the A/B Smartly event collector |
 | `Exposure` | `GetTreatment()` method succeeds on first exposure          | `Exposure` enqueued for publishing                     |
 | `Goal`     | `Track()` method succeeds                                   | `GoalAchievement` enqueued for publishing              |
-| `Close`    | Context disposal succeeds                                   | `null`                                                 |
+| `Close`    | Context disposal, `Close()` or `FinalizeAsync()` succeeds   | `null`                                                 |
 
 ## Platform-Specific Examples
+
+All ASP.NET Core examples read the SDK settings from the `ABSmartly` configuration section described in [Dependency Injection Setup](#recommended-dependency-injection-setup) (`Environment`, `Application`, `Endpoint` and `ApiKey` in `appsettings.json`), and register the SDK with `AddABSmartly()`, which also registers the `HttpClient` the SDK uses. The `session_id` examples use ASP.NET Core session state, which needs `AddDistributedMemoryCache()` (or another distributed cache), `AddSession()` and `UseSession()`.
+
+`CreateContextAsync()` returns an `IContext`. The object it returns is a `Context`, which is the type that implements `IAsyncDisposable`, so the examples cast to `Context` to use `await using`.
 
 ### Using with ASP.NET Core Minimal APIs
 
@@ -408,11 +417,14 @@ builder.Services.AddABSmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
+// Sessions need a backing cache and middleware
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession();
+
 var app = builder.Build();
 
-// Sessions need a backing cache and middleware
-// builder.Services.AddDistributedMemoryCache(); builder.Services.AddSession();
-// app.UseSession();
+app.UseSession();
+
 app.MapGet("/", async (ABsmartly absmartly, HttpContext httpContext) =>
 {
     var sessionId = httpContext.Session.GetString("SessionId")
@@ -422,11 +434,9 @@ app.MapGet("/", async (ABsmartly absmartly, HttpContext httpContext) =>
     var config = new ContextConfig()
         .SetUnit("session_id", sessionId);
 
-    var context = await absmartly.CreateContextAsync(config);
+    await using var context = (Context)await absmartly.CreateContextAsync(config);
 
     var treatment = context.GetTreatment("exp_test_experiment");
-
-    await context.DisposeAsync();
 
     return treatment == 0
         ? Results.Text("<h1>Control Group</h1>", "text/html")
@@ -439,26 +449,34 @@ app.Run();
 ### Using with ASP.NET Core MVC
 
 ```csharp
-// Startup.cs or Program.cs
+// Program.cs
 using ABSmartly;
 using ABSmartly.DependencyInjection;
 
-public class Startup
-{
-    public void ConfigureServices(IServiceCollection services)
-    {
-        services.AddControllersWithViews();
+var builder = WebApplication.CreateBuilder(args);
 
-        services.AddABSmartly(
-            Configuration.GetSection("ABSmartly"),
-            HttpClientConfig.CreateDefault());
-    }
-}
+builder.Services.AddControllersWithViews();
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession();
 
+builder.Services.AddABSmartly(
+    builder.Configuration.GetSection("ABSmartly"),
+    HttpClientConfig.CreateDefault());
+
+var app = builder.Build();
+
+app.UseRouting();
+app.UseSession();
+app.MapDefaultControllerRoute();
+
+app.Run();
+```
+
+```csharp
 // Controllers/HomeController.cs
-using Microsoft.AspNetCore.Mvc;
 using ABSmartly;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
 public class HomeController : Controller
 {
@@ -478,7 +496,7 @@ public class HomeController : Controller
         var config = new ContextConfig()
             .SetUnit("session_id", sessionId);
 
-        await using var context = await _absmartly.CreateContextAsync(config);
+        await using var context = (Context)await _absmartly.CreateContextAsync(config);
 
         var treatment = context.GetTreatment("exp_test_experiment");
 
@@ -489,12 +507,54 @@ public class HomeController : Controller
 }
 ```
 
+If you use a `Startup` class instead of top-level statements, call the same methods from it:
+
+```csharp
+// Startup.cs
+using ABSmartly;
+using ABSmartly.DependencyInjection;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+public class Startup
+{
+    public Startup(IConfiguration configuration)
+    {
+        Configuration = configuration;
+    }
+
+    public IConfiguration Configuration { get; }
+
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddControllersWithViews();
+        services.AddDistributedMemoryCache();
+        services.AddSession();
+
+        services.AddABSmartly(
+            Configuration.GetSection("ABSmartly"),
+            HttpClientConfig.CreateDefault());
+    }
+
+    public void Configure(IApplicationBuilder app)
+    {
+        app.UseRouting();
+        app.UseSession();
+        app.UseEndpoints(endpoints => endpoints.MapDefaultControllerRoute());
+    }
+}
+```
+
 ### Using with ASP.NET Core Razor Pages
+
+Register `AddRazorPages()`, `AddDistributedMemoryCache()`, `AddSession()`, `AddABSmartly(...)`, `app.UseSession()` and `app.MapRazorPages()` as above.
 
 ```csharp
 // Pages/Index.cshtml.cs
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using ABSmartly;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.RazorPages;
 
 public class IndexModel : PageModel
 {
@@ -516,7 +576,7 @@ public class IndexModel : PageModel
         var config = new ContextConfig()
             .SetUnit("session_id", sessionId);
 
-        await using var context = await _absmartly.CreateContextAsync(config);
+        await using var context = (Context)await _absmartly.CreateContextAsync(config);
 
         Treatment = context.GetTreatment("exp_test_experiment");
     }
@@ -539,9 +599,21 @@ builder.Services.AddABSmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
-// Pages/Index.razor
+var app = builder.Build();
+
+app.UseStaticFiles();
+app.UseRouting();
+app.MapBlazorHub();
+app.MapFallbackToPage("/_Host");
+
+app.Run();
+```
+
+```razor
+@* Pages/Index.razor *@
 @page "/"
-@inject ABsmartly ABsmartly
+@using ABSmartly
+@inject ABsmartly Sdk
 
 <h1>@(treatment == 0 ? "Control Group" : "Treatment Group")</h1>
 
@@ -553,7 +625,7 @@ builder.Services.AddABSmartly(
         var config = new ContextConfig()
             .SetUnit("session_id", Guid.NewGuid().ToString());
 
-        await using var context = await ABsmartly.CreateContextAsync(config);
+        await using var context = (Context)await Sdk.CreateContextAsync(config);
 
         treatment = context.GetTreatment("exp_test_experiment");
     }
@@ -586,12 +658,11 @@ builder.Services.AddABSmartly(
 
 ```csharp
 using ABSmartly;
-using System.Threading.Tasks;
 
 var config = new ContextConfig()
     .SetUnit("session_id", "abc123");
 
-var contextTask = _absmartly.CreateContextAsync(config);
+var contextTask = absmartly.CreateContextAsync(config);
 var timeoutTask = Task.Delay(TimeSpan.FromMilliseconds(1500));
 
 var completedTask = await Task.WhenAny(contextTask, timeoutTask);
@@ -617,9 +688,9 @@ static async Task ObserveAndDisposeAsync(Task<IContext> creation, bool reportRea
     }
     finally
     {
-        if (context != null)
+        if (context is IAsyncDisposable disposable)
         {
-            try { await context.DisposeAsync(); }
+            try { await disposable.DisposeAsync(); }
             catch (Exception ex) { Console.WriteLine($"Context disposal failed: {ex.Message}"); }
         }
     }
@@ -630,40 +701,50 @@ static async Task ObserveAndDisposeAsync(Task<IContext> creation, bool reportRea
 
 For Blazor or other component-based scenarios with navigation. `CreateContextAsync` cannot be cancelled, so the context is always disposed once it is created, even if the component has already navigated away:
 
-```csharp
-private bool _isNavigating = false;
+```razor
+@page "/guarded"
+@using ABSmartly
+@implements IDisposable
+@inject ABsmartly Sdk
 
-protected override async Task OnInitializedAsync()
-{
-    var config = new ContextConfig()
-        .SetUnit("session_id", Guid.NewGuid().ToString());
+<h1>@(treatment == 0 ? "Control Group" : "Treatment Group")</h1>
 
-    IContext context = null;
-    try
+@code {
+    private int treatment = 0;
+    private bool _isNavigating = false;
+
+    protected override async Task OnInitializedAsync()
     {
-        context = await ABsmartly.CreateContextAsync(config);
+        var config = new ContextConfig()
+            .SetUnit("session_id", Guid.NewGuid().ToString());
 
-        if (!_isNavigating)
+        IContext context = null;
+        try
         {
-            treatment = context.GetTreatment("exp_test_experiment");
+            context = await Sdk.CreateContextAsync(config);
+
+            if (!_isNavigating)
+            {
+                treatment = context.GetTreatment("exp_test_experiment");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating context: {ex.Message}");
+        }
+        finally
+        {
+            if (context is IAsyncDisposable disposable)
+            {
+                await disposable.DisposeAsync();
+            }
         }
     }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Error creating context: {ex.Message}");
-    }
-    finally
-    {
-        if (context != null)
-        {
-            await context.DisposeAsync();
-        }
-    }
-}
 
-public void Dispose()
-{
-    _isNavigating = true;
+    public void Dispose()
+    {
+        _isNavigating = true;
+    }
 }
 ```
 
