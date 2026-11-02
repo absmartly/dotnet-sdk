@@ -208,6 +208,11 @@ public class ContextTests
         VerifyThrows(() => context.GetVariableValue("banner.border", 17));
         VerifyThrows(() => context.PeekVariableValue("banner.border", 17));
         VerifyThrows(() => _ = context.VariableKeys);
+        // Custom-field reads only require ready, as in 1.3.0 and the Java SDK.
+        context.GetCustomFieldKeys().Should().BeEquivalentTo(new List<string> { "country", "languages", "overrides" });
+        context.GetCustomFieldValue("exp_test_ab", "country").Should().Be("US,PT,ES,DE,FR");
+        context.GetCustomFieldValueType("exp_test_ab", "country").Should().Be("string");
+        context.GetCustomFieldType("exp_test_ab", "country").Should().Be("string");
 
         manualResetEvent.Set();
 
@@ -219,7 +224,7 @@ public class ContextTests
 
         void VerifyThrows(Action act)
         {
-            act.Should().Throw<InvalidOperationException>().WithMessage("ABsmartly Context is finalizing.");
+            act.Should().Throw<InvalidOperationException>().WithMessage("ABSmartly Context is closing");
         }
     }
 
@@ -253,10 +258,15 @@ public class ContextTests
         VerifyThrows(() => context.GetVariableValue("banner.border", 17));
         VerifyThrows(() => context.PeekVariableValue("banner.border", 17));
         VerifyThrows(() => _ = context.VariableKeys);
+        // Custom-field reads only require ready, as in 1.3.0 and the Java SDK.
+        context.GetCustomFieldKeys().Should().BeEquivalentTo(new List<string> { "country", "languages", "overrides" });
+        context.GetCustomFieldValue("exp_test_ab", "country").Should().Be("US,PT,ES,DE,FR");
+        context.GetCustomFieldValueType("exp_test_ab", "country").Should().Be("string");
+        context.GetCustomFieldType("exp_test_ab", "country").Should().Be("string");
 
         void VerifyThrows(Action act)
         {
-            act.Should().Throw<InvalidOperationException>().WithMessage("ABsmartly Context is finalized.");
+            act.Should().Throw<InvalidOperationException>().WithMessage("ABSmartly Context is closed");
         }
     }
 

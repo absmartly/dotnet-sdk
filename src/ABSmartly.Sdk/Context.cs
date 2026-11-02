@@ -721,62 +721,77 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
     }
     
+    // Custom-field reads stay available after close, as in 1.3.0 and the Java SDK
+    // (checkReady(false)).
     public List<string> GetCustomFieldKeys()
     {
-        CheckReady(true);
+        CheckReady(false);
+
+        // Data locks are disposed once the context is disposed; no writer runs after close.
+        if (IsClosed()) return CollectCustomFieldKeys();
 
         try
         {
             _dataLock.EnterReadLock();
-
-            var keys = new List<string>();
-            
-            foreach (var experiment in _data.Experiments)
-            {
-                var customFieldValues = experiment.CustomFieldValues;
-                if (customFieldValues != null)
-                {
-                    foreach (var customFieldValue in customFieldValues)
-                    {
-                        keys.Add(customFieldValue.Name);
-                    }
-                }
-            }
-            
-            return keys.OrderBy(q => q).Distinct().ToList();
+            return CollectCustomFieldKeys();
         }
         finally
         {
             _dataLock.ExitReadLock();
         }
     }
-    
+
+    private List<string> CollectCustomFieldKeys()
+    {
+        var keys = new List<string>();
+
+        foreach (var experiment in _data.Experiments)
+        {
+            var customFieldValues = experiment.CustomFieldValues;
+            if (customFieldValues != null)
+            {
+                foreach (var customFieldValue in customFieldValues)
+                {
+                    keys.Add(customFieldValue.Name);
+                }
+            }
+        }
+
+        return keys.OrderBy(q => q).Distinct().ToList();
+    }
+
     private ContextCustomFieldValue GetCustomField(string experimentName, string key)
     {
+        if (IsClosed()) return FindCustomField(experimentName, key);
+
         try
         {
             _dataLock.EnterReadLock();
-
-            if (_contextCustomFields != null &&
-                _contextCustomFields.TryGetValue(experimentName, out var customFieldValues) &&
-                customFieldValues != null &&
-                customFieldValues.TryGetValue(key, out var field))
-            {
-                return field;
-            }
-
-            return null;
+            return FindCustomField(experimentName, key);
         }
         finally
         {
             _dataLock.ExitReadLock();
         }
+    }
+
+    private ContextCustomFieldValue FindCustomField(string experimentName, string key)
+    {
+        if (_contextCustomFields != null &&
+            _contextCustomFields.TryGetValue(experimentName, out var customFieldValues) &&
+            customFieldValues != null &&
+            customFieldValues.TryGetValue(key, out var field))
+        {
+            return field;
+        }
+
+        return null;
     }
 
     // The parameter is an experiment name; it keeps its 1.3.0 name for named-argument callers.
     public object GetCustomFieldValue(string environmentName, string key)
     {
-        CheckReady(true);
+        CheckReady(false);
 
         var field = GetCustomField(environmentName, key);
         return field?.Value;
@@ -784,7 +799,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     public object GetCustomFieldValueType(string experimentName, string key)
     {
-        CheckReady(true);
+        CheckReady(false);
 
         var field = GetCustomField(experimentName, key);
         return field?.Type;
