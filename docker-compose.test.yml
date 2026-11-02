@@ -1,4 +1,10 @@
 services:
+  test-net6:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    command: ["--framework", "net6.0"]
+
   test-net8:
     build:
       context: .
@@ -10,6 +16,19 @@ services:
       context: .
       dockerfile: Dockerfile.test
     command: ["--framework", "net9.0"]
+
+  # SDK 10 (nightly) image with the 6.0, 8.0 and 9.0 runtimes installed.
+  test-bleeding-edge-net6:
+    build:
+      context: .
+      dockerfile: Dockerfile.test.bleeding-edge
+    command: ["--framework", "net6.0"]
+
+  test-bleeding-edge-net8:
+    build:
+      context: .
+      dockerfile: Dockerfile.test.bleeding-edge
+    command: ["--framework", "net8.0"]
 
   test-bleeding-edge:
     build:
