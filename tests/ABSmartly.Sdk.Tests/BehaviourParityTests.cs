@@ -193,4 +193,43 @@ public class BehaviourParityTests
 
     #endregion
 
+    #region Variables
+
+    private static Experiment VariableExperiment(int id, string name, string controlConfig, string treatmentConfig) =>
+        new()
+        {
+            Id = id, Name = name, UnitType = "session_id", Iteration = 1,
+            Split = new[] { 0.5, 0.5 }, TrafficSplit = new[] { 0.0, 1.0 },
+            Variants = new[]
+            {
+                new ExperimentVariant { Name = "A", Config = controlConfig },
+                new ExperimentVariant { Name = "B", Config = treatmentConfig }
+            }
+        };
+
+    [Test]
+    public void VariableLookupSkipsAnAssignedExperimentWhoseVariantLacksTheKey()
+    {
+        // Both experiments index "color" (via variant B); exp_low wins by id, but is
+        // overridden to variant A, which does not define it.
+        var data = new ContextData(new[]
+        {
+            VariableExperiment(1, "exp_low", "{\"other\":1}", "{\"color\":\"red\"}"),
+            VariableExperiment(2, "exp_high", "{\"color\":\"blue\"}", "{\"color\":\"blue\"}")
+        });
+        var context = CreateContext(data);
+        context.SetOverride("exp_low", 0);
+        context.SetOverride("exp_high", 1);
+
+        context.PeekVariableValue("color", "default").Should().Be("blue");
+        context.GetVariableValue("color", "default").Should().Be("blue");
+        context.PendingCount.Should().Be(1, "only the experiment that supplied the value is exposed");
+
+        // When the lowest-id experiment's variant does define the key, it still wins.
+        context.SetOverride("exp_low", 1);
+        context.PeekVariableValue("color", "default").Should().Be("red");
+    }
+
+    #endregion
+
 }

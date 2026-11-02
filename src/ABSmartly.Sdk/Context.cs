@@ -711,7 +711,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         foreach (var experiment in experiments)
         {
             var assignment = GetAssignment(experiment.Data.Name);
-            if (assignment.Assigned || assignment.Overridden)
+            // The key is indexed if any variant defines it; skip an experiment whose
+            // selected variant does not, as the JS SDK (`key in assignment.variables`).
+            if ((assignment.Assigned || assignment.Overridden) &&
+                assignment.Variables != null && assignment.Variables.ContainsKey(key))
                 return assignment;
         }
         return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name) : null;
