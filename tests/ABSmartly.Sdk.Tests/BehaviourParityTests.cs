@@ -146,4 +146,51 @@ public class BehaviourParityTests
 
     #endregion
 
+    #region Audience
+
+    private sealed class CountingAudienceDeserializer : IAudienceDeserializer
+    {
+        private readonly DefaultAudienceDeserializer _inner = new();
+        public int Calls;
+
+        public Dictionary<string, object> Deserialize(string audience)
+        {
+            Interlocked.Increment(ref Calls);
+            return _inner.Deserialize(audience);
+        }
+    }
+
+    [Test]
+    public void AudienceIsNotReEvaluatedOnEveryCallAfterSetAttribute()
+    {
+        var counting = new CountingAudienceDeserializer();
+        _audienceMatcher = new AudienceMatcher(counting);
+        var data = DataWithCustomFields();
+        data.Experiments[0].Audience = "{\"filter\":[{\"gte\":[{\"var\":\"age\"},{\"value\":20}]}]}";
+
+        var context = CreateContext(data);
+        context.SetAttribute("age", 30);
+
+        var variant = context.GetTreatment("exp");
+        counting.Calls.Should().Be(1, "the first assignment evaluates the audience");
+
+        context.SetAttribute("age", 31);
+        context.GetTreatment("exp").Should().Be(variant);
+        counting.Calls.Should().Be(2, "a changed attribute re-checks the audience once");
+
+        for (var i = 0; i < 10; i++)
+        {
+            context.GetTreatment("exp").Should().Be(variant);
+            context.PeekTreatment("exp").Should().Be(variant);
+        }
+        counting.Calls.Should().Be(2, "the revalidated assignment is cached until the next SetAttribute");
+
+        // A change that flips the audience result still invalidates the assignment.
+        context.SetAttribute("age", 10);
+        context.GetTreatment("exp");
+        context.PendingCount.Should().Be(2, "the mismatched assignment is a new exposure");
+    }
+
+    #endregion
+
 }

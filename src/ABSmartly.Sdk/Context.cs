@@ -535,7 +535,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         if (!string.IsNullOrEmpty(experiment.Audience))
         {
-            if (_attrsSeq > assignment.AttrsSeq)
+            // Read before evaluating: an attribute set meanwhile must trigger a new check.
+            var attrsSeq = _attrsSeq;
+            if (attrsSeq > assignment.AttrsSeq)
             {
                 var match = EvaluateAudience(experiment.Audience);
                 var newAudienceMismatch = match != null ? !match.Value : false;
@@ -543,6 +545,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 {
                     return false;
                 }
+
+                // Still valid for these attributes: record it, so the audience is not
+                // re-evaluated on every call until the next SetAttribute (as the JS SDK).
+                // A racing reader can only store an older sequence, which merely causes
+                // one more evaluation.
+                assignment.AttrsSeq = attrsSeq;
             }
         }
         return true;
