@@ -153,9 +153,11 @@ var context = _absmartly.CreateContext(config);
 
 `CreateContext()` and `CreateContextAsync()` return once the context data has loaded. If the data cannot be fetched, they do not throw: the context is returned with `IsFailed()` set to `true`, `ReadyError` holding the error that caused the failure, and an `Error` event logged. A failed context returns the control variant (`0`) and the default variable values.
 
+These methods return `IContext`, whose members are unchanged since 1.3.0. Members added in 1.4.0 (`ReadyError`, `WaitUntilReady()`, `FinalizeAsync()`, `Experiments`, `Units`, `Attributes`, `GetAttribute()`, `VariableKeys`, ...) are on `IContextV2`, which the returned context implements: `var context = (IContextV2)_absmartly.CreateContext(config);`.
+
 ### Without Waiting for the Data
 
-`CreatePendingContext()` returns at once with a context that is not ready yet, and loads the data in the background. Until the context is ready, the read methods (`GetTreatment()`, `PeekTreatment()`, `GetVariableValue()`, `PeekVariableValue()`, `VariableKeys`, `Experiments` and the custom field methods) throw an `InvalidOperationException` with the message `ABsmartly Context is not yet ready.` and queue no exposure. Call `WaitUntilReady()` or `WaitUntilReadyAsync()` first. `Track()`, `SetUnit()`, `SetAttribute()` and `SetOverride()` work as usual; tracked goals are published after the context is ready.
+`CreatePendingContext()` returns at once with an `IContextV2` context that is not ready yet, and loads the data in the background. Until the context is ready, the read methods (`GetTreatment()`, `PeekTreatment()`, `GetVariableValue()`, `PeekVariableValue()`, `VariableKeys`, `Experiments` and the custom field methods) throw an `InvalidOperationException` with the message `ABsmartly Context is not yet ready.` and queue no exposure. Call `WaitUntilReady()` or `WaitUntilReadyAsync()` first. `Track()`, `SetUnit()`, `SetAttribute()` and `SetOverride()` work as usual; tracked goals are published after the context is ready.
 
 ```csharp
 var context = _absmartly.CreatePendingContext(config);

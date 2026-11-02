@@ -19,7 +19,7 @@ using Attribute = ABSmartly.Models.Attribute;
 
 namespace ABSmartly;
 
-public class Context : IContext, IDisposable, IAsyncDisposable
+public class Context : IContextV2, IDisposable, IAsyncDisposable
 {
     private readonly List<GoalAchievement> _achievements = new();
     private readonly DictionaryLockableAdapter<string, VariantAssigner> _assigners;
@@ -801,14 +801,14 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     public Exception ReadyError => _failedError;
 
-    public async Task<IContext> WaitUntilReadyAsync()
+    public async Task<IContextV2> WaitUntilReadyAsync()
     {
         var readyTcs = _readyTcs;
         if (readyTcs != null) await readyTcs.Task.ConfigureUnboundContinuation();
         return this;
     }
 
-    public IContext WaitUntilReady()
+    public IContextV2 WaitUntilReady()
     {
         // The load continuation never needs the caller's synchronization context,
         // so blocking on it here cannot deadlock.

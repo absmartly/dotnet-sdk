@@ -94,7 +94,7 @@ public class ABsmartly
     // exposure, variable reads return the default, key/experiment lists are empty,
     // and Track/SetUnit/SetAttribute/SetOverride work as usual (goals are queued and
     // published once ready). Use WaitUntilReady/WaitUntilReadyAsync to wait for it.
-    public IContext CreatePendingContext(ContextConfig config)
+    public IContextV2 CreatePendingContext(ContextConfig config)
     {
         if (config == null) throw new ArgumentNullException(nameof(config), "Context configuration is required");
 

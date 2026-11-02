@@ -151,7 +151,7 @@ public class PendingContextTests
         var error = new HttpRequestException("connection refused");
         var sdk = BuildSdk(Task.FromException<ContextData>(error));
 
-        var context = await sdk.CreateContextAsync(Config());
+        var context = (IContextV2)await sdk.CreateContextAsync(Config());
 
         context.IsReady().Should().BeTrue();
         context.IsFailed().Should().BeTrue();
@@ -168,7 +168,7 @@ public class PendingContextTests
     {
         var sdk = BuildSdk(Task.FromException<ContextData>(new HttpRequestException("boom")));
 
-        var context = sdk.CreateContext(Config());
+        var context = (IContextV2)sdk.CreateContext(Config());
 
         context.IsFailed().Should().BeTrue();
         context.ReadyError.Should().BeOfType<HttpRequestException>().Which.Message.Should().Be("boom");
@@ -204,7 +204,7 @@ public class PendingContextTests
         var sdk = new ABsmartly(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
             new ABsmartlyConfig { ContextEventLogger = _logger, ContextPublisher = _publisher });
 
-        var context = await sdk.CreateContextAsync(Config());
+        var context = (IContextV2)await sdk.CreateContextAsync(Config());
 
         context.IsFailed().Should().BeTrue();
         context.ReadyError.Should().BeOfType<HttpRequestException>()
@@ -222,7 +222,7 @@ public class PendingContextTests
         var sdk = new ABsmartly(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
             new ABsmartlyConfig { ContextEventLogger = _logger, ContextPublisher = _publisher });
 
-        var context = await sdk.CreateContextAsync(Config());
+        var context = (IContextV2)await sdk.CreateContextAsync(Config());
 
         context.IsFailed().Should().BeTrue();
         context.ReadyError.Should().BeOfType<HttpRequestException>();
@@ -239,7 +239,7 @@ public class PendingContextTests
                 : Task.FromException<ContextData>(new HttpRequestException("refresh failed")));
         var sdk = BuildSdk(provider);
 
-        var context = await sdk.CreateContextAsync(Config());
+        var context = (IContextV2)await sdk.CreateContextAsync(Config());
         context.IsReady().Should().BeTrue();
 
         var act = async () => await context.RefreshAsync();
@@ -262,7 +262,7 @@ public class PendingContextTests
         });
         var sdk = BuildSdk(provider);
 
-        var context = sdk.CreateContext(Config());
+        var context = (IContextV2)sdk.CreateContext(Config());
 
         context.IsReady().Should().BeTrue();
         context.IsFailed().Should().BeFalse();
@@ -312,10 +312,10 @@ public class PendingContextTests
         var logger = new CallbackLogger();
         var config = Config();
         config.ContextEventLogger = logger;
-        var context = sdk.CreateContextWith(config, _data);
+        var context = (IContextV2)sdk.CreateContextWith(config, _data);
         logger.OnEvent = (ctx, type) =>
         {
-            if (type == EventType.Publish) ctx.Close();
+            if (type == EventType.Publish) ((IContextV2)ctx).Close();
         };
         context.Track("purchase", null);
 
@@ -375,7 +375,7 @@ public class PendingContextTests
         var sdk = BuildSdk(provider);
         var config = Config();
         config.RefreshInterval = TimeSpan.FromMilliseconds(20);
-        var context = sdk.CreateContextWith(config, _data);
+        var context = (IContextV2)sdk.CreateContextWith(config, _data);
         context.Track("purchase", null);
 
         Assert.ThrowsAsync<InvalidOperationException>(() => ((Context)context).DisposeAsync().AsTask());
@@ -411,7 +411,7 @@ public class PendingContextTests
         {
             if (type != EventType.Error) return;
             errorEntered.TrySetResult(true);
-            ctx.WaitUntilReady();
+            ((IContextV2)ctx).WaitUntilReady();
         };
         context.Track("purchase", null);
 
@@ -435,7 +435,7 @@ public class PendingContextTests
     public async Task FinalizeAsyncKeepsUnitAndAttributeReadsWorking()
     {
         var sdk = BuildSdk(Task.FromResult(_data));
-        var context = sdk.CreateContextWith(Config(), _data);
+        var context = (IContextV2)sdk.CreateContextWith(Config(), _data);
         context.SetAttribute("country", "PT");
         context.Track("purchase", null);
 
@@ -456,7 +456,7 @@ public class PendingContextTests
     public void CloseKeepsUnitReadsWorking()
     {
         var sdk = BuildSdk(Task.FromResult(_data));
-        var context = sdk.CreateContextWith(Config(), _data);
+        var context = (IContextV2)sdk.CreateContextWith(Config(), _data);
 
         context.Close();
 
@@ -492,7 +492,7 @@ public class PendingContextTests
     public void WaitUntilReadyOnReadyContextReturnsImmediately()
     {
         var sdk = BuildSdk(Task.FromResult(_data));
-        var context = sdk.CreateContextWith(Config(), _data);
+        var context = (IContextV2)sdk.CreateContextWith(Config(), _data);
 
         context.WaitUntilReady().Should().BeSameAs(context);
         context.WaitUntilReadyAsync().IsCompleted.Should().BeTrue();

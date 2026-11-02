@@ -8,7 +8,8 @@
 - `ContextEventHandler` renamed to `ContextPublisher` (obsolete aliases and legacy `ABSdk`/DI factory contracts kept).
 
 ### Added
-- `FinalizeAsync()` on `IContext`/`Context`: publishes and seals the context; units, attributes and experiments stay readable afterwards. `Close()` no longer releases the context's locks (only `Dispose`/`DisposeAsync` do).
+- `IContextV2 : IContext`, implemented by `Context`, carries every new context member; `IContext` is unchanged from 1.3.0 so existing implementations keep compiling. `CreateContext*` still return `IContext` (cast to `IContextV2`); `CreatePendingContext` returns `IContextV2`.
+- `FinalizeAsync()` on `IContextV2`/`Context`: publishes and seals the context; units, attributes and experiments stay readable afterwards. `Close()` no longer releases the context's locks (only `Dispose`/`DisposeAsync` do).
 - `Md5.Utf8Bytes` and `Md5.Base64UrlNoPadding` hashing helpers.
 - `Finalize` aliases, `GetCustomFieldValueType`, `GetUnits`, `GetAttribute`, `GetAttributes`, `ReadyError`.
 
