@@ -80,14 +80,22 @@ public class ABSmartlyService : IABSmartlyServiceClient
         if (string.IsNullOrWhiteSpace(_config.Environment))
             throw new ArgumentNullException(nameof(_config.Environment), "Missing Environment configuration");
 
-        if (!_config.Endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
-            !IsLocalEndpoint(_config.Endpoint))
+        _logger = loggerFactory?.CreateLogger<ABSmartlyService>();
+
+        // As the Java SDK: plain http:// is allowed (in-cluster collectors, sidecars,
+        // local proxies) but warned about; any other scheme is a configuration error.
+        if (!_config.Endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException("Endpoint must use HTTPS to protect API key (only localhost/loopback endpoints are exempt for testing)", nameof(_config.Endpoint));
+            if (_config.Endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                _logger?.LogWarning(
+                    "ABSmartly SDK endpoint is not using HTTPS. API keys will be transmitted in plaintext: {Endpoint}",
+                    _config.Endpoint);
+            else
+                throw new ArgumentException("Endpoint must use http:// or https:// protocol: " + _config.Endpoint,
+                    nameof(_config.Endpoint));
         }
 
         _url = config.Endpoint.TrimEnd('/') + "/context";
-        _logger = loggerFactory?.CreateLogger<ABSmartlyService>();
     }
 
     // Throws when the context data cannot be fetched or deserialized, so callers see
@@ -169,22 +177,5 @@ public class ABSmartlyService : IABSmartlyServiceClient
             ["application"] = _config.Application,
             ["environment"] = _config.Environment
         };
-    }
-
-    private static bool IsLocalEndpoint(string endpoint)
-    {
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
-            return false;
-
-        var host = uri.Host;
-        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
-            return true;
-        if (host.StartsWith("127.", StringComparison.Ordinal))
-            return true;
-        if (string.Equals(host, "::1", StringComparison.Ordinal) ||
-            string.Equals(host, "[::1]", StringComparison.Ordinal))
-            return true;
-
-        return false;
     }
 }

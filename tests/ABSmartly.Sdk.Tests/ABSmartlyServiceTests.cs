@@ -98,6 +98,10 @@ public class ABSmartlyServiceTests
 
         var remoteHttpConfig = H.ServiceConfig("1", "http://test.example.com", "1", "1");
         act = () => new ABSmartlyService(remoteHttpConfig, _httpClientFactory, _deserializer, _serializer);
+        act.Should().NotThrow();
+
+        var invalidSchemeConfig = H.ServiceConfig("1", "ftp://test.example.com", "1", "1");
+        act = () => new ABSmartlyService(invalidSchemeConfig, _httpClientFactory, _deserializer, _serializer);
         act.Should().Throw<ArgumentException>();
     }
 

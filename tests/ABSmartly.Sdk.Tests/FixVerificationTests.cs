@@ -78,16 +78,38 @@ public class FixVerificationTests
     }
 
     [Test]
-    public void Fix3_IsLocalEndpoint_RejectsNonHttpsNonLocal()
+    public void Fix3_Endpoint_AcceptsRemoteHttpWithWarning()
     {
+        // As the Java SDK (Client.java) and 1.3.0: plain http:// to a non-loopback
+        // host (in-cluster collector, sidecar) is accepted, with a warning.
         var httpClientFactory = Mock.Of<IABsmartlyHttpClientFactory>();
         var deserializer = Mock.Of<IContextDataDeserializer>();
         var serializer = Mock.Of<IContextEventSerializer>();
+        var logger = new Mock<ILogger>();
+        logger.Setup(l => l.IsEnabled(It.IsAny<LogLevel>())).Returns(true);
+        var loggerFactory = new Mock<ILoggerFactory>();
+        loggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(logger.Object);
 
         var act = () => new ABSmartlyService(
-            H.ServiceConfig("1", "http://evil.com", "1", "1"),
-            httpClientFactory, deserializer, serializer);
-        act.Should().Throw<ArgumentException>();
+            H.ServiceConfig("1", "http://absmartly-proxy:8080/v1", "1", "1"),
+            httpClientFactory, deserializer, serializer, loggerFactory.Object);
+        act.Should().NotThrow();
+
+        logger.Verify(l => l.Log(LogLevel.Warning, It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("not using HTTPS")),
+            It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception, string>>()), Times.Once);
+    }
+
+    [TestCase("ftp://example.com")]
+    [TestCase("ws://example.com")]
+    [TestCase("example.com/v1")]
+    public void Fix3_Endpoint_RejectsNonHttpSchemes(string endpoint)
+    {
+        var act = () => new ABSmartlyService(
+            H.ServiceConfig("1", endpoint, "1", "1"),
+            Mock.Of<IABsmartlyHttpClientFactory>(), Mock.Of<IContextDataDeserializer>(),
+            Mock.Of<IContextEventSerializer>());
+        act.Should().Throw<ArgumentException>().WithMessage("Endpoint must use http:// or https:// protocol*");
     }
 
     [Test]
@@ -130,7 +152,7 @@ public class FixVerificationTests
     }
 
     [Test]
-    public void Fix12_IsLocalEndpoint_RejectsSubstringMatching()
+    public void Fix12_Endpoint_AcceptsAnyHttpHost()
     {
         var httpClientFactory = Mock.Of<IABsmartlyHttpClientFactory>();
         var deserializer = Mock.Of<IContextDataDeserializer>();
@@ -139,7 +161,7 @@ public class FixVerificationTests
         var act = () => new ABSmartlyService(
             H.ServiceConfig("1", "http://evil-localhost.com", "1", "1"),
             httpClientFactory, deserializer, serializer);
-        act.Should().Throw<ArgumentException>();
+        act.Should().NotThrow();
     }
 
     [Test]
