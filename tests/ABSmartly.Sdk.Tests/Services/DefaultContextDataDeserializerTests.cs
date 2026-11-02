@@ -28,11 +28,11 @@ public class DefaultContextDataDeserializerTests
     }
 
     [Test]
-    public void MalformedJsonRemainsDistinguishableFromJsonNull()
+    public void MalformedJsonReturnsNull()
     {
+        // As 1.3.0 and the Java SDK.
         using var malformed = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("{broken"));
-        Action parse = () => _deserializer.Deserialize(malformed);
-        parse.Should().Throw<System.Text.Json.JsonException>();
+        _deserializer.Deserialize(malformed).Should().BeNull();
 
         using var validNull = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("null"));
         _deserializer.Deserialize(validNull).Should().BeNull();

@@ -196,6 +196,25 @@ public class ABSmartlyServiceTests
     }
 
     [Test]
+    public async Task TestGetContextData_MalformedResponseThrowsWithTheDefaultDeserializer()
+    {
+        // The default deserializer returns null on malformed JSON (as 1.3.0 and Java);
+        // the service still fails the fetch, so ReadyError and Refresh see an error.
+        var endpoint = "https://localhost/v1";
+        var uri = $"{endpoint}/context?application=website&environment=dev";
+
+        var config = H.ServiceConfig("website", endpoint, "dev", "test-api-key");
+        var service = new ABSmartlyService(config, _httpClientFactory, new ABSmartly.Services.DefaultContextDataDeserializer(), _serializer);
+
+        Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
+            .Returns(() => GetResponse(HttpStatusCode.OK, Encoding.UTF8.GetBytes("{broken")));
+
+        var act = async () => await service.GetContextDataAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*deserializer returned null*");
+    }
+
+    [Test]
     public async Task TestPublish()
     {
         var config = H.ServiceConfig("website", "https://localhost/v1", "dev", "test-api-key");

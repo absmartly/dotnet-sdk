@@ -229,6 +229,25 @@ public class PendingContextTests
     }
 
     [Test]
+    public async Task DefaultHttpProviderMalformedBodySetsReadyError()
+    {
+        // The default deserializer returns null on malformed JSON (as 1.3.0 and Java);
+        // the context still fails with a meaningful error instead of hanging or an NRE.
+        var httpClient = Mock.Of<IABsmartlyHttpClient>();
+        Mock.Get(httpClient).Setup(x => x.GetAsync(It.IsAny<string>()))
+            .ReturnsAsync(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{broken") });
+        var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == httpClient);
+        var sdk = new ABsmartly(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
+            new ABsmartlyConfig { ContextEventLogger = _logger, ContextPublisher = _publisher });
+
+        var context = await sdk.CreateContextAsync(Config());
+
+        context.IsFailed().Should().BeTrue();
+        context.ReadyError.Should().BeOfType<InvalidOperationException>()
+            .Which.Message.Should().Contain("deserializer returned null");
+    }
+
+    [Test]
     public async Task RefreshRethrowsRealFetchError()
     {
         var calls = 0;
