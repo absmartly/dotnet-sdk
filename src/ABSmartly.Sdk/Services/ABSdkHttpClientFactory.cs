@@ -3,29 +3,45 @@ using System.Net.Http;
 
 namespace ABSmartly.Services;
 
+/// <summary>
+/// Obsolete: Use <see cref="ABsmartlyHttpClientFactory"/> instead.
+/// </summary>
+/// <remarks>
+/// Keeps its 1.3.0 public surface: <see cref="CreateClient"/> returns <see cref="IABSdkHttpClient"/>
+/// and the nested <see cref="HttpClientWrapper"/> type still exists. It also implements
+/// <see cref="IABsmartlyHttpClientFactory"/> (through its base class).
+/// </remarks>
 [Obsolete("ABSdkHttpClientFactory has been renamed to ABsmartlyHttpClientFactory. Please use ABsmartlyHttpClientFactory instead.")]
 #pragma warning disable CS0618
-public class ABSdkHttpClientFactory : ABsmartlyHttpClientFactory, IABSdkHttpClientFactory
+public class ABSdkHttpClientFactory : ABsmartlyHttpClientFactory, IABSdkHttpClientFactory, IABsmartlyHttpClientFactory
 #pragma warning restore CS0618
 {
+    private readonly IHttpClientFactory _httpClientFactory;
+
     public ABSdkHttpClientFactory(IHttpClientFactory httpClientFactory)
         : base(httpClientFactory)
     {
+        _httpClientFactory = httpClientFactory;
     }
 
-#pragma warning disable CS0618
-    IABSdkHttpClient IABSdkHttpClientFactory.CreateClient()
+    public new IABSdkHttpClient CreateClient()
     {
-        return (IABSdkHttpClient)base.CreateClient();
+        return new HttpClientWrapper(_httpClientFactory.CreateClient(ABsmartly.HttpClientName));
     }
-#pragma warning restore CS0618
-}
 
-[Obsolete("AbsmartlyHttpClientFactory has been renamed to ABsmartlyHttpClientFactory. Please use ABsmartlyHttpClientFactory instead.")]
-public class AbsmartlyHttpClientFactory : ABsmartlyHttpClientFactory
-{
-    public AbsmartlyHttpClientFactory(IHttpClientFactory httpClientFactory)
-        : base(httpClientFactory)
+    IABsmartlyHttpClient IABsmartlyHttpClientFactory.CreateClient()
     {
+        return (IABsmartlyHttpClient)CreateClient();
+    }
+
+    /// <summary>
+    /// 1.3.0 wrapper type, kept for compatibility. Same as
+    /// <see cref="ABsmartlyHttpClientFactory.HttpClientWrapper"/>.
+    /// </summary>
+    public new class HttpClientWrapper : ABsmartlyHttpClientFactory.HttpClientWrapper
+    {
+        public HttpClientWrapper(HttpClient client) : base(client)
+        {
+        }
     }
 }

@@ -20,6 +20,36 @@ public class ABSmartlyService : IABSmartlyServiceClient
     private readonly ILogger<ABSmartlyService> _logger;
     private readonly string _url;
 
+    /// <summary>
+    /// 1.3.0 constructor, kept for source and binary compatibility. The legacy factory is
+    /// wrapped in an adapter.
+    /// </summary>
+    [Obsolete("Use the constructor taking an IABsmartlyHttpClientFactory instead.")]
+    public ABSmartlyService(ABSmartlyServiceConfiguration config,
+        IABSdkHttpClientFactory httpClientFactory,
+        IContextDataDeserializer dataDeserializer,
+        IContextEventSerializer eventSerializer,
+        ILoggerFactory loggerFactory = null)
+        : this(config, Services.LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), dataDeserializer,
+            eventSerializer, loggerFactory)
+    {
+    }
+
+    /// <summary>
+    /// Kept so that passing an <see cref="Services.ABSdkHttpClientFactory"/> (which implements both
+    /// factory interfaces) or a <c>null</c> factory binds without ambiguity, as it did in 1.3.0.
+    /// </summary>
+    [Obsolete("Use the constructor taking an IABsmartlyHttpClientFactory instead.")]
+    public ABSmartlyService(ABSmartlyServiceConfiguration config,
+        Services.ABSdkHttpClientFactory httpClientFactory,
+        IContextDataDeserializer dataDeserializer,
+        IContextEventSerializer eventSerializer,
+        ILoggerFactory loggerFactory = null)
+        : this(config, (IABsmartlyHttpClientFactory)httpClientFactory, dataDeserializer, eventSerializer,
+            loggerFactory)
+    {
+    }
+
     public ABSmartlyService(ABSmartlyServiceConfiguration config,
         IABsmartlyHttpClientFactory httpClientFactory,
         IContextDataDeserializer dataDeserializer,

@@ -13,8 +13,8 @@ public class ABsmartlyConfig
     [Obsolete("Use ContextPublisher instead.")]
     public IContextEventHandler ContextEventHandler
     {
-        get => ContextPublisher as IContextEventHandler;
-        set => ContextPublisher = value;
+        get => ABSmartly.Services.LegacyContextEventHandlerAdapter.Unwrap(ContextPublisher);
+        set => ContextPublisher = ABSmartly.Services.LegacyContextEventHandlerAdapter.Wrap(value);
     }
     public IContextEventLogger ContextEventLogger { get; set; }
     public IVariableParser VariableParser { get; set; }

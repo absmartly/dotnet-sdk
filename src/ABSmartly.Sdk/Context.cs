@@ -90,6 +90,24 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     #region Constructor & Initialization
 
+    /// <summary>
+    /// 1.3.0 constructor, kept for source and binary compatibility.
+    /// </summary>
+    [Obsolete("Use the constructor taking an IContextPublisher instead.")]
+    public Context(ContextConfig config,
+        ContextData data,
+        Clock clock,
+        IContextDataProvider dataProvider,
+        IContextEventHandler eventHandler,
+        IContextEventLogger eventLogger,
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher,
+        ILoggerFactory loggerFactory)
+        : this(config, data, clock, dataProvider, LegacyContextEventHandlerAdapter.Wrap(eventHandler), eventLogger,
+            variableParser, audienceMatcher, loggerFactory)
+    {
+    }
+
     public Context(ContextConfig config,
         ContextData data,
         Clock clock,
@@ -755,11 +773,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
     }
 
-    public object GetCustomFieldValue(string experimentName, string key)
+    // The parameter is an experiment name; it keeps its 1.3.0 name for named-argument callers.
+    public object GetCustomFieldValue(string environmentName, string key)
     {
         CheckReady(true);
 
-        var field = GetCustomField(experimentName, key);
+        var field = GetCustomField(environmentName, key);
         return field?.Value;
     }
 
@@ -771,9 +790,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return field?.Type;
     }
 
-    public object GetCustomFieldType(string experimentName, string key)
+    // The parameter is an experiment name; it keeps its 1.3.0 name for named-argument callers.
+    public object GetCustomFieldType(string environmentName, string key)
     {
-        return GetCustomFieldValueType(experimentName, key);
+        return GetCustomFieldValueType(environmentName, key);
     }
 
     private List<ExperimentVariables> GetVariableExperiments(string key)
@@ -1561,7 +1581,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
-    protected virtual void Dispose(bool disposing)
+    // Public (as in 1.3.0) for binary compatibility.
+    public void Dispose(bool disposing)
     {
         if (disposing)
         {
