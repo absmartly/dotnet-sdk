@@ -512,11 +512,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         if (outcome.Error != null)
         {
             _logger?.LogError(outcome.Error, "{Publish}", EventType.Publish);
-            LogEvent(EventType.Error, outcome.Error.Message);
+            LogEventSafely(EventType.Error, outcome.Error.Message);
             ExceptionDispatchInfo.Capture(outcome.Error).Throw();
         }
 
-        if (outcome.Published != null) LogEvent(EventType.Publish, outcome.Published);
+        if (outcome.Published != null) LogEventSafely(EventType.Publish, outcome.Published);
     }
 
     private byte[] GetUnitHash(string unitType, string unitUid)
@@ -1548,14 +1548,21 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     #region Log
 
-    // A throwing event logger must not change the outcome of the operation it
-    // observes (e.g. turn a delivered publish into a failure that resends the batch),
-    // so its exceptions are logged and swallowed, as in the JavaScript SDK.
+    // As 1.3.0 and the Java SDK, event logger exceptions propagate to the caller,
+    // except where they would change a publish outcome (see LogEventSafely).
     private void LogEvent(EventType eventType, object data)
+    {
+        _eventLogger?.HandleEvent(this, eventType, data);
+    }
+
+    // For the Publish event and a publish Error: a throwing logger must not turn a
+    // delivered publish into a failure (which would resend the batch) or mask the
+    // publish error, so its exception is logged and dropped, as Context.java flush().
+    private void LogEventSafely(EventType eventType, object data)
     {
         try
         {
-            _eventLogger?.HandleEvent(this, eventType, data);
+            LogEvent(eventType, data);
         }
         catch (Exception e)
         {

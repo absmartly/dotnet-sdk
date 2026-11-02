@@ -447,6 +447,46 @@ public class BehaviourParityTests
         context.PendingCount.Should().Be(0);
     }
 
+    [Test]
+    public void EventLoggerExceptionsPropagateExceptForPublishOutcomes()
+    {
+        // As 1.3.0 and the Java SDK: a throwing logger surfaces to the caller, except
+        // for the Publish/Error events of a flush, where it must not turn a delivered
+        // publish into a failure (resending the batch) or mask the publish error.
+        var published = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback(() => published++)
+            .Returns(Task.CompletedTask);
+        var context = CreateContext(_data);
+        Mock.Get(_eventLogger).Setup(x => x.HandleEvent(It.IsAny<IContext>(), It.IsAny<EventType>(), It.IsAny<object>()))
+            .Throws(new InvalidOperationException("logger failed"));
+
+        var track = () => context.Track("goal1", null);
+        track.Should().Throw<InvalidOperationException>().WithMessage("logger failed");
+        context.PendingCount.Should().Be(1, "the goal was queued before the logger ran");
+
+        var publish = () => context.Publish();
+        publish.Should().NotThrow();
+        published.Should().Be(1);
+        context.PendingCount.Should().Be(0);
+
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(Task.FromException(new InvalidOperationException("publish failed")));
+        try { context.Track("goal2", null); } catch (InvalidOperationException) { }
+        publish.Should().Throw<InvalidOperationException>().WithMessage("publish failed");
+        context.PendingCount.Should().Be(1);
+    }
+
+    [Test]
+    public void EventLoggerExceptionDuringConstructionPropagates()
+    {
+        Mock.Get(_eventLogger).Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Ready, It.IsAny<object>()))
+            .Throws(new InvalidOperationException("logger failed"));
+
+        var act = () => CreateContext(_data);
+        act.Should().Throw<InvalidOperationException>().WithMessage("logger failed");
+    }
+
     #endregion
 
 }
