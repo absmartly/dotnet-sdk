@@ -4,11 +4,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
+using ABSmartly.EqualityComparison;
 
 namespace ABSmartly.JsonExpressions;
 
 public class ExprEvaluator : IEvaluator
 {
+    private readonly DictionaryComparer _dictComparer = new(EqualityComparerSelectors.Default);
+    private readonly ListComparer _listComparer = new(EqualityComparerSelectors.Default);
     private readonly Dictionary<string, IOperator> _operators;
     private readonly Dictionary<string, object> _vars;
 
@@ -136,71 +139,41 @@ public class ExprEvaluator : IEvaluator
             return lhsBoolValue.CompareTo(rhsBoolValue);
         }
 
-        if (lhs is Dictionary<string, object> || lhs is List<object>)
-            return DeepEquals(lhs, rhs) ? 0 : null;
-
+        // Same-type equality, as 1.3.0 and the Java SDK (no numeric coercion inside
+        // lists or maps).
         if (lhs.GetType() == rhs.GetType())
-            return lhs.Equals(rhs) ? 0 : null;
+            return lhs switch
+            {
+                Dictionary<string, object> lhsDictionary => _dictComparer.Equals(lhsDictionary,
+                    (Dictionary<string, object>)rhs)
+                    ? 0
+                    : null,
+                List<object> lhsList => _listComparer.Equals(lhsList, (List<object>)rhs) ? 0 : null,
+                _ => lhs.Equals(rhs) ? 0 : null
+            };
 
         return null;
     }
 
-    private static bool DeepEquals(object lhs, object rhs)
-    {
-        lhs = Normalize(lhs);
-        rhs = Normalize(rhs);
-
-        if (lhs is null || rhs is null) return lhs is null && rhs is null;
-
-        if (GetNumber(lhs) is { } lhsNumber)
-            return GetNumber(rhs) is { } rhsNumber &&
-                   lhsNumber.Equals(rhsNumber);
-
-        switch (lhs)
-        {
-            case List<object> lhsList:
-                return rhs is List<object> rhsList && lhsList.Count == rhsList.Count &&
-                       !lhsList.Where((t, i) => !DeepEquals(t, rhsList[i])).Any();
-            case Dictionary<string, object> lhsDict:
-                return rhs is Dictionary<string, object> rhsDict && lhsDict.Count == rhsDict.Count &&
-                       lhsDict.All(kv => rhsDict.TryGetValue(kv.Key, out var v) && DeepEquals(kv.Value, v));
-            default:
-                return lhs.GetType() == rhs.GetType() && lhs.Equals(rhs);
-        }
-    }
-
+    // Attributes deserialized with System.Text.Json arrive as JsonElement, which the
+    // evaluator could neither traverse nor compare. They are converted to the same
+    // shapes the audience parser produces (Dictionary<string, object>, List<object>,
+    // string, long/double, bool, null). Every other value is left untouched.
     private static object Normalize(object value)
     {
-        switch (value)
+        if (value is not JsonElement element) return value;
+
+        return element.ValueKind switch
         {
-            case JsonElement element:
-                return element.ValueKind switch
-                {
-                    JsonValueKind.Object => element.EnumerateObject()
-                        .ToDictionary(p => p.Name, p => Normalize(p.Value)),
-                    JsonValueKind.Array => element.EnumerateArray().Select(e => Normalize(e)).ToList(),
-                    JsonValueKind.String => element.GetString(),
-                    JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
-                    JsonValueKind.True => true,
-                    JsonValueKind.False => false,
-                    _ => null
-                };
-            case Dictionary<string, object>:
-            case List<object>:
-            case string:
-                return value;
-            case IDictionary dict:
-            {
-                var result = new Dictionary<string, object>();
-                foreach (DictionaryEntry entry in dict)
-                    result[Convert.ToString(entry.Key, CultureInfo.InvariantCulture)] = entry.Value;
-                return result;
-            }
-            case IEnumerable enumerable:
-                return enumerable.Cast<object>().ToList();
-            default:
-                return value;
-        }
+            JsonValueKind.Object => element.EnumerateObject()
+                .ToDictionary(p => p.Name, p => Normalize(p.Value)),
+            JsonValueKind.Array => element.EnumerateArray().Select(e => Normalize(e)).ToList(),
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.TryGetInt64(out var l) ? (object)l : element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null
+        };
     }
 
     private static double? GetNumber(object input)
