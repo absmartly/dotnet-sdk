@@ -36,10 +36,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private readonly IContextDataProvider _dataProvider;
     private readonly IContextPublisher _eventHandler;
     private readonly object _eventLock = new();
-    // Serializes Flush() so concurrent flushes (publish-delay timer, explicit
-    // PublishAsync, Close/Dispose) cannot overlap. _eventLock cannot be held
-    // across the await on PublishAsync, so a separate async-capable gate is used.
-    private readonly SemaphoreSlim _flushLock = new(1, 1);
     private readonly IContextEventLogger _eventLogger;
 
     private readonly List<Exposure> _exposures = new();
@@ -59,9 +55,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private int _closing;
     private readonly object _closeLock = new();
     private TaskCompletionSource<bool> _closeAttempt;
-    // Set in the async flow of the close attempt's owner, so an event logger
-    // callback it runs (e.g. on Publish) can tell its Close() is nested.
-    private readonly AsyncLocal<bool> _inCloseAttempt = new();
+    // Set in the async flow of a close attempt's final flush only, so a publisher
+    // that calls Close/FinalizeAsync from that flush can tell it is nested.
+    private readonly AsyncLocal<bool> _inCloseFlush = new();
+    // The context whose close attempt is notifying its event logger on this thread,
+    // so a synchronous Close() from that callback is a no-op instead of a recursive
+    // retry. Thread-scoped (unlike AsyncLocal, it does not flow to a thread the logger
+    // dispatches to), so a Close() handed to another thread runs normally.
+    [ThreadStatic] private static Context t_notifyingClose;
     // Guarded by _closeLock: an initial load being applied defers disposal of the
     // locks it uses until it has settled.
     private bool _settlingLoad;
@@ -379,130 +380,143 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     private async Task Flush()
     {
+        var outcome = await FlushCore().ConfigureUnboundContinuation();
+        ReportFlush(outcome);
+    }
+
+    private readonly struct FlushOutcome
+    {
+        public FlushOutcome(PublishEvent published, Exception error)
+        {
+            Published = published;
+            Error = error;
+        }
+
+        public PublishEvent Published { get; }
+        public Exception Error { get; }
+    }
+
+    // Publishes the pending events without notifying the event logger, so a caller
+    // (CloseAsync) can settle its own state before observers run.
+    //
+    // As the Java SDK and 1.3.0, the batch is detached from the queue (and PendingCount
+    // reset to 0) under _eventLock before the publisher is called, and no lock is held
+    // across the publisher callback: a publisher that calls PublishAsync/FinalizeAsync
+    // on this context re-enters without deadlocking, and concurrent flushes each
+    // publish a disjoint batch. On failure the batch is put back at the front of the
+    // queue and PendingCount restored, so the events stay retryable.
+    private async Task<FlushOutcome> FlushCore()
+    {
         ClearTimeout();
 
-        // Serialize flushes so the publish-delay timer, an explicit PublishAsync,
-        // and Close/Dispose cannot run Flush concurrently. Without this, two
-        // flushes both snapshot the event lists, then each calls RemoveRange with
-        // its (now stale) snapshot count, throwing ArgumentException, or the
-        // publish is duplicated/skipped.
-        // The event logger is called only after the gate is released: a logger that
-        // calls Publish/Close from its callback would otherwise wait on the gate it
-        // is running under and deadlock.
-        PublishEvent published = null;
-        Exception publishError = null;
+        if (_failed)
+        {
+            try
+            {
+                Monitor.Enter(_eventLock);
 
-        await _flushLock.WaitAsync().ConfigureUnboundContinuation();
+                _exposures.Clear();
+                _achievements.Clear();
+                Interlocked.Exchange(ref _pendingCount, 0);
+            }
+            finally
+            {
+                Monitor.Exit(_eventLock);
+            }
+
+            return default;
+        }
+
+        if (_pendingCount <= 0) return default;
+
+        Exposure[] exposures = null;
+        GoalAchievement[] achievements = null;
+        int eventCount;
+
         try
         {
-            if (!_failed)
+            Monitor.Enter(_eventLock);
+
+            eventCount = _pendingCount;
+            if (eventCount > 0)
             {
-                if (_pendingCount > 0)
+                if (_exposures.Count > 0)
                 {
-                    Exposure[] exposures = null;
-                    GoalAchievement[] achievements = null;
-                    int eventCount;
-
-                    try
-                    {
-                        Monitor.Enter(_eventLock);
-
-                        eventCount = _pendingCount;
-                        if (eventCount > 0)
-                        {
-                            if (_exposures.Count > 0)
-                            {
-                                exposures = _exposures.ToArray();
-                            }
-
-                            if (_achievements.Count > 0)
-                            {
-                                achievements = _achievements.ToArray();
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        Monitor.Exit(_eventLock);
-                    }
-
-                    if (eventCount > 0)
-                        try
-                        {
-                            var publishEvent = new PublishEvent
-                            {
-                                Hashed = true,
-                                PublishedAt = _clock.Millis(),
-                                Units = _units
-                                    .Select(kv => new Unit
-                                    {
-                                        Type = kv.Key,
-                                        Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
-                                    })
-                                    .ToArray(),
-                                Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
-                                Exposures = exposures,
-                                Goals = achievements
-                            };
-
-                            var publishTask = _eventHandler.PublishAsync(this, publishEvent) ??
-                                              throw new InvalidOperationException("Context publisher returned no task.");
-                            await publishTask.ConfigureUnboundContinuation();
-                            published = publishEvent;
-
-                            try
-                            {
-                                Monitor.Enter(_eventLock);
-                                // Clamp to the current count: items were snapshotted by
-                                // value, and the list size is authoritative.
-                                var exposureCount = Math.Min(exposures?.Length ?? 0, _exposures.Count);
-                                var achievementCount = Math.Min(achievements?.Length ?? 0, _achievements.Count);
-                                if (exposureCount > 0)
-                                    _exposures.RemoveRange(0, exposureCount);
-                                if (achievementCount > 0)
-                                    _achievements.RemoveRange(0, achievementCount);
-                                Interlocked.Add(ref _pendingCount, -(exposureCount + achievementCount));
-                            }
-                            finally
-                            {
-                                Monitor.Exit(_eventLock);
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            publishError = e;
-                        }
-                }
-            }
-            else
-            {
-                try
-                {
-                    Monitor.Enter(_eventLock);
-
+                    exposures = _exposures.ToArray();
                     _exposures.Clear();
-                    _achievements.Clear();
-                    Interlocked.Exchange(ref _pendingCount, 0);
                 }
-                finally
+
+                if (_achievements.Count > 0)
                 {
-                    Monitor.Exit(_eventLock);
+                    achievements = _achievements.ToArray();
+                    _achievements.Clear();
                 }
+
+                Interlocked.Exchange(ref _pendingCount, 0);
             }
         }
         finally
         {
-            _flushLock.Release();
+            Monitor.Exit(_eventLock);
         }
 
-        if (publishError != null)
+        if (eventCount <= 0) return default;
+
+        try
         {
-            _logger?.LogError(publishError, "{Publish}", EventType.Publish);
-            LogError(publishError);
-            ExceptionDispatchInfo.Capture(publishError).Throw();
+            var publishEvent = new PublishEvent
+            {
+                Hashed = true,
+                PublishedAt = _clock.Millis(),
+                Units = _units
+                    .Select(kv => new Unit
+                    {
+                        Type = kv.Key,
+                        Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
+                    })
+                    .ToArray(),
+                Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
+                Exposures = exposures,
+                Goals = achievements
+            };
+
+            var publishTask = _eventHandler.PublishAsync(this, publishEvent) ??
+                              throw new InvalidOperationException("Context publisher returned no task.");
+            await publishTask.ConfigureUnboundContinuation();
+            return new FlushOutcome(publishEvent, null);
+        }
+        catch (Exception e)
+        {
+            try
+            {
+                Monitor.Enter(_eventLock);
+
+                if (exposures != null) _exposures.InsertRange(0, exposures);
+                if (achievements != null) _achievements.InsertRange(0, achievements);
+                Interlocked.Add(ref _pendingCount, eventCount);
+            }
+            finally
+            {
+                Monitor.Exit(_eventLock);
+            }
+
+            return new FlushOutcome(null, e);
+        }
+    }
+
+    // Notifies the event logger of a flush outcome, then rethrows a publish error.
+    // A throwing logger cannot turn a delivered publish into a failure (or mask the
+    // publish error), as the Java SDK.
+    private void ReportFlush(FlushOutcome outcome)
+    {
+        if (outcome.Error != null)
+        {
+            _logger?.LogError(outcome.Error, "{Publish}", EventType.Publish);
+            LogEvent(EventType.Error, outcome.Error.Message);
+            ExceptionDispatchInfo.Capture(outcome.Error).Throw();
         }
 
-        if (published != null) LogEvent(EventType.Publish, published);
+        if (outcome.Published != null) LogEvent(EventType.Publish, outcome.Published);
     }
 
     private byte[] GetUnitHash(string unitType, string unitUid)
@@ -1561,10 +1575,19 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // Concurrent callers share one close attempt. If the final publish fails, the
     // context stays open with its events queued and the error is rethrown, so a
-    // later Close/Dispose retries the publish (as finalize() in the JavaScript SDK).
+    // later Close/Dispose retries the publish (as closeAsync() in the Java SDK).
+    //
+    // The attempt is settled (closed, or reset for a retry) before any event logger
+    // callback runs, so a logger that synchronously hands Close()/Dispose() to another
+    // thread and waits for it cannot wait on this attempt.
     private async Task CloseAsync()
     {
         if (_closed) return;
+
+        // Called back from this context's own close: by the publisher during the
+        // final flush, or synchronously by the event logger it notifies. A no-op, as
+        // the _closing guard in 1.3.0: waiting would deadlock, retrying would recurse.
+        if (_inCloseFlush.Value || ReferenceEquals(t_notifyingClose, this)) return;
 
         TaskCompletionSource<bool> attempt;
         bool owner;
@@ -1579,43 +1602,67 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         if (!owner)
         {
-            // Called from a callback of this close attempt: the attempt cannot
-            // complete until the callback returns, so do not wait on it.
-            if (_inCloseAttempt.Value) return;
             await attempt.Task.ConfigureUnboundContinuation();
             return;
         }
 
-        _inCloseAttempt.Value = true;
         Interlocked.Exchange(ref _closing, 1);
         ClearRefreshTimer();
 
-        try
+        FlushOutcome outcome = default;
+        if (_pendingCount > 0)
         {
-            if (_pendingCount > 0) await Flush().ConfigureUnboundContinuation();
+            _inCloseFlush.Value = true;
+            try
+            {
+                outcome = await FlushCore().ConfigureUnboundContinuation();
+            }
+            finally
+            {
+                _inCloseFlush.Value = false;
+            }
         }
-        catch (Exception e)
+
+        // Settle the attempt before any observer runs: a logger that hands
+        // Close()/Dispose() to another thread and waits for it then finds the context
+        // closed, or (after a failure) starts a fresh attempt, instead of waiting on
+        // this one.
+        if (outcome.Error != null)
         {
+            // As Java: the context stays open for a retry, without a refresh timer.
             lock (_closeLock)
             {
                 _closeAttempt = null;
                 Interlocked.Exchange(ref _closing, 0);
             }
 
-            if (IsReady() && !_failed) SetRefreshTimer();
-
-            attempt.TrySetException(e);
-            throw;
+            attempt.TrySetException(outcome.Error);
+            // Waiters, if any, observe the error; without them it must not surface
+            // as an UnobservedTaskException.
+            _ = attempt.Task.Exception;
         }
-
-        lock (_closeLock)
+        else
         {
-            _closed = true;
-            Interlocked.Exchange(ref _closing, 0);
+            lock (_closeLock)
+            {
+                _closed = true;
+                Interlocked.Exchange(ref _closing, 0);
+            }
+
+            attempt.TrySetResult(true);
         }
 
-        attempt.TrySetResult(true);
-        LogEvent(EventType.Close, null);
+        var previous = t_notifyingClose;
+        t_notifyingClose = this;
+        try
+        {
+            ReportFlush(outcome);
+            LogEvent(EventType.Close, null);
+        }
+        finally
+        {
+            t_notifyingClose = previous;
+        }
     }
 
     // Finalizes the context (publishes pending events, then seals it) without

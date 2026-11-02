@@ -232,4 +232,221 @@ public class BehaviourParityTests
 
     #endregion
 
+    #region Publish and close
+
+    private static async Task<bool> Completes(Task task, int timeoutMs = 5000) =>
+        await Task.WhenAny(task, Task.Delay(timeoutMs)) == task;
+
+    [Test]
+    public async Task PendingCountIsZeroWhilePublishingAndRestoredOnFailure()
+    {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        PublishEvent? published = null;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                entered.TrySetResult(true);
+                await release.Task;
+                throw new InvalidOperationException("publish failed");
+            });
+
+        var context = CreateContext(_data);
+        context.GetTreatment("exp_test_ab");
+        context.Track("goal1", null);
+        context.PendingCount.Should().Be(2);
+
+        var publish = context.PublishAsync();
+        (await Completes(entered.Task)).Should().BeTrue();
+        context.PendingCount.Should().Be(0, "the batch is detached while in flight");
+
+        // Tracked during the failed publish: kept after the restored batch.
+        context.Track("goal2", null);
+        context.PendingCount.Should().Be(1);
+
+        release.SetResult(true);
+        Func<Task> act = () => publish;
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("publish failed");
+        context.PendingCount.Should().Be(3, "the failed batch is restored and stays retryable");
+
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((_, e) => published = e)
+            .Returns(Task.CompletedTask);
+        await context.PublishAsync();
+
+        context.PendingCount.Should().Be(0);
+        published!.Exposures.Should().ContainSingle(x => x.Name == "exp_test_ab");
+        published.Goals.Select(g => g.Name).Should().Equal("goal1", "goal2");
+    }
+
+    [Test]
+    public async Task ConcurrentFlushesPublishEachEventOnce()
+    {
+        var published = new System.Collections.Concurrent.ConcurrentBag<PublishEvent>();
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                published.Add(e);
+                await Task.Yield();
+            });
+
+        var context = CreateContext(_data);
+        var tasks = new List<Task>();
+        for (var i = 0; i < 200; i++)
+        {
+            context.Track("goal" + i, null);
+            tasks.Add(Task.Run(() => context.PublishAsync()));
+        }
+
+        await Task.WhenAll(tasks);
+        await context.PublishAsync();
+
+        context.PendingCount.Should().Be(0);
+        published.SelectMany(e => e.Goals ?? Array.Empty<GoalAchievement>()).Select(g => g.Name)
+            .Should().OnlyHaveUniqueItems().And.HaveCount(200);
+    }
+
+    [Test]
+    [Timeout(10000)]
+    public async Task PublisherCanCallPublishAsyncReentrantly()
+    {
+        Context context = null!;
+        var calls = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, _) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    context.Track("from_publisher", null);
+                    await context.PublishAsync();
+                }
+            });
+
+        context = CreateContext(_data);
+        context.Track("goal1", null);
+
+        (await Completes(context.PublishAsync())).Should().BeTrue("a re-entrant publish must not deadlock");
+        calls.Should().Be(2);
+        context.PendingCount.Should().Be(0);
+    }
+
+    [Test]
+    [Timeout(10000)]
+    public async Task PublisherCanCallFinalizeAsyncReentrantly()
+    {
+        Context context = null!;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, _) => await context.FinalizeAsync());
+
+        context = CreateContext(_data);
+        context.Track("goal1", null);
+
+        (await Completes(context.PublishAsync())).Should().BeTrue("a re-entrant finalize must not deadlock");
+        context.IsFinalized.Should().BeTrue();
+    }
+
+    [Test]
+    [Timeout(10000)]
+    public async Task PublisherCanCallFinalizeAsyncDuringClose()
+    {
+        Context context = null!;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, _) => await context.FinalizeAsync());
+
+        context = CreateContext(_data);
+        context.Track("goal1", null);
+
+        (await Completes(context.FinalizeAsync())).Should().BeTrue();
+        context.IsFinalized.Should().BeTrue();
+    }
+
+    // An event logger that, like a UI dispatcher, hands Close()/Dispose() to another
+    // thread and blocks until it has run. With suppressFlow the other thread does not
+    // inherit the caller's AsyncLocal state, as a pre-existing UI thread.
+    private sealed class CrossThreadClosingLogger : IContextEventLogger
+    {
+        private readonly EventType _on;
+        private readonly bool _dispose;
+        private readonly bool _suppressFlow;
+        private int _dispatched;
+        public Context Context = null!;
+        public bool? DispatchCompleted;
+
+        public CrossThreadClosingLogger(EventType on, bool dispose, bool suppressFlow)
+        {
+            _on = on;
+            _dispose = dispose;
+            _suppressFlow = suppressFlow;
+        }
+
+        public void HandleEvent(IContext context, EventType eventType, object data)
+        {
+            if (eventType != _on || Interlocked.Exchange(ref _dispatched, 1) == 1) return;
+
+            var other = new Thread(() =>
+            {
+                try
+                {
+                    if (_dispose) Context.Dispose();
+                    else Context.Close();
+                }
+                catch (Exception)
+                {
+                    // A retried close may fail again; only the wait matters here.
+                }
+            });
+            if (_suppressFlow)
+                using (ExecutionContext.SuppressFlow())
+                    other.Start();
+            else
+                other.Start();
+            DispatchCompleted = other.Join(TimeSpan.FromSeconds(3));
+        }
+    }
+
+    [Test]
+    [Timeout(20000)]
+    public async Task EventLoggerDispatchingCloseToAnotherThreadDoesNotDeadlock(
+        [Values(EventType.Publish, EventType.Close)] EventType on, [Values] bool dispose, [Values] bool suppressFlow)
+    {
+        var logger = new CrossThreadClosingLogger(on, dispose, suppressFlow);
+        _eventLogger = logger;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(Task.CompletedTask);
+        var context = logger.Context = CreateContext(_data);
+        context.Track("goal1", null);
+
+        (await Completes(Task.Run(() => context.Close()))).Should().BeTrue();
+
+        logger.DispatchCompleted.Should().BeTrue("the dispatched Close() must not wait on the attempt that called it");
+        context.IsFinalized.Should().BeTrue();
+    }
+
+    [Test]
+    [Timeout(20000)]
+    public async Task ErrorLoggerDispatchingCloseToAnotherThreadAfterFailedCloseDoesNotDeadlock(
+        [Values] bool dispose, [Values] bool suppressFlow)
+    {
+        var logger = new CrossThreadClosingLogger(EventType.Error, dispose, suppressFlow);
+        _eventLogger = logger;
+        var attempts = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(() => Interlocked.Increment(ref attempts) == 1
+                ? Task.FromException(new InvalidOperationException("publish failed"))
+                : Task.CompletedTask);
+        var context = logger.Context = CreateContext(_data);
+        context.Track("goal1", null);
+
+        var close = Task.Run(() => context.Close());
+        (await Completes(close.ContinueWith(_ => { }))).Should().BeTrue();
+
+        close.IsFaulted.Should().BeTrue("the first close attempt failed");
+        logger.DispatchCompleted.Should().BeTrue();
+        attempts.Should().Be(2, "the dispatched close retried the publish");
+        context.IsFinalized.Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+    }
+
+    #endregion
+
 }

@@ -1283,10 +1283,23 @@ public class ContextTests
             }
         };
 
+        // While the publish is in flight the batch is detached: PendingCount is 0
+        // (as 1.3.0, Java and JS), and is restored only if the publish fails.
+        var publishEntered = new ManualResetEventSlim();
+        var manualResetEvent = new ManualResetEventSlim();
         Mock.Get(_eventHandler).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
-            .Returns(Task.CompletedTask);
+            .Returns(() => Task.Run(() => ManualResetPublish(publishEntered, manualResetEvent)));
 
-        context.Publish();
+        var publish = Task.Run(() => context.Publish());
+
+        publishEntered.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+
+        context.PendingCount.Should().Be(0);
+        context.GetCustomAssignment("exp_test_abc").Should().Be(3);
+        context.GetOverride("not_found").Should().Be(3);
+
+        manualResetEvent.Set();
+        publish.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
 
         context.PendingCount.Should().Be(0);
         context.GetCustomAssignment("exp_test_abc").Should().Be(3);
@@ -1317,11 +1330,29 @@ public class ContextTests
             }
         };
 
-        context.Publish();
+        var nextPublishEntered = new ManualResetEventSlim();
+        var manualResetNextEvent = new ManualResetEventSlim();
+        Mock.Get(_eventHandler).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(() => Task.Run(() => ManualResetPublish(nextPublishEntered, manualResetNextEvent)));
+
+        var nextPublish = Task.Run(() => context.Publish());
+
+        nextPublishEntered.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+
+        context.PendingCount.Should().Be(0);
+
+        manualResetNextEvent.Set();
+        nextPublish.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
 
         context.PendingCount.Should().Be(0);
 
         VerifyPublishData(_eventHandler, context, expectedNextEvent);
+
+        static void ManualResetPublish(ManualResetEventSlim entered, ManualResetEventSlim release)
+        {
+            entered.Set();
+            release.Wait();
+        }
     }
 
     [Test]

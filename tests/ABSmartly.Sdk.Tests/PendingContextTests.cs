@@ -358,15 +358,17 @@ public class PendingContextTests
 
     [Test]
     [Timeout(5000)]
-    public async Task FailedCloseResumesAutomaticRefresh()
+    public async Task FailedCloseStaysOpenWithoutAutomaticRefresh()
     {
-        var refreshed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var armed = false;
+        // As Context.java closeAsync(): the refresh timer is cleared when the close
+        // starts and a failed close leaves the context open for a retry, without
+        // re-arming background refresh.
+        var fetches = 0;
         var provider = Mock.Of<IContextDataProvider>();
         Mock.Get(provider).Setup(x => x.GetContextDataAsync())
             .Returns(() =>
             {
-                if (Volatile.Read(ref armed)) refreshed.TrySetResult(true);
+                Interlocked.Increment(ref fetches);
                 return Task.FromResult(_data);
             });
         Mock.Get(_publisher)
@@ -379,10 +381,16 @@ public class PendingContextTests
         context.Track("purchase", null);
 
         Assert.ThrowsAsync<InvalidOperationException>(() => ((Context)context).DisposeAsync().AsTask());
-        Volatile.Write(ref armed, true);
-
-        (await Task.WhenAny(refreshed.Task, Task.Delay(3000))).Should().BeSameAs(refreshed.Task);
         context.IsFinalized.Should().BeFalse();
+        context.PendingCount.Should().Be(1, "the failed close keeps its events");
+
+        var afterClose = Volatile.Read(ref fetches);
+        await Task.Delay(300);
+        Volatile.Read(ref fetches).Should().Be(afterClose, "the refresh timer is not re-armed");
+
+        // Explicit refresh still works on the open context.
+        await context.RefreshAsync();
+        Volatile.Read(ref fetches).Should().Be(afterClose + 1);
 
         Mock.Get(_publisher)
             .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
