@@ -47,9 +47,9 @@ using ABSmartly.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// AddABSmartly registers its own named HttpClient (ABsmartly.HttpClientName),
+// AddABsmartly registers its own named HttpClient (ABsmartly.HttpClientName),
 // so no separate AddHttpClient() call is needed.
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
@@ -89,7 +89,7 @@ public class TestController : ControllerBase
 }
 ```
 
-The `AddABSmartly` extension method allows you to configure SDK settings, HTTP connection settings, inject custom implementations of context-specific services, and configure additional HTTP request policies using Polly.
+The `AddABsmartly` extension method allows you to configure SDK settings, HTTP connection settings, inject custom implementations of context-specific services, and configure additional HTTP request policies using Polly.
 
 #### Alternative: Manual SDK Configuration
 
@@ -367,7 +367,7 @@ public class CustomEventLogger : IContextEventLogger
 ```csharp
 // For all contexts, during SDK initialization
 // When using dependency injection
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault(),
     config => config.ContextEventLogger = new CustomEventLogger());
@@ -401,7 +401,7 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 
 ## Platform-Specific Examples
 
-All ASP.NET Core examples read the SDK settings from the `ABSmartly` configuration section described in [Dependency Injection Setup](#recommended-dependency-injection-setup) (`Environment`, `Application`, `Endpoint` and `ApiKey` in `appsettings.json`), and register the SDK with `AddABSmartly()`, which also registers the `HttpClient` the SDK uses. The `session_id` examples use ASP.NET Core session state, which needs `AddDistributedMemoryCache()` (or another distributed cache), `AddSession()` and `UseSession()`.
+All ASP.NET Core examples read the SDK settings from the `ABSmartly` configuration section described in [Dependency Injection Setup](#recommended-dependency-injection-setup) (`Environment`, `Application`, `Endpoint` and `ApiKey` in `appsettings.json`), and register the SDK with `AddABsmartly()`, which also registers the `HttpClient` the SDK uses. The `session_id` examples use ASP.NET Core session state, which needs `AddDistributedMemoryCache()` (or another distributed cache), `AddSession()` and `UseSession()`.
 
 `CreateContextAsync()` returns an `IContext`. The object it returns is a `Context`, which is the type that implements `IAsyncDisposable`, so the examples cast to `Context` to use `await using`.
 
@@ -413,7 +413,7 @@ using ABSmartly.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
@@ -459,7 +459,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession();
 
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
@@ -532,7 +532,7 @@ public class Startup
         services.AddDistributedMemoryCache();
         services.AddSession();
 
-        services.AddABSmartly(
+        services.AddABsmartly(
             Configuration.GetSection("ABSmartly"),
             HttpClientConfig.CreateDefault());
     }
@@ -548,7 +548,7 @@ public class Startup
 
 ### Using with ASP.NET Core Razor Pages
 
-Register `AddRazorPages()`, `AddDistributedMemoryCache()`, `AddSession()`, `AddABSmartly(...)`, `app.UseSession()` and `app.MapRazorPages()` as above.
+Register `AddRazorPages()`, `AddDistributedMemoryCache()`, `AddSession()`, `AddABsmartly(...)`, `app.UseSession()` and `app.MapRazorPages()` as above.
 
 ```csharp
 // Pages/Index.cshtml.cs
@@ -595,7 +595,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     HttpClientConfig.CreateDefault());
 
@@ -647,7 +647,7 @@ var builder = WebApplication.CreateBuilder(args);
 var httpConfig = HttpClientConfig.CreateDefault();
 httpConfig.ConnectTimeout = 1500;
 
-builder.Services.AddABSmartly(
+builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
     httpConfig);
 ```

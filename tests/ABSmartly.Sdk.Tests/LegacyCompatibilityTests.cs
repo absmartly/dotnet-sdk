@@ -15,7 +15,7 @@ namespace ABSmartly.Sdk.Tests;
 public class LegacyCompatibilityTests
 {
     [Test]
-    public void AddABSmartly_ResolvesLegacyTypes()
+    public void AddABsmartly_ResolvesLegacyTypes()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
         {
@@ -27,7 +27,7 @@ public class LegacyCompatibilityTests
 
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddABSmartly(configuration, HttpClientConfig.CreateDefault());
+        services.AddABsmartly(configuration, HttpClientConfig.CreateDefault());
         using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<ABsmartly>().Should().NotBeNull();
@@ -54,7 +54,7 @@ public class LegacyCompatibilityTests
         var services = new ServiceCollection();
         services.AddLogging();
         extra?.Invoke(services);
-        services.AddABSmartly(configuration, HttpClientConfig.CreateDefault(), typedSetup);
+        services.AddABsmartly(configuration, HttpClientConfig.CreateDefault(), typedSetup);
         return services.BuildServiceProvider();
     }
 
@@ -101,7 +101,7 @@ public class LegacyCompatibilityTests
         using var sp = BuildProvider(s => s.AddSingleton(custom), null);
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddABSmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
+        services.AddABsmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
         {
             ["Endpoint"] = "https://example.absmartly.io/v1", ["ApiKey"] = "k", ["Application"] = "a", ["Environment"] = "e"
         }).Build(), HttpClientConfig.CreateDefault());
@@ -126,7 +126,7 @@ public class LegacyCompatibilityTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.Configure<ABSdkConfig>(c => c.ContextDataProvider = providerA);
-        services.AddABSmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
+        services.AddABsmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
         {
             ["Endpoint"] = "https://example.absmartly.io/v1", ["ApiKey"] = "k", ["Application"] = "a", ["Environment"] = "e"
         }).Build(), HttpClientConfig.CreateDefault(), (Action<ABSdkConfig>)(c =>
@@ -180,5 +180,21 @@ public class LegacyCompatibilityTests
         sdk.Should().NotBeNull();
         IABSdkHttpClientFactory legacy = new ABSdkHttpClientFactory(null!);
         legacy.Should().NotBeNull();
+    }
+
+    [Test]
+    public void LegacyAddABSmartly_ForwardsToAddABsmartly()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddABSmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
+        {
+            ["Endpoint"] = "https://example.absmartly.io/v1", ["ApiKey"] = "k", ["Application"] = "a", ["Environment"] = "e"
+        }).Build(), HttpClientConfig.CreateDefault());
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<ABsmartly>().Should().NotBeNull();
+        provider.GetRequiredService<ABSdk>().Should().NotBeNull();
+        provider.GetRequiredService<IOptions<ABSmartlyServiceConfiguration>>().Value.ApiKey.Should().Be("k");
     }
 }

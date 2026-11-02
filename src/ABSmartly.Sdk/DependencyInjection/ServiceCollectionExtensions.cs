@@ -17,7 +17,7 @@ namespace ABSmartly.DependencyInjection;
 // ReSharper disable once UnusedType.Global
 public static class ServiceCollectionExtensions
 {
-    public static void AddABSmartly(
+    public static void AddABsmartly(
         this IServiceCollection services,
         IConfiguration abSmartlyServiceConfiguration,
         HttpClientConfig httpClientConfig,
@@ -85,6 +85,19 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IABSdkHttpClientFactory, ABSdkHttpClientFactory>();
         services.AddSingleton<ABSdk>();
 #pragma warning restore CS0618
+    }
+
+    /// <summary>Obsolete: use <see cref="AddABsmartly"/> instead. Kept for 1.3.0 source and binary compatibility.</summary>
+    [Obsolete("AddABSmartly has been renamed to AddABsmartly. Please use AddABsmartly instead.")]
+    public static void AddABSmartly(
+        this IServiceCollection services,
+        IConfiguration abSmartlyServiceConfiguration,
+        HttpClientConfig httpClientConfig,
+        Action<ABSdkConfig> setupSdkOptions = null,
+        Func<PolicyBuilder<HttpResponseMessage>, IAsyncPolicy<HttpResponseMessage>> setupRetryPolicy = null
+    )
+    {
+        services.AddABsmartly(abSmartlyServiceConfiguration, httpClientConfig, setupSdkOptions, setupRetryPolicy);
     }
 
     private static Func<PolicyBuilder<HttpResponseMessage>, AsyncRetryPolicy<HttpResponseMessage>>
