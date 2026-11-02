@@ -240,7 +240,7 @@ public class PendingContextTests
         var sdk = new ABsmartly(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
             new ABsmartlyConfig { ContextEventLogger = _logger, ContextPublisher = _publisher });
 
-        var context = await sdk.CreateContextAsync(Config());
+        var context = (IContextV2)await sdk.CreateContextAsync(Config());
 
         context.IsFailed().Should().BeTrue();
         context.ReadyError.Should().BeOfType<InvalidOperationException>()
