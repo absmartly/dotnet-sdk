@@ -1424,7 +1424,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
                         if (customFieldValue.Type.StartsWith("json"))
                         {
-                            value.Value = DefaultVariableParser.ParseValue(customValue);
+                            // Through the configured parser, as 1.3.0 and Java (variableParser.parse).
+                            value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
                         }
                         else if(customFieldValue.Type.StartsWith("boolean"))
                         {

@@ -80,5 +80,20 @@ public class BehaviourParityTests
         }
     }
 
+    [Test]
+    public void JsonCustomFieldsGoThroughTheConfiguredVariableParser()
+    {
+        var parsed = new Dictionary<string, object> { ["from"] = "custom parser" };
+        var parser = new Mock<IVariableParser>();
+        parser.Setup(p => p.Parse(It.IsAny<IContext>(), "exp", "settings", "{\"a\":1}")).Returns(parsed);
+        _variableParser = parser.Object;
+
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "settings", Type = "json", Value = "{\"a\":1}" }));
+
+        context.GetCustomFieldValue("exp", "settings").Should().BeSameAs(parsed);
+        parser.Verify(p => p.Parse(It.IsAny<IContext>(), "exp", "settings", "{\"a\":1}"), Times.Once);
+    }
+
     #endregion
 }
