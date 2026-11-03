@@ -74,6 +74,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // locks it uses until it has settled.
     private bool _settlingLoad;
     private bool _locksDisposePending;
+    // Guarded by _closeLock: a Dispose that joined a close in progress without waiting
+    // for it asks the close's owner to dispose the locks once the context is closed.
+    private bool _disposeAfterClose;
     private bool _locksDisposed;
 
     private volatile ContextData _data;
@@ -1704,6 +1707,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // the close's own flush.
             if (HasOwnOutstandingPublication()) return;
 
+            // A synchronous Close()/Dispose() on a thread with a SynchronizationContext
+            // (UI, classic ASP.NET) blocks that thread. The close in progress may be
+            // waiting for a publication whose continuation needs this thread, so joining
+            // it here could deadlock: return without waiting, as a second close did in
+            // 1.3.0. The close in progress finishes the job (and keeps failed events
+            // retryable); use FinalizeAsync/DisposeAsync to wait for it on such threads.
+            if (!waitForOutstanding) return;
+
             await attempt.Task.ConfigureUnboundContinuation();
             return;
         }
@@ -1712,6 +1723,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // (and is registered as outstanding below) or sees the close and leaves the batch.
         lock (_eventLock) Interlocked.Exchange(ref _closing, 1);
         ClearRefreshTimer();
+        var disposeLocks = false;
 
         // A publication started before this close may still fail and restore its
         // events: wait for it, so they are retried by the flush below (or, if that
@@ -1756,6 +1768,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             {
                 _closed = true;
                 Interlocked.Exchange(ref _closing, 0);
+                disposeLocks = _disposeAfterClose;
             }
 
             attempt.TrySetResult(true);
@@ -1771,7 +1784,25 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         finally
         {
             t_notifyingClose = previous;
+
+            if (disposeLocks) RequestDisposeLocks();
         }
+    }
+
+    // After a Dispose: disposes the locks if the context is closed, or, while a close is
+    // in progress that this Dispose did not wait for, asks that close to dispose them.
+    private void DisposeLocksAfterClose()
+    {
+        lock (_closeLock)
+        {
+            if (!_closed)
+            {
+                if (_closeAttempt != null) _disposeAfterClose = true;
+                return;
+            }
+        }
+
+        RequestDisposeLocks();
     }
 
     // Finalizes the context (publishes pending events, then seals it) without
@@ -1798,10 +1829,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var wait = CanBlockOnOutstandingPublishes();
             AsyncHelpers.RunSync(async () => await CloseAsync(wait));
 
-            // Nested in the owner's close: the owner disposes once it completes.
-            if (!_closed) return;
-
-            RequestDisposeLocks();
+            DisposeLocksAfterClose();
         }
     }
 
@@ -1837,9 +1865,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         await CloseAsync().ConfigureUnboundContinuation();
 
+        DisposeLocksAfterClose();
         if (!_closed) return;
-
-        RequestDisposeLocks();
 
         Dispose(false);
         GC.SuppressFinalize(this);

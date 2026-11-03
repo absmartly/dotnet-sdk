@@ -551,6 +551,66 @@ public class BehaviourParityTests
         context.IsFinalized.Should().BeTrue();
     }
 
+    // A synchronous Close()/Dispose() on a UI-like thread that joins a close already in
+    // progress (owned by FinalizeAsync, waiting for a publication whose continuation needs
+    // the UI thread) must not block that thread. The owning close still retries the
+    // failed publication's events.
+    [TestCase(false)]
+    [TestCase(true)]
+    [Timeout(10000)]
+    public async Task SynchronousCloseOnUiThreadJoiningCloseInProgressDoesNotDeadlock(bool dispose)
+    {
+        var gate = new TaskCompletionSource<bool>();
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        PublishEvent? retried = null;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    entered.TrySetResult(true);
+                    await gate.Task; // resumes on the UI thread
+                    throw new InvalidOperationException("publish failed");
+                }
+
+                retried = e;
+            });
+
+        var context = CreateContext(_data);
+        context.Track("goal1", null);
+        using var ui = new SingleThreadSyncContext();
+        Task publish = null!;
+
+        await ui.Run(() => publish = context.PublishAsync());
+        (await Completes(entered.Task)).Should().BeTrue();
+
+        var finalize = context.FinalizeAsync(); // owns the close, waits for the publication
+        await Task.Delay(50);
+        finalize.IsCompleted.Should().BeFalse();
+
+        var joined = ui.Run(() =>
+        {
+            if (dispose) context.Dispose();
+            else context.Close();
+        });
+        (await Completes(joined)).Should().BeTrue("the UI thread must not block on the close in progress");
+
+        gate.SetResult(true);
+        Func<Task> failedPublish = () => publish;
+        (await Completes(publish.ContinueWith(_ => { }))).Should().BeTrue();
+        await failedPublish.Should().ThrowAsync<InvalidOperationException>();
+        (await Completes(finalize)).Should().BeTrue();
+        await finalize;
+
+        retried!.Goals!.Select(g => g.Name).Should().Equal("goal1");
+        context.PendingCount.Should().Be(0);
+        context.IsFinalized.Should().BeTrue();
+        typeof(Context).GetField("_locksDisposed",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(context).Should().Be(dispose, "a Dispose that joined without waiting still disposes once closed");
+    }
+
     // While a close is waiting for an outstanding publication, a flush (as the publish
     // timer) leaves the queued events for the close instead of detaching them.
     [Test]
