@@ -23,8 +23,7 @@ public class DefaultAudienceDeserializer : JsonParserBase, IAudienceDeserializer
 
         try
         {
-            var result = ParseJsonString(audience);
-            return result;
+            return ParseJsonString(audience);
         }
         catch (Exception e)
         {

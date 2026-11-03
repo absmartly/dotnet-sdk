@@ -172,7 +172,7 @@ These methods return `IContext`, whose members are unchanged since 1.3.0. Member
 
 ### Without Waiting for the Data
 
-`CreatePendingContext()` returns at once with an `IContextV2` context that is not ready yet, and loads the data in the background. Until the context is ready, the read methods (`GetTreatment()`, `PeekTreatment()`, `GetVariableValue()`, `PeekVariableValue()`, `VariableKeys`, `Experiments` and the custom field methods) throw an `InvalidOperationException` with the message `ABSmartly Context is not yet ready` and queue no exposure. Call `WaitUntilReady()` or `WaitUntilReadyAsync()` first. `Track()`, `SetUnit()`, `SetAttribute()` and `SetOverride()` work as usual; tracked goals are published after the context is ready.
+`CreatePendingContext()` returns at once with an `IContextV2` context that is not ready yet, and loads the data in the background. Until the context is ready, the read methods (`GetTreatment()`, `PeekTreatment()`, `GetVariableValue()`, `PeekVariableValue()`, `VariableKeys`, `Experiments` and the custom field methods) throw an `InvalidOperationException` with the message `ABSmartly Context is not yet ready` and queue no exposure. Call `WaitUntilReady()` or `WaitUntilReadyAsync()` first. `Track()`, `SetUnit()`, `SetAttribute()` and `SetOverride()` work as usual. Tracked goals are queued: the automatic publish timer starts only once the context is ready, but an explicit `Publish()`/`PublishAsync()` sends whatever is queued at once, even before the context is ready.
 
 ```csharp
 IContextV2 context = _absmartly.CreatePendingContext(config);
@@ -321,6 +321,8 @@ context.Track("payment", new Dictionary<string, object> {
 ### Publishing Pending Data
 
 Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector before proceeding. You can explicitly call the `Publish()` or `PublishAsync()` methods.
+
+If the context's publisher reports a failure by throwing, or by returning a faulted task, the events stay queued (`PendingCount`) and a later `Publish()`, `Close()` or `Dispose()` retries them. The default publisher doesn't report an HTTP failure that way: as in 1.3.0, an unsuccessful response from the collector is not raised, so those events are not retried. To retry them, supply an `IContextPublisher` that throws on failure.
 
 ```csharp
 await context.PublishAsync();

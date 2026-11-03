@@ -98,7 +98,6 @@ public class LegacyCompatibilityTests
     public void CustomLegacyFactoryRegistration_IsUsedByABSdk()
     {
         var custom = Moq.Mock.Of<IABSdkHttpClientFactory>();
-        using var sp = BuildProvider(s => s.AddSingleton(custom), null);
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddABsmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
