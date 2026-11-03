@@ -360,6 +360,294 @@ public class BehaviourParityTests
         context.IsFinalized.Should().BeTrue();
     }
 
+    // A publication already handed to the publisher when the context is closed may still
+    // fail. The close must wait for it, so the restored events are retried by the close's
+    // own flush instead of being stranded on a sealed context.
+    [TestCase(false)]
+    [TestCase(true)]
+    [Timeout(10000)]
+    public async Task CloseWaitsForOutstandingPublishAndRetriesItsFailedEvents(bool dispose)
+    {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        PublishEvent? retried = null;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    entered.TrySetResult(true);
+                    await release.Task;
+                    throw new InvalidOperationException("publish failed");
+                }
+
+                retried = e;
+            });
+
+        var context = CreateContext(_data);
+        context.Track("goal1", null);
+
+        var publish = context.PublishAsync();
+        (await Completes(entered.Task)).Should().BeTrue();
+
+        var close = dispose ? context.DisposeAsync().AsTask() : context.FinalizeAsync();
+        await Task.Delay(100);
+        close.IsCompleted.Should().BeFalse("the close waits for the outstanding publication");
+        context.IsFinalized.Should().BeFalse();
+
+        release.SetResult(true);
+        Func<Task> failedPublish = () => publish;
+        await failedPublish.Should().ThrowAsync<InvalidOperationException>().WithMessage("publish failed");
+
+        (await Completes(close)).Should().BeTrue();
+        await close;
+        calls.Should().Be(2, "the close retried the restored events");
+        retried!.Goals.Select(g => g.Name).Should().Equal("goal1");
+        context.PendingCount.Should().Be(0);
+        context.IsFinalized.Should().BeTrue();
+    }
+
+    // If the close's retry fails too, the context stays open and the events stay retryable.
+    [Test]
+    [Timeout(10000)]
+    public async Task CloseRacingFailedPublishLeavesEventsRetryableWhenRetryFails()
+    {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fail = true;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, _) =>
+            {
+                entered.TrySetResult(true);
+                await release.Task;
+                if (Volatile.Read(ref fail)) throw new InvalidOperationException("publish failed");
+            });
+
+        var context = CreateContext(_data);
+        context.Track("goal1", null);
+
+        var publish = context.PublishAsync();
+        (await Completes(entered.Task)).Should().BeTrue();
+        var close = context.FinalizeAsync();
+
+        release.SetResult(true);
+        Func<Task> failedPublish = () => publish;
+        await failedPublish.Should().ThrowAsync<InvalidOperationException>();
+        Func<Task> failedClose = () => close;
+        (await Completes(close.ContinueWith(_ => { }))).Should().BeTrue();
+        await failedClose.Should().ThrowAsync<InvalidOperationException>();
+
+        context.IsFinalized.Should().BeFalse("a failed close leaves the context open");
+        context.PendingCount.Should().Be(1, "the events stay retryable");
+
+        Volatile.Write(ref fail, false);
+        await context.FinalizeAsync();
+        context.PendingCount.Should().Be(0);
+        context.IsFinalized.Should().BeTrue();
+    }
+
+    // A publisher whose publication a concurrent close is waiting for may itself call
+    // FinalizeAsync: that must not deadlock.
+    [Test]
+    [Timeout(10000)]
+    public async Task PublisherFinalizingWhileAnotherCloseWaitsForItDoesNotDeadlock()
+    {
+        Context context = null!;
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closeStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, _) =>
+            {
+                entered.TrySetResult(true);
+                await closeStarted.Task;
+                await context.FinalizeAsync();
+            });
+
+        context = CreateContext(_data);
+        context.Track("goal1", null);
+
+        var publish = context.PublishAsync();
+        (await Completes(entered.Task)).Should().BeTrue();
+        var close = context.FinalizeAsync();
+        closeStarted.SetResult(true);
+
+        (await Completes(publish)).Should().BeTrue("the publisher's nested finalize must not deadlock");
+        (await Completes(close)).Should().BeTrue();
+        context.IsFinalized.Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+    }
+
+    // A single-threaded SynchronizationContext, like a UI thread: posted continuations
+    // run only on its own thread.
+    private sealed class SingleThreadSyncContext : SynchronizationContext, IDisposable
+    {
+        private readonly System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback, object?)> _queue = new();
+        private readonly Thread _thread;
+
+        public SingleThreadSyncContext()
+        {
+            _thread = new Thread(() =>
+            {
+                SetSynchronizationContext(this);
+                foreach (var (callback, state) in _queue.GetConsumingEnumerable()) callback(state);
+            }) { IsBackground = true };
+            _thread.Start();
+        }
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Add((d, state));
+
+        public Task Run(Action action)
+        {
+            var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Post(_ =>
+            {
+                try
+                {
+                    action();
+                    done.SetResult(true);
+                }
+                catch (Exception e)
+                {
+                    done.SetException(e);
+                }
+            }, null);
+            return done.Task;
+        }
+
+        public void Dispose() => _queue.CompleteAdding();
+    }
+
+    // A synchronous Dispose()/Close() on a UI-like thread must not wait for a publication
+    // whose continuation needs that same thread: it would deadlock.
+    [TestCase(false)]
+    [TestCase(true)]
+    [Timeout(10000)]
+    public async Task SynchronousCloseOnUiThreadDuringPublishDoesNotDeadlock(bool dispose)
+    {
+        var release = new TaskCompletionSource<bool>();
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, _) => await release.Task); // resumes on the UI thread
+
+        var context = CreateContext(_data);
+        context.Track("goal1", null);
+        using var ui = new SingleThreadSyncContext();
+        Task publish = null!;
+
+        var closed = ui.Run(() =>
+        {
+            publish = context.PublishAsync();
+            if (dispose) context.Dispose();
+            else context.Close();
+        });
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(200);
+            release.SetResult(true);
+        });
+
+        (await Completes(closed)).Should().BeTrue("the UI thread must not deadlock");
+        (await Completes(publish)).Should().BeTrue();
+        context.IsFinalized.Should().BeTrue();
+    }
+
+    // While a close is waiting for an outstanding publication, a flush (as the publish
+    // timer) leaves the queued events for the close instead of detaching them.
+    [Test]
+    [Timeout(10000)]
+    public async Task FlushDuringCloseLeavesEventsForTheClose()
+    {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var batches = new System.Collections.Concurrent.ConcurrentQueue<string[]>();
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                var names = e.Goals!.Select(g => g.Name).ToArray();
+                if (names.Contains("goal1") && entered.TrySetResult(true))
+                {
+                    await release.Task;
+                    throw new InvalidOperationException("publish failed");
+                }
+
+                batches.Enqueue(names);
+            });
+
+        var context = CreateContext(_data);
+        context.Track("goal1", null);
+        var publish = context.PublishAsync();
+        (await Completes(entered.Task)).Should().BeTrue();
+        context.Track("goal2", null);
+
+        var close = context.FinalizeAsync();
+        var flush = (Task)typeof(Context).GetMethod("Flush",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(context, null)!;
+        await flush;
+        batches.Should().BeEmpty("a flush during the close must not detach the batch");
+        context.PendingCount.Should().Be(1);
+
+        release.SetResult(true);
+        Func<Task> failedPublish = () => publish;
+        await failedPublish.Should().ThrowAsync<InvalidOperationException>();
+        (await Completes(close)).Should().BeTrue();
+
+        batches.Should().ContainSingle().Which.Should().Equal("goal1", "goal2");
+        context.PendingCount.Should().Be(0);
+        context.IsFinalized.Should().BeTrue();
+    }
+
+    // Work a publisher started (here Task.Run) that closes the context after its
+    // publication has settled waits for the running close instead of returning early.
+    [Test]
+    [Timeout(10000)]
+    public async Task CloseFromPublisherStartedWorkAfterItsPublicationSettledWaitsForTheClose()
+    {
+        Context context = null!;
+        var otherEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOther = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var startLater = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task later = null!;
+        var calls = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, _) =>
+            {
+                var call = Interlocked.Increment(ref calls);
+                if (call == 1)
+                {
+                    // Started from inside this publication, run after it has settled.
+                    later = Task.Run(async () =>
+                    {
+                        await startLater.Task;
+                        await context.FinalizeAsync();
+                    });
+                }
+                else if (call == 2)
+                {
+                    otherEntered.TrySetResult(true);
+                    await releaseOther.Task;
+                }
+            });
+
+        context = CreateContext(_data);
+        context.Track("goal1", null);
+        await context.PublishAsync(); // publication 1 settles
+
+        context.Track("goal2", null);
+        var otherPublish = context.PublishAsync(); // publication 2 in flight
+        (await Completes(otherEntered.Task)).Should().BeTrue();
+        var close = context.FinalizeAsync(); // waits for publication 2
+
+        startLater.SetResult(true);
+        await Task.Delay(100);
+        later.IsCompleted.Should().BeFalse("the close it joined is still waiting for publication 2");
+
+        releaseOther.SetResult(true);
+        await otherPublish;
+        (await Completes(close)).Should().BeTrue();
+        (await Completes(later)).Should().BeTrue();
+        context.IsFinalized.Should().BeTrue();
+    }
+
     // An event logger that, like a UI dispatcher, hands Close()/Dispose() to another
     // thread and blocks until it has run. With suppressFlow the other thread does not
     // inherit the caller's AsyncLocal state, as a pre-existing UI thread.

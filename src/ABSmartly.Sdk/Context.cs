@@ -63,6 +63,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // retry. Thread-scoped (unlike AsyncLocal, it does not flow to a thread the logger
     // dispatches to), so a Close() handed to another thread runs normally.
     [ThreadStatic] private static Context t_notifyingClose;
+    // Publications handed to the publisher and not yet settled (guarded by _eventLock),
+    // so a close can wait for them instead of sealing the context while one may still
+    // fail and restore its events.
+    private readonly List<Task> _inFlightPublishes = new();
+    // The publications whose publisher callback the current async flow is running in,
+    // so a close called back from a publisher does not wait for its own publication.
+    private readonly AsyncLocal<PublishScope> _publishScope = new();
     // Guarded by _closeLock: an initial load being applied defers disposal of the
     // locks it uses until it has settled.
     private bool _settlingLoad;
@@ -431,13 +438,17 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         Exposure[] exposures = null;
         GoalAchievement[] achievements = null;
+        TaskCompletionSource<bool> inFlight = null;
         int eventCount;
 
         try
         {
             Monitor.Enter(_eventLock);
 
-            eventCount = _pendingCount;
+            // While a close is in progress only its own flush takes the batch: a flush that
+            // detached it after the close looked for outstanding publications could fail
+            // after the context is sealed and strand its events. The close publishes them.
+            eventCount = _closing > 0 && !_inCloseFlush.Value ? 0 : _pendingCount;
             if (eventCount > 0)
             {
                 if (_exposures.Count > 0)
@@ -453,6 +464,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 }
 
                 Interlocked.Exchange(ref _pendingCount, 0);
+
+                inFlight = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _inFlightPublishes.Add(inFlight.Task);
             }
         }
         finally
@@ -464,44 +478,117 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         try
         {
-            var publishEvent = new PublishEvent
-            {
-                Hashed = true,
-                PublishedAt = _clock.Millis(),
-                Units = _units
-                    .Select(kv => new Unit
-                    {
-                        Type = kv.Key,
-                        Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
-                    })
-                    .ToArray(),
-                Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
-                Exposures = exposures,
-                Goals = achievements
-            };
-
-            var publishTask = _eventHandler.PublishAsync(this, publishEvent) ??
-                              throw new InvalidOperationException("Context publisher returned no task.");
-            await publishTask.ConfigureUnboundContinuation();
-            return new FlushOutcome(publishEvent, null);
-        }
-        catch (Exception e)
-        {
             try
             {
-                Monitor.Enter(_eventLock);
+                var publishEvent = new PublishEvent
+                {
+                    Hashed = true,
+                    PublishedAt = _clock.Millis(),
+                    Units = _units
+                        .Select(kv => new Unit
+                        {
+                            Type = kv.Key,
+                            Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
+                        })
+                        .ToArray(),
+                    Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
+                    Exposures = exposures,
+                    Goals = achievements
+                };
 
-                if (exposures != null) _exposures.InsertRange(0, exposures);
-                if (achievements != null) _achievements.InsertRange(0, achievements);
-                Interlocked.Add(ref _pendingCount, eventCount);
+                _publishScope.Value = new PublishScope(inFlight.Task, _publishScope.Value);
+                var publishTask = _eventHandler.PublishAsync(this, publishEvent) ??
+                                  throw new InvalidOperationException("Context publisher returned no task.");
+                await publishTask.ConfigureUnboundContinuation();
+                return new FlushOutcome(publishEvent, null);
             }
-            finally
+            catch (Exception e)
             {
-                Monitor.Exit(_eventLock);
+                try
+                {
+                    Monitor.Enter(_eventLock);
+
+                    if (exposures != null) _exposures.InsertRange(0, exposures);
+                    if (achievements != null) _achievements.InsertRange(0, achievements);
+                    Interlocked.Add(ref _pendingCount, eventCount);
+                }
+                finally
+                {
+                    Monitor.Exit(_eventLock);
+                }
+
+                return new FlushOutcome(null, e);
+            }
+        }
+        finally
+        {
+            // Settled only after a failed batch is restored, so a close waiting for this
+            // publication sees the restored events and can retry them.
+            lock (_eventLock) _inFlightPublishes.Remove(inFlight.Task);
+            inFlight.TrySetResult(true);
+        }
+    }
+
+    private sealed class PublishScope
+    {
+        public PublishScope(Task publication, PublishScope parent)
+        {
+            Publication = publication;
+            Parent = parent;
+        }
+
+        public Task Publication { get; }
+        public PublishScope Parent { get; }
+    }
+
+    // Waits until every publication already handed to the publisher has settled, except
+    // those whose publisher callback is the caller (a publisher that closes this context
+    // cannot wait for its own publication without deadlocking).
+    private async Task WaitForOutstandingPublishes()
+    {
+        while (true)
+        {
+            Task[] outstanding;
+            lock (_eventLock)
+            {
+                outstanding = _inFlightPublishes.Where(t => !IsOwnPublication(t)).ToArray();
             }
 
-            return new FlushOutcome(null, e);
+            if (outstanding.Length == 0) return;
+
+            await Task.WhenAll(outstanding).ConfigureUnboundContinuation();
         }
+    }
+
+    private bool HasOwnOutstandingPublication()
+    {
+        if (_publishScope.Value == null) return false;
+
+        lock (_eventLock)
+        {
+            return _inFlightPublishes.Any(IsOwnPublication);
+        }
+    }
+
+    // A synchronous Close()/Dispose() blocks the calling thread. Waiting there for a
+    // publication that resumes on this thread's SynchronizationContext (a UI thread, or
+    // classic ASP.NET) would deadlock, so it waits only when the thread has none; use
+    // FinalizeAsync/DisposeAsync to wait on such threads.
+    private static bool CanBlockOnOutstandingPublishes()
+    {
+        var context = SynchronizationContext.Current;
+        return (context == null || context.GetType() == typeof(SynchronizationContext)) &&
+               TaskScheduler.Current == TaskScheduler.Default;
+    }
+
+    private bool IsOwnPublication(Task publication)
+    {
+        for (var scope = _publishScope.Value; scope != null; scope = scope.Parent)
+        {
+            if (ReferenceEquals(scope.Publication, publication)) return true;
+        }
+
+        return false;
     }
 
     // Notifies the event logger of a flush outcome, then rethrows a publish error.
@@ -1587,7 +1674,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // The attempt is settled (closed, or reset for a retry) before any event logger
     // callback runs, so a logger that synchronously hands Close()/Dispose() to another
     // thread and waits for it cannot wait on this attempt.
-    private async Task CloseAsync()
+    private Task CloseAsync() => CloseAsync(true);
+
+    private async Task CloseAsync(bool waitForOutstanding)
     {
         if (_closed) return;
 
@@ -1609,12 +1698,25 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         if (!owner)
         {
+            // Called from a publisher callback whose publication is still in flight while
+            // another close is under way: that close waits for this publication, so
+            // waiting for it here would deadlock. A no-op, as a close called back during
+            // the close's own flush.
+            if (HasOwnOutstandingPublication()) return;
+
             await attempt.Task.ConfigureUnboundContinuation();
             return;
         }
 
-        Interlocked.Exchange(ref _closing, 1);
+        // Set under _eventLock, so a flush either detached its batch before this point
+        // (and is registered as outstanding below) or sees the close and leaves the batch.
+        lock (_eventLock) Interlocked.Exchange(ref _closing, 1);
         ClearRefreshTimer();
+
+        // A publication started before this close may still fail and restore its
+        // events: wait for it, so they are retried by the flush below (or, if that
+        // fails too, the context stays open and they remain retryable).
+        if (waitForOutstanding) await WaitForOutstandingPublishes().ConfigureUnboundContinuation();
 
         FlushOutcome outcome = default;
         if (_pendingCount > 0)
@@ -1678,7 +1780,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     public void Close()
     {
-        AsyncHelpers.RunSync(async () => await CloseAsync());
+        var wait = CanBlockOnOutstandingPublishes();
+        AsyncHelpers.RunSync(async () => await CloseAsync(wait));
     }
 
     public void Dispose()
@@ -1692,7 +1795,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         if (disposing)
         {
-            AsyncHelpers.RunSync(async () => await CloseAsync());
+            var wait = CanBlockOnOutstandingPublishes();
+            AsyncHelpers.RunSync(async () => await CloseAsync(wait));
 
             // Nested in the owner's close: the owner disposes once it completes.
             if (!_closed) return;
