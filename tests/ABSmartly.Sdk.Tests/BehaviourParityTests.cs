@@ -342,6 +342,8 @@ public class BehaviourParityTests
         context.Track("goal1", null);
 
         (await Completes(context.PublishAsync())).Should().BeTrue("a re-entrant finalize must not deadlock");
+        // The close seals once the publisher's own publication has settled.
+        (await Completes(context.FinalizeAsync())).Should().BeTrue();
         context.IsFinalized.Should().BeTrue();
     }
 
@@ -548,6 +550,8 @@ public class BehaviourParityTests
 
         (await Completes(closed)).Should().BeTrue("the UI thread must not deadlock");
         (await Completes(publish)).Should().BeTrue();
+        // The close seals in the background once the outstanding publication settles.
+        (await Completes(context.FinalizeAsync())).Should().BeTrue();
         context.IsFinalized.Should().BeTrue();
     }
 
@@ -609,6 +613,129 @@ public class BehaviourParityTests
         typeof(Context).GetField("_locksDisposed",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(context).Should().Be(dispose, "a Dispose that joined without waiting still disposes once closed");
+    }
+
+    // A synchronous Close()/Dispose() on a UI-like thread that owns the close does not wait
+    // for an outstanding publication (that could deadlock), but must not seal the context
+    // before it settles: when it fails, its events are retried by the close.
+    [TestCase(false)]
+    [TestCase(true)]
+    [Timeout(10000)]
+    public async Task SynchronousCloseOnUiThreadRetriesEventsOfOutstandingFailedPublish(bool dispose)
+    {
+        var gate = new TaskCompletionSource<bool>();
+        var calls = 0;
+        PublishEvent? retried = null;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    await gate.Task; // resumes on the UI thread
+                    throw new InvalidOperationException("publish failed");
+                }
+
+                retried = e;
+            });
+
+        var context = CreateContext(_data);
+        context.Track("goal1", null);
+        using var ui = new SingleThreadSyncContext();
+        Task publish = null!;
+
+        var closed = ui.Run(() =>
+        {
+            publish = context.PublishAsync();
+            if (dispose) context.Dispose();
+            else context.Close();
+        });
+        (await Completes(closed)).Should().BeTrue("the UI thread must not block");
+        context.IsFinalized.Should().BeFalse("the close waits for the outstanding publication before sealing");
+
+        gate.SetResult(true);
+        Func<Task> failedPublish = () => publish;
+        (await Completes(publish.ContinueWith(_ => { }))).Should().BeTrue();
+        await failedPublish.Should().ThrowAsync<InvalidOperationException>();
+
+        (await Completes(context.FinalizeAsync())).Should().BeTrue();
+        retried!.Goals!.Select(g => g.Name).Should().Equal("goal1");
+        context.PendingCount.Should().Be(0);
+        context.IsFinalized.Should().BeTrue();
+        typeof(Context).GetField("_locksDisposed",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(context).Should().Be(dispose);
+    }
+
+    // A publisher that finalizes its own context and then fails: the close must not seal
+    // before that publication settles, and retries its restored events.
+    [Test]
+    [Timeout(10000)]
+    public async Task PublisherFinalizingThenFailingHasItsEventsRetriedByTheClose()
+    {
+        Context context = null!;
+        var calls = 0;
+        PublishEvent? retried = null;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    await context.FinalizeAsync();
+                    context.IsFinalized.Should().BeFalse("its own publication is still outstanding");
+                    throw new InvalidOperationException("publish failed");
+                }
+
+                retried = e;
+            });
+
+        context = CreateContext(_data);
+        context.Track("goal1", null);
+
+        Func<Task> failedPublish = () => context.PublishAsync();
+        await failedPublish.Should().ThrowAsync<InvalidOperationException>().WithMessage("publish failed");
+
+        (await Completes(context.FinalizeAsync())).Should().BeTrue();
+        retried!.Goals!.Select(g => g.Name).Should().Equal("goal1");
+        context.PendingCount.Should().Be(0);
+        context.IsFinalized.Should().BeTrue();
+    }
+
+    // If the deferred close's retry fails too, the context stays open and the events stay
+    // retryable.
+    [Test]
+    [Timeout(10000)]
+    public async Task DeferredCloseWhoseRetryFailsLeavesEventsRetryable()
+    {
+        Context context = null!;
+        var fail = true;
+        var first = true;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, _) =>
+            {
+                if (first)
+                {
+                    first = false;
+                    await context.FinalizeAsync();
+                }
+
+                await Task.Yield();
+                if (Volatile.Read(ref fail)) throw new InvalidOperationException("publish failed");
+            });
+
+        context = CreateContext(_data);
+        context.Track("goal1", null);
+        Func<Task> failedPublish = () => context.PublishAsync();
+        await failedPublish.Should().ThrowAsync<InvalidOperationException>();
+
+        Func<Task> failedClose = () => context.FinalizeAsync();
+        await failedClose.Should().ThrowAsync<InvalidOperationException>();
+        context.IsFinalized.Should().BeFalse();
+        context.PendingCount.Should().Be(1);
+
+        Volatile.Write(ref fail, false);
+        await context.FinalizeAsync();
+        context.PendingCount.Should().Be(0);
+        context.IsFinalized.Should().BeTrue();
     }
 
     // While a close is waiting for an outstanding publication, a flush (as the publish

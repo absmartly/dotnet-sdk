@@ -1723,13 +1723,55 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // (and is registered as outstanding below) or sees the close and leaves the batch.
         lock (_eventLock) Interlocked.Exchange(ref _closing, 1);
         ClearRefreshTimer();
-        var disposeLocks = false;
 
         // A publication started before this close may still fail and restore its
         // events: wait for it, so they are retried by the flush below (or, if that
         // fails too, the context stays open and they remain retryable).
         if (waitForOutstanding) await WaitForOutstandingPublishes().ConfigureUnboundContinuation();
 
+        // Publications this caller cannot wait for remain: its own (a publisher closing
+        // its context), or any, for a synchronous Close()/Dispose() on a thread with a
+        // SynchronizationContext. Sealing now could strand their events if they fail, so
+        // the close stays in progress and finishes in the background once they settle.
+        // The caller returns without waiting (waiting could deadlock); FinalizeAsync or
+        // DisposeAsync from elsewhere waits for the whole close.
+        if (HasOutstandingPublishes())
+        {
+            _ = CompleteCloseWhenPublishesSettle(attempt);
+            return;
+        }
+
+        await CompleteCloseAsync(attempt).ConfigureUnboundContinuation();
+    }
+
+    private bool HasOutstandingPublishes()
+    {
+        lock (_eventLock) return _inFlightPublishes.Count > 0;
+    }
+
+    private Task CompleteCloseWhenPublishesSettle(TaskCompletionSource<bool> attempt) =>
+        Task.Run(async () =>
+        {
+            // A fresh flow: not part of the publisher callback or close that started it.
+            _publishScope.Value = null;
+            _inCloseFlush.Value = false;
+            try
+            {
+                await WaitForOutstandingPublishes().ConfigureUnboundContinuation();
+                await CompleteCloseAsync(attempt).ConfigureUnboundContinuation();
+            }
+            catch (Exception)
+            {
+                // Reported through the event logger (Error); the attempt carries it to
+                // any waiter, and the context stays open with its events retryable.
+            }
+        });
+
+    // Publishes what is pending, then seals the context or, if that fails, leaves it
+    // open for a retry, and notifies the event logger.
+    private async Task CompleteCloseAsync(TaskCompletionSource<bool> attempt)
+    {
+        var disposeLocks = false;
         FlushOutcome outcome = default;
         if (_pendingCount > 0)
         {
