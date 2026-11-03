@@ -90,10 +90,12 @@ public class ABsmartly
     }
 
     // Returns immediately with a context that is not ready yet; the data loads in
-    // the background. Until it is ready, GetTreatment returns 0 without queuing an
-    // exposure, variable reads return the default, key/experiment lists are empty,
-    // and Track/SetUnit/SetAttribute/SetOverride work as usual (goals are queued and
-    // published once ready). Use WaitUntilReady/WaitUntilReadyAsync to wait for it.
+    // the background. Until it is ready, the read methods (GetTreatment,
+    // PeekTreatment, GetVariableValue, PeekVariableValue, VariableKeys, Experiments
+    // and the custom field methods) throw InvalidOperationException ("ABSmartly
+    // Context is not yet ready") and queue no exposure; Track/SetUnit/SetAttribute/
+    // SetOverride work as usual (goals are queued and published once ready). Use
+    // WaitUntilReady/WaitUntilReadyAsync to wait for it.
     public IContextV2 CreatePendingContext(ContextConfig config)
     {
         if (config == null) throw new ArgumentNullException(nameof(config), "Context configuration is required");

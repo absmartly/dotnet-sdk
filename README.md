@@ -344,6 +344,8 @@ await using var asyncContext = (Context)await _absmartly.CreateContextAsync(conf
 
 `IContextV2.FinalizeAsync()` publishes pending events and seals the context without disposing it, so units, attributes and experiments stay readable afterwards. `IContextV2.Close()` does the same synchronously.
 
+`FinalizeAsync()`, `DisposeAsync()` and, on threads without a `SynchronizationContext`, `Close()` and `Dispose()` wait until the close has finished: publications already in flight have settled, and their failed events have been retried. A synchronous `Close()`/`Dispose()` on a UI or classic ASP.NET thread, or a publisher closing its own context, does not wait for publications already in flight, because waiting there could deadlock. The call returns at once, and the close finishes in the background once those publications settle. Until then the context is closing, not yet sealed, and `Dispose` releases its resources when the close completes. On such threads, use `await context.FinalizeAsync()` or `await using` to wait for the whole close.
+
 ### Custom Event Logger
 
 The A/B Smartly SDK can be instantiated with an event logger used for all contexts. In addition, an event logger can be specified when creating a particular context in the `ContextConfig`.
