@@ -13,6 +13,9 @@ public class MatchOperator : BinaryOperator
         var pattern = evaluator.StringConvert(rhs);
         if (pattern == null) return null;
 
+        // No match timeout, as in 1.3.0 and the Java SDK: patterns come from experiment
+        // definitions authored on the Web Console (trusted configuration). This is a
+        // deliberate owner decision; see "Security considerations" in the README.
         try
         {
             var match = Regex.Match(text, pattern);

@@ -127,6 +127,21 @@ var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory),
 
 **Note:** The SDK uses `IHttpClientFactory` abstraction to effectively manage HTTP connection pools. This factory is injected using `IABsmartlyHttpClientFactory` as seen in the example above. If custom behavior or implementation is required, inject your own implementation of either `IHttpClientFactory` or `IABsmartlyHttpClientFactory`.
 
+#### Security considerations
+
+These are deliberate decisions by the SDK owners. They keep the behaviour of the 1.3.0 release and the Java SDK.
+
+- **Use an `https://` endpoint.** The API key travels in the `X-API-Key` header, and context data and events go in the request and response bodies. Over `http://`, all of them are sent in plaintext.
+  - The SDK still accepts `http://` endpoints, because in-cluster collectors, sidecars and local proxies often use it. It logs a warning through the configured `ILoggerFactory` (the warning only appears if you configure logging).
+  - Any scheme other than `http://` or `https://` throws an `ArgumentException`.
+  - Protecting an `http://` endpoint is the deployment's responsibility, for example a private network or service mesh. Don't send traffic over `http://` across networks you don't trust.
+- **Audience `match` patterns have no time limit.** Regular expressions in experiment audiences are evaluated with `System.Text.RegularExpressions` and no match timeout.
+  - The patterns come from experiment definitions on the ABsmartly Web Console, so they're trusted configuration. Only people who can edit experiments can change them.
+  - The text being matched comes from the attributes your application sets on the context.
+  - A pattern prone to catastrophic backtracking, run against a large attribute value you don't control, can use a lot of CPU. Keep audience patterns simple, and limit the size of attribute values that come from end users.
+  - An invalid pattern makes the `match` evaluate to `null`, so it doesn't match.
+
+
 When injecting `IABsmartlyHttpClientFactory`, ensure it creates instances of the `IABsmartlyHttpClient` interface, which is a wrapper on top of `HttpClient`. The SDK provides `ABSmartly.Services.ABsmartlyHttpClientFactory.HttpClientWrapper` for this purpose.
 
 When injecting `IHttpClientFactory`, ensure it creates named `HttpClient` instances with the name `ABSmartlySDK.HttpClient` (available as `ABsmartly.HttpClientName`).

@@ -84,6 +84,8 @@ public class ABSmartlyService : IABSmartlyServiceClient
 
         // As the Java SDK: plain http:// is allowed (in-cluster collectors, sidecars,
         // local proxies) but warned about; any other scheme is a configuration error.
+        // Transport protection for http:// is delegated to the deployment. This is a deliberate
+        // owner decision; see "Security considerations" in the README.
         if (!_config.Endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
             if (_config.Endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase))

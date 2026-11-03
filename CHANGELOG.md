@@ -17,7 +17,7 @@ There are no source or binary API breaks against 1.3.0; this is enforced at buil
 - `GetContextDataAsync` throws the real load error (an `InvalidOperationException` for an empty or malformed body) instead of returning `null`.
 - A failed publish or close keeps its events and can be retried.
 - A failed close leaves the context open, without re-arming the refresh timer.
-- `http://` endpoints are accepted and log a warning; other schemes are rejected.
+- `http://` endpoints are still accepted, as in 1.3.0 and the Java SDK, but now log a plaintext warning. Endpoints with any other scheme now throw `ArgumentException` (1.3.0 did not check the scheme). Audience `match` regexes keep 1.3.0/Java behaviour, with no match timeout. Both are deliberate owner decisions; see "Security considerations" in the README.
 - Non-integer `number` custom fields parse as `double` (integers still parse as `long`).
 - `System.Text.Json` `JsonElement` attributes now work in audience expressions.
 - `SetUnit` with the UID already set is a no-op; a different UID throws `ArgumentException` with the message `Unit '<type>' UID already set.`, as the Java SDK.
