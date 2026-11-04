@@ -301,4 +301,45 @@ public class ApiCompatibilityTests
         context.IsReady().Should().BeTrue();
         context.IsFailed().Should().BeFalse();
     }
+
+    // A consumer subclass of DefaultContextDataProvider that reimplements
+    // IContextDataProvider.GetContextDataAsync (here, serving cached data) is called for
+    // creation and refresh, as in 1.3.0, instead of the underlying service.
+    private sealed class CachingProvider : DefaultContextDataProvider, IContextDataProvider
+    {
+        private readonly ContextData _cached;
+        public int Calls;
+
+        public CachingProvider(IABSmartlyServiceClient client, ContextData cached) : base(client) => _cached = cached;
+
+        Task<ContextData> IContextDataProvider.GetContextDataAsync()
+        {
+            Interlocked.Increment(ref Calls);
+            return Task.FromResult(_cached);
+        }
+    }
+
+    [Test]
+    public async Task DefaultContextDataProviderSubclassReimplementationIsUsedForCreationAndRefresh()
+    {
+        using var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.context.json");
+        var data = new DefaultContextDataDeserializer().Deserialize(stream);
+        var client = Mock.Of<IABsmartlyHttpClient>();
+        Mock.Get(client).Setup(x => x.GetAsync(It.IsAny<string>())).ThrowsAsync(new HttpRequestException("offline"));
+        var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == client);
+        var config = new ABSmartlyServiceConfiguration
+            { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
+        var service = new ABSmartlyService(config, factory, new DefaultContextDataDeserializer(),
+            new DefaultContextEventSerializer());
+        var provider = new CachingProvider(service, data);
+
+        var sdk = new ABsmartly(factory, config, new ABsmartlyConfig { ContextDataProvider = provider });
+        var context = (IContextV2)await sdk.CreateContextAsync(new ContextConfig().SetUnit("session_id", "abc"));
+        context.IsFailed().Should().BeFalse();
+        context.ReadyError.Should().BeNull();
+
+        await ((Context)context).RefreshAsync();
+        provider.Calls.Should().Be(2);
+        Mock.Get(client).Verify(x => x.GetAsync(It.IsAny<string>()), Times.Never);
+    }
 }

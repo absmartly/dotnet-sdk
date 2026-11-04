@@ -303,11 +303,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
     }
 
-    // The SDK's default provider fetches through a path that throws the real cause of a
-    // failure; any other provider is called through its public GetContextDataAsync.
+    // The SDK's own default provider (exactly that type) fetches through a path that throws
+    // the real cause of a failure. Any other provider, including a subclass of the default
+    // one, which may reimplement GetContextDataAsync (for example to serve cached data),
+    // is called through its public IContextDataProvider.GetContextDataAsync, as in 1.3.0.
     internal static Task<ContextData> FetchContextData(IContextDataProvider provider) =>
-        provider is Services.IThrowingContextDataProvider throwing
-            ? throwing.FetchContextDataAsync()
+        provider != null && provider.GetType() == typeof(Services.DefaultContextDataProvider)
+            ? ((Services.IThrowingContextDataProvider)provider).FetchContextDataAsync()
             : provider.GetContextDataAsync();
 
     // Waits until the load has settled and its Ready/Error event was logged, so a
