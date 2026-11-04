@@ -103,7 +103,24 @@ public class ABSmartlyService : IABSmartlyServiceClient
     // Throws when the context data cannot be fetched or deserialized, so callers see
     // the real cause: a context created from it fails with that error as ReadyError,
     // and Context.Refresh rethrows it.
+    // As 1.3.0: a failed fetch is logged and returns null, so direct callers that check
+    // for null keep working. The SDK's own context loading uses FetchContextDataAsync,
+    // which surfaces the real error (it becomes the context's ReadyError).
     public async Task<ContextData> GetContextDataAsync()
+    {
+        try
+        {
+            return await FetchContextDataAsync().ConfigureUnboundContinuation();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    // Fetches the context data, throwing the real cause when the request fails or the
+    // response cannot be deserialized.
+    internal async Task<ContextData> FetchContextDataAsync()
     {
         try
         {

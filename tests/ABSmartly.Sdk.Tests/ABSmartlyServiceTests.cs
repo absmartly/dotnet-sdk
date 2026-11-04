@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text;
 using ABSmartly.Models;
 using Microsoft.Extensions.Logging;
@@ -145,13 +145,15 @@ public class ABSmartlyServiceTests
         Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
             .Throws(new HttpRequestException("connection refused"));
 
-        var act = async () => await service.GetContextDataAsync();
+        // As 1.3.0, the public method returns null on a failed fetch.
+        (await service.GetContextDataAsync()).Should().BeNull();
 
-        // The real cause must reach the caller (it becomes the context's ReadyError).
+        // The SDK's own loading path surfaces the real cause (it becomes ReadyError).
+        var act = async () => await service.FetchContextDataAsync();
         await act.Should().ThrowAsync<HttpRequestException>().WithMessage("connection refused");
 
-        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
-        Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
+        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Exactly(2));
+        Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Exactly(2));
         Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Never);
     }
 
@@ -167,12 +169,13 @@ public class ABSmartlyServiceTests
         Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
             .Returns(() => GetResponse(HttpStatusCode.BadRequest, Array.Empty<byte>()));
 
-        var act = async () => await service.GetContextDataAsync();
+        (await service.GetContextDataAsync()).Should().BeNull("as 1.3.0, a failed fetch returns null");
 
+        var act = async () => await service.FetchContextDataAsync();
         await act.Should().ThrowAsync<HttpRequestException>();
 
-        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
-        Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
+        Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Exactly(2));
+        Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Exactly(2));
         Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Never);
     }
 
@@ -190,8 +193,9 @@ public class ABSmartlyServiceTests
         Mock.Get(_deserializer).Setup(x => x.Deserialize(It.IsAny<Stream>()))
             .Returns((ContextData)null!);
 
-        var act = async () => await service.GetContextDataAsync();
+        (await service.GetContextDataAsync()).Should().BeNull();
 
+        var act = async () => await service.FetchContextDataAsync();
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*deserializer returned null*");
     }
 
@@ -209,8 +213,9 @@ public class ABSmartlyServiceTests
         Mock.Get(_httpClient).Setup(x => x.GetAsync(uri))
             .Returns(() => GetResponse(HttpStatusCode.OK, Encoding.UTF8.GetBytes("{broken")));
 
-        var act = async () => await service.GetContextDataAsync();
+        (await service.GetContextDataAsync()).Should().BeNull();
 
+        var act = async () => await service.FetchContextDataAsync();
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*deserializer returned null*");
     }
 

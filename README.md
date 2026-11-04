@@ -166,7 +166,7 @@ var config = new ContextConfig()
 var context = _absmartly.CreateContext(config);
 ```
 
-`CreateContext()` and `CreateContextAsync()` return once the context data has loaded. If the data cannot be fetched, they do not throw: the context is returned with `IsFailed()` set to `true`, `ReadyError` holding the error that caused the failure, and an `Error` event logged. A failed context returns the control variant (`0`) and the default variable values.
+`CreateContext()` and `CreateContextAsync()` return once the context data has loaded. If the data cannot be fetched, they do not throw: the context is returned with `IsFailed()` set to `true`, `ReadyError` holding the error that caused the failure, and an `Error` event logged. A failed context returns the control variant (`0`) and the default variable values. The one exception, as in 1.3.0: if your event logger throws on that `Ready` or `Error` event, `CreateContext()`/`CreateContextAsync()` throw that exception.
 
 These methods return `IContext`, whose members are unchanged since 1.3.0. Members added in 1.4.0 (`ReadyError`, `WaitUntilReady()`, `FinalizeAsync()`, `Experiments`, `Units`, `Attributes`, `GetAttribute()`, `VariableKeys`, ...) are on `IContextV2`, which the returned context implements: `var context = (IContextV2)_absmartly.CreateContext(config);`.
 

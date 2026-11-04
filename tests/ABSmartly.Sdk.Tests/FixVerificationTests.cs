@@ -257,7 +257,7 @@ public class FixVerificationTests
                 factory, Mock.Of<IContextDataDeserializer>(), Mock.Of<IContextEventSerializer>());
 
             service.PublishAsync(new PublishEvent()).GetAwaiter().GetResult().Should().BeFalse();
-            try { service.GetContextDataAsync().GetAwaiter().GetResult(); } catch (Exception) { /* thrown to caller by design */ }
+            service.GetContextDataAsync().GetAwaiter().GetResult().Should().BeNull();
             new DefaultVariableParser().Parse(null!, "e", "v", "{bad json").Should().BeNull();
             new DefaultContextDataDeserializer().Deserialize(new System.IO.MemoryStream(new byte[] { 1 })).Should().BeNull();
         }

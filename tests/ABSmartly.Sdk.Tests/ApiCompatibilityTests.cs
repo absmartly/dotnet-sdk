@@ -235,4 +235,26 @@ public class ApiCompatibilityTests
         using var wrapper = new ABSdkHttpClientFactory.HttpClientWrapper(new HttpClient());
         wrapper.Should().BeAssignableTo<IABSdkHttpClient>();
     }
+
+    // 1.3.0 contract for direct callers: a failed fetch returns null instead of throwing,
+    // while context creation through the SDK still reports the real error as ReadyError.
+    [Test]
+    public async Task ServiceGetContextDataAsyncReturnsNullOnFailedFetchAsIn130()
+    {
+        var client = Mock.Of<IABsmartlyHttpClient>();
+        Mock.Get(client).Setup(x => x.GetAsync(It.IsAny<string>())).ThrowsAsync(new HttpRequestException("offline"));
+        var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == client);
+        var config = new ABSmartlyServiceConfiguration
+            { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
+
+        var service = new ABSmartlyService(config, factory, new DefaultContextDataDeserializer(),
+            new DefaultContextEventSerializer());
+        (await service.GetContextDataAsync()).Should().BeNull();
+
+        var sdk = new ABsmartly(factory, config);
+        var context = (IContextV2)await sdk.CreateContextAsync(
+            new ContextConfig().SetUnit("session_id", "abc"));
+        context.IsFailed().Should().BeTrue();
+        context.ReadyError.Should().BeOfType<HttpRequestException>().Which.Message.Should().Be("offline");
+    }
 }
