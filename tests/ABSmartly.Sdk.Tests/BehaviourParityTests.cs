@@ -208,26 +208,38 @@ public class BehaviourParityTests
         };
 
     [Test]
-    public void VariableLookupSkipsAnAssignedExperimentWhoseVariantLacksTheKey()
+    public void VariableLookupUsesTheFirstAssignedExperimentEvenIfItsVariantLacksTheKey()
     {
-        // Both experiments index "color" (via variant B); exp_low wins by id, but is
-        // overridden to variant A, which does not define it.
+        // Both experiments index "color" (via variant B). As the Java SDK, exp_low wins by
+        // id; a unit in its control arm ({}) gets the default value, and exp_low is the
+        // experiment exposed, so its control arm is counted (no sample-ratio mismatch).
         var data = new ContextData(new[]
         {
-            VariableExperiment(1, "exp_low", "{\"other\":1}", "{\"color\":\"red\"}"),
+            VariableExperiment(1, "exp_low", "{}", "{\"color\":\"red\"}"),
             VariableExperiment(2, "exp_high", "{\"color\":\"blue\"}", "{\"color\":\"blue\"}")
         });
+        var publisher = new Mock<IContextPublisher>();
+        PublishEvent? published = null;
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((_, e) => published = e).Returns(Task.CompletedTask);
+        _publisher = publisher.Object;
         var context = CreateContext(data);
-        context.SetOverride("exp_low", 0);
-        context.SetOverride("exp_high", 1);
+        // Custom assignments keep both experiments on the ordinary assigned path.
+        context.SetCustomAssignment("exp_low", 0);
+        context.SetCustomAssignment("exp_high", 1);
 
-        context.PeekVariableValue("color", "default").Should().Be("blue");
-        context.GetVariableValue("color", "default").Should().Be("blue");
-        context.PendingCount.Should().Be(1, "only the experiment that supplied the value is exposed");
+        context.PeekVariableValue("color", "default").Should().Be("default");
+        context.PendingCount.Should().Be(0, "peek does not expose");
+        context.GetVariableValue("color", "default").Should().Be("default");
+        context.PendingCount.Should().Be(1);
+        context.Publish();
+        published!.Exposures.Select(e => e.Name).Should().Equal("exp_low");
 
-        // When the lowest-id experiment's variant does define the key, it still wins.
-        context.SetOverride("exp_low", 1);
-        context.PeekVariableValue("color", "default").Should().Be("red");
+        // When the lowest-id experiment's variant defines the key, it supplies the value.
+        var other = CreateContext(data);
+        other.SetCustomAssignment("exp_low", 1);
+        other.SetCustomAssignment("exp_high", 1);
+        other.PeekVariableValue("color", "default").Should().Be("red");
     }
 
     #endregion

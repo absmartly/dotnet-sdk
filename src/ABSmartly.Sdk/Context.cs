@@ -832,10 +832,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         foreach (var experiment in experiments)
         {
             var assignment = GetAssignment(experiment.Data.Name);
-            // The key is indexed if any variant defines it; skip an experiment whose
-            // selected variant does not, as the JS SDK (`key in assignment.variables`).
-            if ((assignment.Assigned || assignment.Overridden) &&
-                assignment.Variables != null && assignment.Variables.ContainsKey(key))
+            // As the Java SDK: the first assigned (or overridden) experiment by id wins, even
+            // if its selected variant does not define the key (the caller then returns the
+            // default). It is the experiment exposed, so units in its control arm are
+            // counted too.
+            if (assignment.Assigned || assignment.Overridden)
                 return assignment;
         }
         return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name) : null;
