@@ -50,6 +50,9 @@ public class PendingContextTests
 
         gate.SetResult(_data);
         await context.WaitUntilReadyAsync();
+        // Readiness completes before the Ready event is logged (so a Ready callback may
+        // wait on it); wait for the load to settle before checking the logged events.
+        await ((Context)context).WaitUntilLoadSettledAsync();
 
         context.IsReady().Should().BeTrue();
         context.IsFailed().Should().BeFalse();
@@ -523,6 +526,81 @@ public class PendingContextTests
 
         context.WaitUntilReady().Should().BeSameAs(context);
         context.WaitUntilReadyAsync().IsCompleted.Should().BeTrue();
+    }
+
+    // As 1.3.0: an event logger that throws on the Ready or Error event of context
+    // creation makes CreateContext/CreateContextAsync throw that exception. Readiness
+    // itself still completes.
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    [Timeout(10000)]
+    public async Task CreateContextRethrowsReadyOrErrorLoggerException(bool failedLoad, bool synchronous)
+    {
+        var provider = Mock.Of<IContextDataProvider>();
+        Mock.Get(provider).Setup(x => x.GetContextDataAsync()).Returns(failedLoad
+            ? Task.FromException<ContextData>(new InvalidOperationException("load failed"))
+            : Task.FromResult(_data));
+        var expected = failedLoad ? EventType.Error : EventType.Ready;
+        var logger = new CallbackLogger
+        {
+            OnEvent = (_, type) =>
+            {
+                if (type == expected) throw new InvalidOperationException("sentinel-logger");
+            }
+        };
+        var sdk = new ABsmartly(Mock.Of<IABsmartlyHttpClientFactory>(),
+            H.ServiceConfig("website", "https://localhost/v1", "dev", "key"),
+            new ABsmartlyConfig { ContextDataProvider = provider, ContextEventLogger = logger, ContextPublisher = _publisher });
+
+        Func<Task> create = synchronous
+            ? () => Task.Run(() => sdk.CreateContext(Config()))
+            : () => sdk.CreateContextAsync(Config());
+        await create.Should().ThrowAsync<InvalidOperationException>().WithMessage("sentinel-logger");
+    }
+
+    // A pending context's readiness does not depend on the Ready callback succeeding,
+    // and the callback's exception does not surface as an unobserved task exception.
+    [Test]
+    [Timeout(10000)]
+    public async Task PendingContextReadinessIgnoresThrowingReadyLogger()
+    {
+        var provider = Mock.Of<IContextDataProvider>();
+        Mock.Get(provider).Setup(x => x.GetContextDataAsync()).Returns(Task.FromResult(_data));
+        var logger = new CallbackLogger
+        {
+            OnEvent = (_, type) =>
+            {
+                if (type == EventType.Ready) throw new InvalidOperationException("sentinel-logger");
+            }
+        };
+        var sdk = new ABsmartly(Mock.Of<IABsmartlyHttpClientFactory>(),
+            H.ServiceConfig("website", "https://localhost/v1", "dev", "key"),
+            new ABsmartlyConfig { ContextDataProvider = provider, ContextEventLogger = logger, ContextPublisher = _publisher });
+
+        var unobserved = false;
+        EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, e) =>
+        {
+            if (e.Exception.InnerExceptions.Any(x => x.Message == "sentinel-logger")) unobserved = true;
+        };
+        TaskScheduler.UnobservedTaskException += handler;
+        try
+        {
+            var context = sdk.CreatePendingContext(Config());
+            (await context.WaitUntilReadyAsync()).IsReady().Should().BeTrue();
+            context.GetTreatment("exp_test_ab").Should().Be(1);
+
+            context = null!;
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            unobserved.Should().BeFalse();
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= handler;
+        }
     }
 
     private ContextConfig Config() =>

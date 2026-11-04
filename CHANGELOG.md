@@ -32,6 +32,7 @@ There are no source or binary API breaks against 1.3.0; this is enforced at buil
 - A publisher that calls `PublishAsync()`/`FinalizeAsync()` on its context no longer deadlocks: the batch is detached before the publisher runs and no lock is held across it.
 - A `Close()`/`Dispose()` from another thread no longer deadlocks with an event logger that waits on it: the close attempt settles before the Publish/Error/Close observers run.
 - Exceptions thrown by an event logger no longer turn a delivered publish into a failure that resends the batch, or mask the publish error (they still propagate for other events).
+- As in 1.3.0, an event logger that throws on the `Ready` or `Error` event of context creation makes `CreateContext`/`CreateContextAsync` throw that exception. `CreatePendingContext` readiness does not depend on it.
 - Trailing slash on the endpoint is trimmed.
 - Concurrent `Flush` calls publish disjoint batches (no duplicate or lost events), and `PendingCount` is 0 while a publish is in flight and restored on failure.
 - `CreateContext`/`CreateContextAsync` return only after the `Ready`/`Error` event has been logged.

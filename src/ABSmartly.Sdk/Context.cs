@@ -286,8 +286,15 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
         catch (Exception e)
         {
-            // The load has already settled; only an event logger callback gets here.
+            // The load has already settled; only a Ready/Error event logger callback
+            // gets here. Readiness is unaffected, but CreateContext/CreateContextAsync
+            // rethrow it, as 1.3.0 did when the logger threw during creation.
             _logger?.LogError(e, "Error while settling the context data load");
+            _readyTcs.TrySetResult(true);
+            _loadSettledTcs.TrySetException(e);
+            // CreatePendingContext callers never observe the settle signal; the error
+            // must not surface as an UnobservedTaskException.
+            _ = _loadSettledTcs.Task.Exception;
         }
         finally
         {
@@ -298,7 +305,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // Waits until the load has settled and its Ready/Error event was logged, so a
     // caller that returns afterwards has observed that event (as the JavaScript SDK
-    // logs "ready" before resolving ready()).
+    // logs "ready" before resolving ready()). Throws the exception of an event logger
+    // that threw on that Ready/Error event, as context creation did in 1.3.0.
     internal async Task WaitUntilLoadSettledAsync()
     {
         var settled = _loadSettledTcs;
