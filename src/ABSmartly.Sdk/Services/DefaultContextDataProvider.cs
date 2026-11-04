@@ -25,8 +25,11 @@ public class DefaultContextDataProvider : IContextDataProvider, IThrowingContext
     // ReadyError, or the error a refresh throws) instead of returning null.
     async Task<ContextData> IThrowingContextDataProvider.FetchContextDataAsync()
     {
-        if (_client is ABSmartlyService service)
-            return await service.FetchContextDataAsync().ConfigureUnboundContinuation();
+        // Exact type only: a consumer subclass of ABSmartlyService may re-implement
+        // IABSmartlyServiceClient.GetContextDataAsync (e.g. to serve cached data), and must
+        // be called through that, as in 1.3.0.
+        if (_client != null && _client.GetType() == typeof(ABSmartlyService))
+            return await ((ABSmartlyService)_client).FetchContextDataAsync().ConfigureUnboundContinuation();
 
         return await _client.GetContextDataAsync().ConfigureUnboundContinuation();
     }
