@@ -212,6 +212,8 @@ config.RefreshInterval = TimeSpan.FromHours(4); // every 4 hours
 
 Alternatively, the `Refresh()` method can be called manually. The `Refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `GetTreatment()` is called again.
 
+If a refresh fails, `Refresh()`/`RefreshAsync()` throws and the context keeps the data it already had. Refreshing doesn't recover a context whose initial load failed (`IsFailed()`): on such a context, `Refresh()` does nothing and `RefreshInterval` has no effect. To retry the load, create a new context.
+
 ```csharp
 await context.RefreshAsync();
 
