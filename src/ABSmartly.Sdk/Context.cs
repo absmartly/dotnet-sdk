@@ -1762,7 +1762,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             earlier = await FlushForCloseAsync().ConfigureUnboundContinuation();
             if (earlier.Error != null)
             {
-                // As a failed close: the context stays open and the events retryable.
                 SettleCloseAttempt(attempt, earlier);
                 ReportCloseOutcome(default, earlier, false, false); // throws the publish error
                 return;
@@ -1865,8 +1864,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return disposeLocks;
     }
 
-    // Notifies the event logger of the close's flushes (rethrowing an error) and, once
-    // sealed, of the close.
     private void ReportCloseOutcome(FlushOutcome earlier, FlushOutcome outcome, bool logClose, bool disposeLocks)
     {
         var previous = t_notifyingClose;

@@ -774,8 +774,6 @@ public class BehaviourParityTests
         }
     }
 
-    // If that close-time flush fails, the close fails as any failed close: it throws, the
-    // context stays open and the events stay retryable.
     [Test]
     [Timeout(10000)]
     public async Task SynchronousCloseOnUiThreadWhoseQueuedFlushFailsLeavesEventsRetryable()
