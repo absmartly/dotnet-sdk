@@ -246,14 +246,47 @@ public class BehaviourParityTests
 
     #region Publish and close
 
-    private static async Task<bool> Completes(Task task, int timeoutMs = 5000) =>
-        await Task.WhenAny(task, Task.Delay(timeoutMs)) == task;
+    // Whether the task completes within the bound. A task that completed is also awaited,
+    // so a fault surfaces instead of counting as completion; to wait for a task expected
+    // to fail, pass task.ContinueWith(_ => { }) and assert on the task itself.
+    private static async Task<bool> Completes(Task task, int timeoutMs = 5000)
+    {
+        if (await Task.WhenAny(task, Task.Delay(timeoutMs)) != task) return false;
+        await task;
+        return true;
+    }
+
+    private static bool LocksDisposed(Context context) =>
+        (bool)typeof(Context).GetField("_locksDisposed",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(context)!;
+
+    // Publisher gates created by a test; released in TearDown even if an assertion
+    // fails, so no publication (or UI thread) stays blocked for the rest of the run.
+    private readonly List<TaskCompletionSource<bool>> _gates = new();
+
+    private TaskCompletionSource<bool> Gate(TaskCreationOptions options = TaskCreationOptions.None)
+    {
+        var gate = new TaskCompletionSource<bool>(options);
+        lock (_gates) _gates.Add(gate);
+        return gate;
+    }
+
+    [TearDown]
+    public void ReleaseGates()
+    {
+        lock (_gates)
+        {
+            foreach (var gate in _gates) gate.TrySetResult(true);
+            _gates.Clear();
+        }
+    }
 
     [Test]
     public async Task PendingCountIsZeroWhilePublishingAndRestoredOnFailure()
     {
         var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = Gate(TaskCreationOptions.RunContinuationsAsynchronously);
         PublishEvent? published = null;
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
             .Returns<IContext, PublishEvent>(async (_, e) =>
@@ -383,7 +416,7 @@ public class BehaviourParityTests
     public async Task CloseWaitsForOutstandingPublishAndRetriesItsFailedEvents(bool dispose)
     {
         var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = Gate(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
         PublishEvent? retried = null;
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
@@ -428,7 +461,7 @@ public class BehaviourParityTests
     public async Task CloseRacingFailedPublishLeavesEventsRetryableWhenRetryFails()
     {
         var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = Gate(TaskCreationOptions.RunContinuationsAsynchronously);
         var fail = true;
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
             .Returns<IContext, PublishEvent>(async (_, _) =>
@@ -469,7 +502,7 @@ public class BehaviourParityTests
     {
         Context context = null!;
         var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var closeStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closeStarted = Gate(TaskCreationOptions.RunContinuationsAsynchronously);
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
             .Returns<IContext, PublishEvent>(async (_, _) =>
             {
@@ -539,7 +572,7 @@ public class BehaviourParityTests
     [Timeout(10000)]
     public async Task SynchronousCloseOnUiThreadDuringPublishDoesNotDeadlock(bool dispose)
     {
-        var release = new TaskCompletionSource<bool>();
+        var release = Gate();
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
             .Returns<IContext, PublishEvent>(async (_, _) => await release.Task); // resumes on the UI thread
 
@@ -576,7 +609,7 @@ public class BehaviourParityTests
     [Timeout(10000)]
     public async Task SynchronousCloseOnUiThreadJoiningCloseInProgressDoesNotDeadlock(bool dispose)
     {
-        var gate = new TaskCompletionSource<bool>();
+        var gate = Gate();
         var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
         PublishEvent? retried = null;
@@ -622,9 +655,8 @@ public class BehaviourParityTests
         retried!.Goals!.Select(g => g.Name).Should().Equal("goal1");
         context.PendingCount.Should().Be(0);
         context.IsFinalized.Should().BeTrue();
-        typeof(Context).GetField("_locksDisposed",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(context).Should().Be(dispose, "a Dispose that joined without waiting still disposes once closed");
+        SpinWait.SpinUntil(() => LocksDisposed(context), dispose ? 5000 : 0).Should()
+            .Be(dispose, "a Dispose that joined without waiting still disposes once closed");
     }
 
     // A synchronous Close()/Dispose() on a UI-like thread that owns the close does not wait
@@ -635,7 +667,7 @@ public class BehaviourParityTests
     [Timeout(10000)]
     public async Task SynchronousCloseOnUiThreadRetriesEventsOfOutstandingFailedPublish(bool dispose)
     {
-        var gate = new TaskCompletionSource<bool>();
+        var gate = Gate();
         var calls = 0;
         PublishEvent? retried = null;
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
@@ -673,15 +705,8 @@ public class BehaviourParityTests
         retried!.Goals!.Select(g => g.Name).Should().Equal("goal1");
         context.PendingCount.Should().Be(0);
         context.IsFinalized.Should().BeTrue();
-        typeof(Context).GetField("_locksDisposed",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(context).Should().Be(dispose);
+        SpinWait.SpinUntil(() => LocksDisposed(context), dispose ? 5000 : 0).Should().Be(dispose);
     }
-
-    private static bool LocksDisposed(Context context) =>
-        (bool)typeof(Context).GetField("_locksDisposed",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(context)!;
 
     // A synchronous Close()/Dispose() on a UI-like thread that owns the close while another
     // publication is in flight still publishes the events queued at close time before it
@@ -693,7 +718,7 @@ public class BehaviourParityTests
     public async Task SynchronousCloseOnUiThreadPublishesQueuedEventsBeforeReturning(bool dispose)
     {
         var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = Gate(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = new System.Collections.Concurrent.ConcurrentQueue<string>();
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
             .Returns<IContext, PublishEvent>(async (_, e) =>
@@ -756,7 +781,7 @@ public class BehaviourParityTests
     public async Task SynchronousCloseOnUiThreadWhoseQueuedFlushFailsLeavesEventsRetryable()
     {
         var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = Gate(TaskCreationOptions.RunContinuationsAsynchronously);
         var failG = true;
         var received = new System.Collections.Concurrent.ConcurrentQueue<string>();
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
@@ -817,7 +842,7 @@ public class BehaviourParityTests
     [Timeout(20000)]
     public async Task DefaultPublisherDoesNotResumeOnUiThreadSoAnOffThreadCloseCompletes()
     {
-        var gate = new TaskCompletionSource<bool>();
+        var gate = Gate();
         var client = new Mock<IABSmartlyServiceClient>();
         client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns(() => gate.Task);
         _publisher = new DefaultContextPublisher(client.Object);
@@ -863,7 +888,7 @@ public class BehaviourParityTests
     [Timeout(20000)]
     public async Task DeferredCloseThenOffThreadDisposeFromBlockedUiThreadCompletes()
     {
-        var gate = new TaskCompletionSource<bool>();
+        var gate = Gate();
         var client = new Mock<IABSmartlyServiceClient>();
         client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns(() => gate.Task);
         _publisher = new DefaultContextPublisher(client.Object);
@@ -987,7 +1012,7 @@ public class BehaviourParityTests
     public async Task FlushDuringCloseLeavesEventsForTheClose()
     {
         var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = Gate(TaskCreationOptions.RunContinuationsAsynchronously);
         var batches = new System.Collections.Concurrent.ConcurrentQueue<string[]>();
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
             .Returns<IContext, PublishEvent>(async (_, e) =>
@@ -1033,9 +1058,10 @@ public class BehaviourParityTests
     {
         Context context = null!;
         var otherEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseOther = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var startLater = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOther = Gate(TaskCreationOptions.RunContinuationsAsynchronously);
+        var startLater = Gate(TaskCreationOptions.RunContinuationsAsynchronously);
         Task later = null!;
+        var laterFinalize = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
         Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
             .Returns<IContext, PublishEvent>(async (_, _) =>
@@ -1047,7 +1073,9 @@ public class BehaviourParityTests
                     later = Task.Run(async () =>
                     {
                         await startLater.Task;
-                        await context.FinalizeAsync();
+                        var finalize = context.FinalizeAsync();
+                        laterFinalize.TrySetResult(finalize);
+                        await finalize;
                     });
                 }
                 else if (call == 2)
@@ -1067,13 +1095,17 @@ public class BehaviourParityTests
         var close = context.FinalizeAsync(); // waits for publication 2
 
         startLater.SetResult(true);
-        await Task.Delay(100);
-        later.IsCompleted.Should().BeFalse("the close it joined is still waiting for publication 2");
+        // Signalled once the worker has called FinalizeAsync(), so this checks the joined
+        // close rather than a worker not yet scheduled.
+        (await Completes(laterFinalize.Task)).Should().BeTrue();
+        var joined = await laterFinalize.Task;
+        joined.IsCompleted.Should().BeFalse("the close it joined is still waiting for publication 2");
 
         releaseOther.SetResult(true);
         await otherPublish;
         (await Completes(close)).Should().BeTrue();
         (await Completes(later)).Should().BeTrue();
+        (await Completes(joined)).Should().BeTrue();
         context.IsFinalized.Should().BeTrue();
     }
 
