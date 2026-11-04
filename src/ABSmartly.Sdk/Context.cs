@@ -1451,7 +1451,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                     try
                     {
                         await Task.Delay(_refreshInterval, token).ConfigureUnboundContinuation();
-                        await RefreshAsync();
+                        await RefreshAsync().ConfigureUnboundContinuation();
                     }
                     catch (OperationCanceledException)
                     {

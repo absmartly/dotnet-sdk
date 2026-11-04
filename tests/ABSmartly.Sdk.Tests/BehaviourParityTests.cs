@@ -678,6 +678,109 @@ public class BehaviourParityTests
             .GetValue(context).Should().Be(dispose);
     }
 
+    private static bool LocksDisposed(Context context) =>
+        (bool)typeof(Context).GetField("_locksDisposed",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(context)!;
+
+    // The default publisher must not resume on the caller's SynchronizationContext: a
+    // publish started on a UI thread, then a close run off that thread while the UI thread
+    // blocks on it (the usual way to avoid sync-over-async), would otherwise hang.
+    [Test]
+    [Timeout(20000)]
+    public async Task DefaultPublisherDoesNotResumeOnUiThreadSoAnOffThreadCloseCompletes()
+    {
+        var gate = new TaskCompletionSource<bool>();
+        var client = new Mock<IABSmartlyServiceClient>();
+        client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns(() => gate.Task);
+        _publisher = new DefaultContextPublisher(client.Object);
+
+        var context = CreateContext(_data);
+        context.Track("goal1", null);
+        using var ui = new SingleThreadSyncContext();
+        try
+        {
+            Task publish = null!;
+            await ui.Run(() => publish = context.PublishAsync());
+
+            var closedInTime = false;
+            var blocked = ui.Run(() =>
+            {
+                // Released off the UI thread, so the publication's continuation is posted
+                // to it rather than run inline.
+                var close = Task.Run(() =>
+                {
+                    gate.SetResult(true);
+                    context.Dispose();
+                });
+                closedInTime = close.Wait(TimeSpan.FromSeconds(5));
+            });
+            (await Completes(blocked, 10000)).Should().BeTrue();
+            await blocked;
+            closedInTime.Should().BeTrue("the close must not wait on a continuation posted to the blocked UI thread");
+
+            (await Completes(publish)).Should().BeTrue();
+            await publish;
+            context.IsFinalized.Should().BeTrue();
+        }
+        finally
+        {
+            gate.TrySetResult(true);
+        }
+    }
+
+    // A UI handler starts a publish and closes; the close defers its seal. Shutdown later
+    // disposes the context off the UI thread while the UI thread blocks on it. With the
+    // default publisher this must not hang.
+    [Test]
+    [Timeout(20000)]
+    public async Task DeferredCloseThenOffThreadDisposeFromBlockedUiThreadCompletes()
+    {
+        var gate = new TaskCompletionSource<bool>();
+        var client = new Mock<IABSmartlyServiceClient>();
+        client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns(() => gate.Task);
+        _publisher = new DefaultContextPublisher(client.Object);
+
+        var context = CreateContext(_data);
+        context.Track("goal1", null);
+        using var ui = new SingleThreadSyncContext();
+        try
+        {
+            Task publish = null!;
+            var handler = ui.Run(() =>
+            {
+                publish = context.PublishAsync();
+                context.Close();
+            });
+            (await Completes(handler)).Should().BeTrue();
+            await handler;
+            context.IsFinalized.Should().BeFalse("the close waits for the outstanding publication to seal");
+
+            var disposedInTime = false;
+            var shutdown = ui.Run(() =>
+            {
+                var dispose = Task.Run(() =>
+                {
+                    gate.SetResult(true);
+                    context.Dispose();
+                });
+                disposedInTime = dispose.Wait(TimeSpan.FromSeconds(5));
+            });
+            (await Completes(shutdown, 10000)).Should().BeTrue();
+            await shutdown;
+            disposedInTime.Should().BeTrue("the deferred close must not need the blocked UI thread");
+
+            (await Completes(publish)).Should().BeTrue();
+            await publish;
+            context.IsFinalized.Should().BeTrue();
+            LocksDisposed(context).Should().BeTrue();
+        }
+        finally
+        {
+            gate.TrySetResult(true);
+        }
+    }
+
     // A publisher that finalizes its own context and then fails: the close must not seal
     // before that publication settles, and retries its restored events.
     [Test]

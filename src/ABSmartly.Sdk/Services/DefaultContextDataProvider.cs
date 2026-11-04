@@ -17,7 +17,7 @@ public class DefaultContextDataProvider : IContextDataProvider, IThrowingContext
     // own service a failed fetch returns null to direct callers.
     public async Task<ContextData> GetContextDataAsync()
     {
-        return await _client.GetContextDataAsync();
+        return await _client.GetContextDataAsync().ConfigureUnboundContinuation();
     }
 
     // Used by the SDK's own context loading and refresh: with the SDK's own service
