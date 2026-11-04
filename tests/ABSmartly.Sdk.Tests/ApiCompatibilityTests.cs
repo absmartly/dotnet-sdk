@@ -286,8 +286,6 @@ public class ApiCompatibilityTests
     [Test]
     public async Task RefreshThroughDefaultProviderThrowsRealErrorOnFailedFetch()
     {
-        using var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.context.json");
-        var data = new DefaultContextDataDeserializer().Deserialize(stream);
         var client = Mock.Of<IABsmartlyHttpClient>();
         Mock.Get(client).Setup(x => x.GetAsync(It.IsAny<string>())).ThrowsAsync(new HttpRequestException("offline"));
         var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == client);
@@ -295,7 +293,7 @@ public class ApiCompatibilityTests
             { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
         var sdk = new ABsmartly(factory, config);
 
-        var context = (Context)sdk.CreateContextWith(new ContextConfig().SetUnit("session_id", "abc"), data);
+        var context = (Context)sdk.CreateContextWith(new ContextConfig().SetUnit("session_id", "abc"), _data);
         Func<Task> refresh = () => context.RefreshAsync();
         await refresh.Should().ThrowAsync<HttpRequestException>().WithMessage("offline");
         context.IsReady().Should().BeTrue();
@@ -322,8 +320,6 @@ public class ApiCompatibilityTests
     [Test]
     public async Task DefaultContextDataProviderSubclassReimplementationIsUsedForCreationAndRefresh()
     {
-        using var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.context.json");
-        var data = new DefaultContextDataDeserializer().Deserialize(stream);
         var client = Mock.Of<IABsmartlyHttpClient>();
         Mock.Get(client).Setup(x => x.GetAsync(It.IsAny<string>())).ThrowsAsync(new HttpRequestException("offline"));
         var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == client);
@@ -331,7 +327,7 @@ public class ApiCompatibilityTests
             { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
         var service = new ABSmartlyService(config, factory, new DefaultContextDataDeserializer(),
             new DefaultContextEventSerializer());
-        var provider = new CachingProvider(service, data);
+        var provider = new CachingProvider(service, _data);
 
         var sdk = new ABsmartly(factory, config, new ABsmartlyConfig { ContextDataProvider = provider });
         var context = (IContextV2)await sdk.CreateContextAsync(new ContextConfig().SetUnit("session_id", "abc"));
