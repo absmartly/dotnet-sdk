@@ -234,7 +234,6 @@ public class LegacyCompatibilityTests
     {
         var (factory, underlying, client) = CustomTransport();
 
-        // The concrete ABSdkHttpClientFactory overload and the IABSdkHttpClientFactory one.
         var viaConcrete = new ABSmartlyService(LegacyServiceConfig(), factory,
             new DefaultContextDataDeserializer(), new DefaultContextEventSerializer());
         var viaInterface = new ABSmartlyService(LegacyServiceConfig(), (IABSdkHttpClientFactory)factory,
@@ -260,8 +259,6 @@ public class LegacyCompatibilityTests
         underlying.Verify(x => x.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
     }
 
-    // The same subclass registered for DI as the legacy factory is used by the
-    // DI-resolved SDK.
     [Test]
     public async Task CustomLegacyFactorySubclassRegisteredInDiIsUsed()
     {
