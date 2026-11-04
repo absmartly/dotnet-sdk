@@ -1749,17 +1749,36 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         // Publications this caller cannot wait for remain: its own (a publisher closing
         // its context), or any, for a synchronous Close()/Dispose() on a thread with a
-        // SynchronizationContext. Sealing now could strand their events if they fail, so
-        // the close stays in progress and finishes in the background once they settle.
-        // The caller returns without waiting (waiting could deadlock); FinalizeAsync or
-        // DisposeAsync from elsewhere waits for the whole close.
+        // SynchronizationContext. The events queued now are still published before the
+        // caller returns (an app may exit right after Dispose()), as the close's own
+        // flush. Sealing now could strand the outstanding publications' events if they
+        // fail, so the close then stays in progress and finishes in the background once
+        // they settle, retrying any events they restore. The caller returns without
+        // waiting for them (waiting could deadlock); FinalizeAsync or DisposeAsync from
+        // elsewhere waits for the whole close.
+        FlushOutcome earlier = default;
         if (HasOutstandingPublishes())
         {
-            _ = CompleteCloseWhenPublishesSettle(attempt);
-            return;
+            earlier = await FlushForCloseAsync().ConfigureUnboundContinuation();
+            if (earlier.Error != null)
+            {
+                // As a failed close: the context stays open and the events retryable.
+                SettleCloseAttempt(attempt, earlier);
+                ReportCloseOutcome(default, earlier, false, false); // throws the publish error
+                return;
+            }
+
+            if (HasOutstandingPublishes())
+            {
+                // Its Publish event is reported once the attempt settles, as any close
+                // observer: a logger that hands a close to another thread and waits for
+                // it must not find this attempt still in progress.
+                _ = CompleteCloseWhenPublishesSettle(attempt, earlier);
+                return;
+            }
         }
 
-        await CompleteCloseAsync(attempt).ConfigureUnboundContinuation();
+        await CompleteCloseAsync(attempt, earlier).ConfigureUnboundContinuation();
     }
 
     private bool HasOutstandingPublishes()
@@ -1767,7 +1786,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         lock (_eventLock) return _inFlightPublishes.Count > 0;
     }
 
-    private Task CompleteCloseWhenPublishesSettle(TaskCompletionSource<bool> attempt) =>
+    private Task CompleteCloseWhenPublishesSettle(TaskCompletionSource<bool> attempt, FlushOutcome earlier) =>
         Task.Run(async () =>
         {
             // A fresh flow: not part of the publisher callback or close that started it.
@@ -1776,7 +1795,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             try
             {
                 await WaitForOutstandingPublishes().ConfigureUnboundContinuation();
-                await CompleteCloseAsync(attempt).ConfigureUnboundContinuation();
+                await CompleteCloseAsync(attempt, earlier).ConfigureUnboundContinuation();
             }
             catch (Exception)
             {
@@ -1786,28 +1805,38 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         });
 
     // Publishes what is pending, then seals the context or, if that fails, leaves it
-    // open for a retry, and notifies the event logger.
-    private async Task CompleteCloseAsync(TaskCompletionSource<bool> attempt)
+    // open for a retry, and notifies the event logger (first of an earlier successful
+    // flush of this close, if any).
+    private async Task CompleteCloseAsync(TaskCompletionSource<bool> attempt, FlushOutcome earlier)
     {
-        var disposeLocks = false;
-        FlushOutcome outcome = default;
-        if (_pendingCount > 0)
-        {
-            _inCloseFlush.Value = true;
-            try
-            {
-                outcome = await FlushCore().ConfigureUnboundContinuation();
-            }
-            finally
-            {
-                _inCloseFlush.Value = false;
-            }
-        }
+        var outcome = await FlushForCloseAsync().ConfigureUnboundContinuation();
+        var disposeLocks = SettleCloseAttempt(attempt, outcome);
+        ReportCloseOutcome(earlier, outcome, true, disposeLocks);
+    }
 
-        // Settle the attempt before any observer runs: a logger that hands
-        // Close()/Dispose() to another thread and waits for it then finds the context
-        // closed, or (after a failure) starts a fresh attempt, instead of waiting on
-        // this one.
+    // The close's own flush: it takes the batch while the close is in progress, and a
+    // close called back from its publisher is a no-op.
+    private async Task<FlushOutcome> FlushForCloseAsync()
+    {
+        if (_pendingCount <= 0) return default;
+
+        _inCloseFlush.Value = true;
+        try
+        {
+            return await FlushCore().ConfigureUnboundContinuation();
+        }
+        finally
+        {
+            _inCloseFlush.Value = false;
+        }
+    }
+
+    // Settles the attempt before any observer runs: a logger that hands Close()/Dispose()
+    // to another thread and waits for it then finds the context closed, or (after a
+    // failure) starts a fresh attempt, instead of waiting on this one. Returns whether
+    // the locks must now be disposed.
+    private bool SettleCloseAttempt(TaskCompletionSource<bool> attempt, FlushOutcome outcome)
+    {
         if (outcome.Error != null)
         {
             // As Java: the context stays open for a retry, without a refresh timer.
@@ -1821,25 +1850,32 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // Waiters, if any, observe the error; without them it must not surface
             // as an UnobservedTaskException.
             _ = attempt.Task.Exception;
+            return false;
         }
-        else
+
+        bool disposeLocks;
+        lock (_closeLock)
         {
-            lock (_closeLock)
-            {
-                _closed = true;
-                Interlocked.Exchange(ref _closing, 0);
-                disposeLocks = _disposeAfterClose;
-            }
-
-            attempt.TrySetResult(true);
+            _closed = true;
+            Interlocked.Exchange(ref _closing, 0);
+            disposeLocks = _disposeAfterClose;
         }
 
+        attempt.TrySetResult(true);
+        return disposeLocks;
+    }
+
+    // Notifies the event logger of the close's flushes (rethrowing an error) and, once
+    // sealed, of the close.
+    private void ReportCloseOutcome(FlushOutcome earlier, FlushOutcome outcome, bool logClose, bool disposeLocks)
+    {
         var previous = t_notifyingClose;
         t_notifyingClose = this;
         try
         {
+            if (earlier.Published != null) LogEventSafely(EventType.Publish, earlier.Published);
             ReportFlush(outcome);
-            LogEvent(EventType.Close, null);
+            if (logClose) LogEvent(EventType.Close, null);
         }
         finally
         {

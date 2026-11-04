@@ -683,6 +683,133 @@ public class BehaviourParityTests
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(context)!;
 
+    // A synchronous Close()/Dispose() on a UI-like thread that owns the close while another
+    // publication is in flight still publishes the events queued at close time before it
+    // returns (an app may exit right after Dispose()). Only the seal waits for the
+    // outstanding publication.
+    [TestCase(false)]
+    [TestCase(true)]
+    [Timeout(10000)]
+    public async Task SynchronousCloseOnUiThreadPublishesQueuedEventsBeforeReturning(bool dispose)
+    {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var received = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                var names = e.Goals!.Select(g => g.Name).ToArray();
+                if (names.Contains("goal1"))
+                {
+                    entered.TrySetResult(true);
+                    await gate.Task; // a pool-thread publication, in flight
+                }
+
+                foreach (var name in names) received.Enqueue(name);
+            });
+
+        var context = CreateContext(_data);
+        using var ui = new SingleThreadSyncContext();
+        try
+        {
+            context.Track("goal1", null);
+            var publish = context.PublishAsync();
+            (await Completes(entered.Task)).Should().BeTrue();
+
+            context.Track("G", null);
+            var receivedBeforeReturn = false;
+            var closed = ui.Run(() =>
+            {
+                if (dispose) context.Dispose();
+                else context.Close();
+                receivedBeforeReturn = received.Contains("G");
+            });
+            (await Completes(closed)).Should().BeTrue("the UI thread must not block");
+            await closed;
+
+            receivedBeforeReturn.Should().BeTrue("the queued event is published before Close()/Dispose() returns");
+            context.PendingCount.Should().Be(0);
+            context.IsFinalized.Should().BeFalse("the seal waits for the outstanding publication");
+            LocksDisposed(context).Should().BeFalse();
+
+            gate.SetResult(true);
+            (await Completes(publish)).Should().BeTrue();
+            await publish;
+            var finalize = context.FinalizeAsync();
+            (await Completes(finalize)).Should().BeTrue();
+            await finalize;
+            context.IsFinalized.Should().BeTrue();
+            // The locks are released right after the attempt settles, on the closing thread.
+            SpinWait.SpinUntil(() => LocksDisposed(context), dispose ? 5000 : 0).Should().Be(dispose);
+            received.Should().BeEquivalentTo("goal1", "G");
+        }
+        finally
+        {
+            gate.TrySetResult(true);
+        }
+    }
+
+    // If that close-time flush fails, the close fails as any failed close: it throws, the
+    // context stays open and the events stay retryable.
+    [Test]
+    [Timeout(10000)]
+    public async Task SynchronousCloseOnUiThreadWhoseQueuedFlushFailsLeavesEventsRetryable()
+    {
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failG = true;
+        var received = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                var names = e.Goals!.Select(g => g.Name).ToArray();
+                if (names.Contains("goal1"))
+                {
+                    entered.TrySetResult(true);
+                    await gate.Task;
+                }
+                else if (Volatile.Read(ref failG))
+                {
+                    throw new InvalidOperationException("publish failed");
+                }
+
+                foreach (var name in names) received.Enqueue(name);
+            });
+
+        var context = CreateContext(_data);
+        using var ui = new SingleThreadSyncContext();
+        try
+        {
+            context.Track("goal1", null);
+            var publish = context.PublishAsync();
+            (await Completes(entered.Task)).Should().BeTrue();
+
+            context.Track("G", null);
+            var closed = ui.Run(() => context.Close());
+            (await Completes(closed.ContinueWith(_ => { }))).Should().BeTrue();
+            Func<Task> failedClose = () => closed;
+            await failedClose.Should().ThrowAsync<InvalidOperationException>().WithMessage("publish failed");
+
+            context.IsClosing().Should().BeFalse("a failed close leaves the context open");
+            context.IsFinalized.Should().BeFalse();
+            context.PendingCount.Should().Be(1, "the failed event stays retryable");
+
+            gate.SetResult(true);
+            (await Completes(publish)).Should().BeTrue();
+            await publish;
+            Volatile.Write(ref failG, false);
+            var finalize = context.FinalizeAsync();
+            (await Completes(finalize)).Should().BeTrue();
+            await finalize;
+            context.IsFinalized.Should().BeTrue();
+            received.Should().BeEquivalentTo("goal1", "G");
+        }
+        finally
+        {
+            gate.TrySetResult(true);
+        }
+    }
+
     // The default publisher must not resume on the caller's SynchronizationContext: a
     // publish started on a UI thread, then a close run off that thread while the UI thread
     // blocks on it (the usual way to avoid sync-over-async), would otherwise hang.
@@ -773,7 +900,7 @@ public class BehaviourParityTests
             (await Completes(publish)).Should().BeTrue();
             await publish;
             context.IsFinalized.Should().BeTrue();
-            LocksDisposed(context).Should().BeTrue();
+            SpinWait.SpinUntil(() => LocksDisposed(context), 5000).Should().BeTrue();
         }
         finally
         {
