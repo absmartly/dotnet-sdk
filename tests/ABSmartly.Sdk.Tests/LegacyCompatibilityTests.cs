@@ -196,4 +196,89 @@ public class LegacyCompatibilityTests
         provider.GetRequiredService<ABSdk>().Should().NotBeNull();
         provider.GetRequiredService<IOptions<ABSmartlyServiceConfiguration>>().Value.ApiKey.Should().Be("k");
     }
+
+    // A 1.3.0 subclass of ABSdkHttpClientFactory that re-implements
+    // IABSdkHttpClientFactory.CreateClient to supply its own transport is used by the
+    // legacy entry points (ABSdk and ABSmartlyService), as in 1.3.0, instead of the base
+    // factory's default client.
+    private sealed class CustomTransportFactory : ABSdkHttpClientFactory, IABSdkHttpClientFactory
+    {
+        private readonly IABSdkHttpClient _client;
+        public int Calls;
+
+        public CustomTransportFactory(System.Net.Http.IHttpClientFactory underlying, IABSdkHttpClient client)
+            : base(underlying) => _client = client;
+
+        IABSdkHttpClient IABSdkHttpClientFactory.CreateClient()
+        {
+            System.Threading.Interlocked.Increment(ref Calls);
+            return _client;
+        }
+    }
+
+    private static (CustomTransportFactory Factory, Moq.Mock<System.Net.Http.IHttpClientFactory> Underlying,
+        Moq.Mock<IABSdkHttpClient> Client) CustomTransport()
+    {
+        var underlying = new Moq.Mock<System.Net.Http.IHttpClientFactory>();
+        var client = new Moq.Mock<IABSdkHttpClient>();
+        client.Setup(x => x.GetAsync(Moq.It.IsAny<string>()))
+            .ReturnsAsync(() => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
+        return (new CustomTransportFactory(underlying.Object, client.Object), underlying, client);
+    }
+
+    private static ABSmartlyServiceConfiguration LegacyServiceConfig() => new()
+        { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
+
+    [Test]
+    public async Task CustomLegacyFactorySubclassIsUsedByABSmartlyService()
+    {
+        var (factory, underlying, client) = CustomTransport();
+
+        // The concrete ABSdkHttpClientFactory overload and the IABSdkHttpClientFactory one.
+        var viaConcrete = new ABSmartlyService(LegacyServiceConfig(), factory,
+            new DefaultContextDataDeserializer(), new DefaultContextEventSerializer());
+        var viaInterface = new ABSmartlyService(LegacyServiceConfig(), (IABSdkHttpClientFactory)factory,
+            new DefaultContextDataDeserializer(), new DefaultContextEventSerializer());
+        await viaConcrete.GetContextDataAsync();
+        await viaInterface.GetContextDataAsync();
+
+        factory.Calls.Should().Be(2);
+        client.Verify(x => x.GetAsync(Moq.It.IsAny<string>()), Moq.Times.Exactly(2));
+        underlying.Verify(x => x.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
+    }
+
+    [Test]
+    public async Task CustomLegacyFactorySubclassIsUsedByABSdk()
+    {
+        var (factory, underlying, client) = CustomTransport();
+
+        var sdk = new ABSdk(factory, LegacyServiceConfig());
+        await sdk.CreateContextAsync(new ContextConfig().SetUnit("session_id", "abc"));
+
+        factory.Calls.Should().Be(1);
+        client.Verify(x => x.GetAsync(Moq.It.IsAny<string>()), Moq.Times.Once);
+        underlying.Verify(x => x.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
+    }
+
+    // The same subclass registered for DI as the legacy factory is used by the
+    // DI-resolved SDK.
+    [Test]
+    public async Task CustomLegacyFactorySubclassRegisteredInDiIsUsed()
+    {
+        var (factory, underlying, client) = CustomTransport();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddABsmartly(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string>
+        {
+            ["Endpoint"] = "https://example.absmartly.io/v1", ["ApiKey"] = "k", ["Application"] = "a", ["Environment"] = "e"
+        }).Build(), HttpClientConfig.CreateDefault());
+        services.AddSingleton<IABSdkHttpClientFactory>(factory);
+        using var provider = services.BuildServiceProvider();
+
+        await provider.GetRequiredService<ABSdk>().CreateContextAsync(new ContextConfig().SetUnit("session_id", "abc"));
+
+        factory.Calls.Should().Be(1);
+        client.Verify(x => x.GetAsync(Moq.It.IsAny<string>()), Moq.Times.Once);
+        underlying.Verify(x => x.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
+    }
 }

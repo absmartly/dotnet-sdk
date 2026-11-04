@@ -13,17 +13,17 @@ internal sealed class LegacyHttpClientFactoryAdapter : IABsmartlyHttpClientFacto
         _inner = inner;
     }
 
+    // A factory passed to a 1.3.0 entry point is always called through
+    // IABSdkHttpClientFactory, as in 1.3.0, even when it also implements the new
+    // interface: a 1.3.0 subclass of ABSdkHttpClientFactory that re-implements
+    // IABSdkHttpClientFactory.CreateClient (for a custom transport) must not be bypassed.
     public static IABsmartlyHttpClientFactory Wrap(IABSdkHttpClientFactory factory)
     {
         if (factory == null) return null;
-        return factory as IABsmartlyHttpClientFactory ?? new LegacyHttpClientFactoryAdapter(factory);
+        return new LegacyHttpClientFactoryAdapter(factory);
     }
 
-    public IABsmartlyHttpClient CreateClient()
-    {
-        var client = _inner.CreateClient();
-        return client as IABsmartlyHttpClient ?? new LegacyHttpClientAdapter(client);
-    }
+    public IABsmartlyHttpClient CreateClient() => LegacyHttpClientAdapter.Wrap(_inner.CreateClient());
 }
 
 internal sealed class LegacyHttpClientAdapter : IABsmartlyHttpClient
@@ -33,6 +33,20 @@ internal sealed class LegacyHttpClientAdapter : IABsmartlyHttpClient
     public LegacyHttpClientAdapter(IABSdkHttpClient inner)
     {
         _inner = inner;
+    }
+
+    // The SDK's own wrappers (exactly those types) implement both client interfaces with
+    // the same members, so they are used directly. Any other legacy client, including a
+    // subclass that re-implements IABSdkHttpClient, is called through that interface.
+    public static IABsmartlyHttpClient Wrap(IABSdkHttpClient client)
+    {
+        if (client == null) return null;
+        var type = client.GetType();
+        if (type == typeof(ABsmartlyHttpClientFactory.HttpClientWrapper) ||
+            type == typeof(ABSdkHttpClientFactory.HttpClientWrapper))
+            return (IABsmartlyHttpClient)client;
+
+        return new LegacyHttpClientAdapter(client);
     }
 
     public Task<HttpResponseMessage> GetAsync(string requestUri) => _inner.GetAsync(requestUri);

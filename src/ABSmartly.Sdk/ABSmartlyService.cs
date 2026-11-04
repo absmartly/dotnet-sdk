@@ -45,8 +45,8 @@ public class ABSmartlyService : IABSmartlyServiceClient
         IContextDataDeserializer dataDeserializer,
         IContextEventSerializer eventSerializer,
         ILoggerFactory loggerFactory = null)
-        : this(config, (IABsmartlyHttpClientFactory)httpClientFactory, dataDeserializer, eventSerializer,
-            loggerFactory)
+        : this(config, Services.LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), dataDeserializer,
+            eventSerializer, loggerFactory)
     {
     }
 
