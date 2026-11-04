@@ -257,4 +257,48 @@ public class ApiCompatibilityTests
         context.IsFailed().Should().BeTrue();
         context.ReadyError.Should().BeOfType<HttpRequestException>().Which.Message.Should().Be("offline");
     }
+
+    // 1.3.0 contract for direct callers of the public provider: a failed fetch through the
+    // SDK's own service returns null. Context loading and refresh still report the real
+    // error.
+    [Test]
+    public async Task DefaultContextDataProviderReturnsNullOnFailedFetchAsIn130()
+    {
+        var client = Mock.Of<IABsmartlyHttpClient>();
+        Mock.Get(client).Setup(x => x.GetAsync(It.IsAny<string>())).ThrowsAsync(new HttpRequestException("offline"));
+        var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == client);
+        var config = new ABSmartlyServiceConfiguration
+            { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
+        var service = new ABSmartlyService(config, factory, new DefaultContextDataDeserializer(),
+            new DefaultContextEventSerializer());
+
+        var provider = new DefaultContextDataProvider(service);
+        (await provider.GetContextDataAsync()).Should().BeNull();
+
+        var sdk = new ABsmartly(factory, config, new ABsmartlyConfig { ContextDataProvider = provider });
+        var context = (IContextV2)await sdk.CreateContextAsync(new ContextConfig().SetUnit("session_id", "abc"));
+        context.IsFailed().Should().BeTrue();
+        context.ReadyError.Should().BeOfType<HttpRequestException>().Which.Message.Should().Be("offline");
+    }
+
+    // Refresh through the default provider rethrows the real error of a failed fetch and
+    // keeps the existing data.
+    [Test]
+    public async Task RefreshThroughDefaultProviderThrowsRealErrorOnFailedFetch()
+    {
+        using var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.context.json");
+        var data = new DefaultContextDataDeserializer().Deserialize(stream);
+        var client = Mock.Of<IABsmartlyHttpClient>();
+        Mock.Get(client).Setup(x => x.GetAsync(It.IsAny<string>())).ThrowsAsync(new HttpRequestException("offline"));
+        var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == client);
+        var config = new ABSmartlyServiceConfiguration
+            { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
+        var sdk = new ABsmartly(factory, config);
+
+        var context = (Context)sdk.CreateContextWith(new ContextConfig().SetUnit("session_id", "abc"), data);
+        Func<Task> refresh = () => context.RefreshAsync();
+        await refresh.Should().ThrowAsync<HttpRequestException>().WithMessage("offline");
+        context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().BeFalse();
+    }
 }

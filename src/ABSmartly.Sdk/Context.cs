@@ -303,6 +303,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
     }
 
+    // The SDK's default provider fetches through a path that throws the real cause of a
+    // failure; any other provider is called through its public GetContextDataAsync.
+    internal static Task<ContextData> FetchContextData(IContextDataProvider provider) =>
+        provider is Services.IThrowingContextDataProvider throwing
+            ? throwing.FetchContextDataAsync()
+            : provider.GetContextDataAsync();
+
     // Waits until the load has settled and its Ready/Error event was logged, so a
     // caller that returns afterwards has observed that event (as the JavaScript SDK
     // logs "ready" before resolving ready()). Throws the exception of an event logger
@@ -1277,7 +1284,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         if (Interlocked.CompareExchange(ref _refreshing, 1, 0) == 0)
             try
             {
-                var data = await _dataProvider.GetContextDataAsync().ConfigureUnboundContinuation();
+                var data = await FetchContextData(_dataProvider).ConfigureUnboundContinuation();
 
                 // Closed while the fetch was in flight: the context is sealed (and its
                 // locks may already be disposed), so the late data is dropped.

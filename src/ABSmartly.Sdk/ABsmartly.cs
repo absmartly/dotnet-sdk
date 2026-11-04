@@ -102,7 +102,7 @@ public class ABsmartly
 
         // Run the fetch off the caller's synchronization context, so a later blocking
         // WaitUntilReady() cannot deadlock on a continuation posted back to it.
-        var dataTask = Task.Run(() => _contextDataProvider.GetContextDataAsync());
+        var dataTask = Task.Run(() => Context.FetchContextData(_contextDataProvider));
 
         return Context.CreatePending(config,
             dataTask,
