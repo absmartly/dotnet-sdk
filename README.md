@@ -136,9 +136,9 @@ These are deliberate decisions by the SDK owners. They keep the behaviour of the
   - Any scheme other than `http://` or `https://` throws an `ArgumentException`.
   - Protecting an `http://` endpoint is the deployment's responsibility, for example a private network or service mesh. Don't send traffic over `http://` across networks you don't trust.
 - **Audience `match` patterns have no time limit.** Regular expressions in experiment audiences are evaluated with `System.Text.RegularExpressions` and no match timeout.
-  - The patterns come from experiment definitions on the ABsmartly Web Console, so they're trusted configuration. Only people who can edit experiments can change them.
-  - The text being matched comes from the attributes your application sets on the context.
-  - A pattern prone to catastrophic backtracking, run against a large attribute value you don't control, can use a lot of CPU. Keep audience patterns simple, and limit the size of attribute values that come from end users.
+  - Experiment editors control the audience expression in the ABsmartly Web Console. A literal pattern is part of that configuration; if the pattern operand references an attribute, the application supplies the actual pattern value through that attribute.
+  - The text being matched also comes from the attributes your application sets on the context.
+  - A pattern prone to catastrophic backtracking, run against a large attribute value you don't control, can use a lot of CPU. Keep audience patterns simple, limit the size of attribute values that come from end users, and don't pass untrusted input as a pattern-valued attribute.
   - An invalid pattern makes the `match` evaluate to `null`, so it doesn't match.
 
 
