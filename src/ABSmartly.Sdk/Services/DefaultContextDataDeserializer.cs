@@ -16,15 +16,22 @@ public class DefaultContextDataDeserializer : IContextDataDeserializer
         _logger = loggerFactory?.CreateLogger<DefaultContextDataDeserializer>();
     }
 
+    // Returns null on malformed data, as 1.3.0 and the Java SDK; ABSmartlyService
+    // turns that into an error, so the context's ReadyError/refresh still fail.
     public ContextData Deserialize(Stream stream)
     {
         try
         {
-            return JsonSerializer.Deserialize<ContextData>(stream, JsonOptionsProvider.Default.SerializerOptions);
+            var result = JsonSerializer.Deserialize<ContextData>(stream, JsonOptionsProvider.Default.SerializerOptions);
+            if (result == null)
+            {
+                _logger?.LogError("Deserialization returned null - invalid or empty context data");
+            }
+            return result;
         }
         catch (Exception e)
         {
-            _logger?.LogError("{Message}", e.Message);
+            _logger?.LogError(e, "Failed to deserialize context data: {Message}", e.Message);
             return null;
         }
     }

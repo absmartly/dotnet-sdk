@@ -2,6 +2,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using System.Text.Json;
 using ABSmartly.EqualityComparison;
 
 namespace ABSmartly.JsonExpressions;
@@ -98,7 +100,7 @@ public class ExprEvaluator : IEvaluator
 
             if (value is null) return null;
 
-            target = value;
+            target = Normalize(value);
         }
 
         return target;
@@ -106,6 +108,9 @@ public class ExprEvaluator : IEvaluator
 
     public int? Compare(object lhs, object rhs)
     {
+        lhs = Normalize(lhs);
+        rhs = Normalize(rhs);
+
         if (lhs is null)
             return rhs is null ? 0 : null;
 
@@ -134,6 +139,8 @@ public class ExprEvaluator : IEvaluator
             return lhsBoolValue.CompareTo(rhsBoolValue);
         }
 
+        // Same-type equality, as 1.3.0 and the Java SDK (no numeric coercion inside
+        // lists or maps).
         if (lhs.GetType() == rhs.GetType())
             return lhs switch
             {
@@ -146,6 +153,27 @@ public class ExprEvaluator : IEvaluator
             };
 
         return null;
+    }
+
+    // Attributes deserialized with System.Text.Json arrive as JsonElement, which the
+    // evaluator could neither traverse nor compare. They are converted to the same
+    // shapes the audience parser produces (Dictionary<string, object>, List<object>,
+    // string, long/double, bool, null). Every other value is left untouched.
+    private static object Normalize(object value)
+    {
+        if (value is not JsonElement element) return value;
+
+        return element.ValueKind switch
+        {
+            JsonValueKind.Object => element.EnumerateObject()
+                .ToDictionary(p => p.Name, p => Normalize(p.Value)),
+            JsonValueKind.Array => element.EnumerateArray().Select(e => Normalize(e)).ToList(),
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.TryGetInt64(out var l) ? (object)l : element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null
+        };
     }
 
     private static double? GetNumber(object input)

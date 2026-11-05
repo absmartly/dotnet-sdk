@@ -353,6 +353,38 @@ public class ExprEvaluatorTests
         e.Compare("100", "9").Should().Be(-8);
     }
 
+    [Test]
+    public void TestCompareDeepEqualsJsonElementAttributes()
+    {
+        var vars = new Dictionary<string, object>
+        {
+            { "arr", System.Text.Json.JsonDocument.Parse("[1,[2,3],4]").RootElement },
+            { "obj", System.Text.Json.JsonDocument.Parse("{\"b\":[1,2],\"a\":{\"x\":1}}").RootElement },
+            { "profile", System.Text.Json.JsonDocument.Parse("{\"address\":{\"city\":\"Porto\"}}").RootElement }
+        };
+        var e = new ExprEvaluator(Dict<IOperator>(), vars);
+
+        e.Compare(e.ExtractVariable("arr"), new List<object> { 1L, new List<object> { 2L, 3L }, 4L }).Should().Be(0);
+        e.Compare(e.ExtractVariable("obj"),
+            new Dictionary<string, object> { { "a", Dict("x", 1L) }, { "b", new List<object> { 1L, 2L } } }).Should().Be(0);
+        e.Compare(new List<object> { 1L, 2L }, new List<object> { 2L, 1L }).Should().BeNull();
+        // As 1.3.0 and Java, list/map equality does not coerce element types.
+        e.Compare(new List<object> { 1, 2.0 }, new List<object> { 1L, 2L }).Should().BeNull();
+        e.ExtractVariable("profile/address/city").Should().Be("Porto");
+    }
+
+    [Test]
+    public void TestCompareDoesNotWidenOtherCollectionTypes()
+    {
+        // As 1.3.0 and Java: only same-type lists/maps compare equal.
+        var e = new ExprEvaluator(Dict<IOperator>(), Dict<object>());
+
+        e.Compare(new[] { "a", "b" }, new List<object> { "a", "b" }).Should().BeNull();
+        e.Compare(new Dictionary<string, string> { ["a"] = "b" }, new Dictionary<string, object> { ["a"] = "b" })
+            .Should().BeNull();
+        e.Compare(new List<object> { "a", "b" }, new List<object> { "a", "b" }).Should().Be(0);
+    }
+
     private static Dictionary<string, object> Dict(string op, object arg)
     {
         return new() { { op, arg } };

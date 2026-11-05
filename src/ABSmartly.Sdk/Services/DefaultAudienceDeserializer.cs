@@ -16,13 +16,18 @@ public class DefaultAudienceDeserializer : JsonParserBase, IAudienceDeserializer
 
     public Dictionary<string, object> Deserialize(string audience)
     {
+        if (string.IsNullOrWhiteSpace(audience))
+        {
+            return null;
+        }
+
         try
         {
             return ParseJsonString(audience);
         }
         catch (Exception e)
         {
-            _logger?.LogError("{Message}", e.Message);
+            _logger?.LogWarning(e, "Failed to deserialize audience filter - treating as no filter (everyone matches): {Message}", e.Message);
             return null;
         }
     }

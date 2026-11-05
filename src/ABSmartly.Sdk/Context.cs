@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,7 +20,7 @@ using Attribute = ABSmartly.Models.Attribute;
 
 namespace ABSmartly;
 
-public class Context : IContext, IDisposable, IAsyncDisposable
+public class Context : IContextV2, IDisposable, IAsyncDisposable
 {
     private readonly List<GoalAchievement> _achievements = new();
     private readonly DictionaryLockableAdapter<string, VariantAssigner> _assigners;
@@ -31,7 +34,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private readonly ReaderWriterLockSlim _dataLock = new(LockRecursionPolicy.SupportsRecursion);
     private readonly IContextDataProvider _dataProvider;
-    private readonly IContextEventHandler _eventHandler;
+    private readonly IContextPublisher _eventHandler;
     private readonly object _eventLock = new();
     private readonly IContextEventLogger _eventLogger;
 
@@ -40,7 +43,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private readonly DictionaryLockableAdapter<string, byte[]> _hashedUnits;
     private readonly ILogger<Context> _logger;
-    private readonly DictionaryLockableAdapter<string, int?> _overrides;
+    private readonly ConcurrentDictionary<string, int?> _overrides;
     private readonly int _publishDelay;
     private readonly int _refreshInterval;
 
@@ -48,25 +51,61 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private readonly object _timeoutLock = new();
     private readonly Dictionary<string, string> _units;
     private readonly IVariableParser _variableParser;
-    private bool _closed;
+    private volatile bool _closed;
     private int _closing;
+    private readonly object _closeLock = new();
+    private TaskCompletionSource<bool> _closeAttempt;
+    // Set in the async flow of a close attempt's final flush only, so a publisher
+    // that calls Close/FinalizeAsync from that flush can tell it is nested.
+    private readonly AsyncLocal<bool> _inCloseFlush = new();
+    // The context whose close attempt is notifying its event logger on this thread,
+    // so a synchronous Close() from that callback is a no-op instead of a recursive
+    // retry. Thread-scoped (unlike AsyncLocal, it does not flow to a thread the logger
+    // dispatches to), so a Close() handed to another thread runs normally.
+    [ThreadStatic] private static Context t_notifyingClose;
+    // Publications handed to the publisher and not yet settled (guarded by _eventLock),
+    // so a close can wait for them instead of sealing the context while one may still
+    // fail and restore its events.
+    private readonly List<Task> _inFlightPublishes = new();
+    // The publications whose publisher callback the current async flow is running in,
+    // so a close called back from a publisher does not wait for its own publication.
+    private readonly AsyncLocal<PublishScope> _publishScope = new();
+    // Guarded by _closeLock: an initial load being applied defers disposal of the
+    // locks it uses until it has settled.
+    private bool _settlingLoad;
+    private bool _locksDisposePending;
+    // Guarded by _closeLock: a Dispose that joined a close in progress without waiting
+    // for it asks the close's owner to dispose the locks once the context is closed.
+    private bool _disposeAfterClose;
+    private bool _locksDisposed;
 
-    private ContextData _data;
+    private volatile ContextData _data;
 
-    private bool _failed;
+    private volatile bool _failed;
+    private volatile Exception _failedError;
     private Dictionary<string, ExperimentVariables> _index;
     private Dictionary<string, Dictionary<string, ContextCustomFieldValue>> _contextCustomFields;
     
-    private DictionaryLockableAdapter<string, ExperimentVariables> _indexVariables;
+    private DictionaryLockableAdapter<string, List<ExperimentVariables>> _indexVariables;
 
     private volatile int _pendingCount;
     private int _refreshing;
+    private volatile int _attrsSeq;
     private volatile CancellationTokenSource _refreshTimer;
 
     private volatile CancellationTokenSource _timeout;
 
+    // Completes (never faults) once the initial data load of a pending context has
+    // settled as ready or failed. Null when the context was constructed with data.
+    private TaskCompletionSource<bool> _readyTcs;
+    private TaskCompletionSource<bool> _loadSettledTcs;
+
     #region Constructor & Initialization
 
+    /// <summary>
+    /// 1.3.0 constructor, kept for source and binary compatibility.
+    /// </summary>
+    [Obsolete("Use the constructor taking an IContextPublisher instead.")]
     public Context(ContextConfig config,
         ContextData data,
         Clock clock,
@@ -76,10 +115,60 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         IVariableParser variableParser,
         AudienceMatcher audienceMatcher,
         ILoggerFactory loggerFactory)
+        : this(config, data, clock, dataProvider, LegacyContextEventHandlerAdapter.Wrap(eventHandler), eventLogger,
+            variableParser, audienceMatcher, loggerFactory)
+    {
+    }
+
+    public Context(ContextConfig config,
+        ContextData data,
+        Clock clock,
+        IContextDataProvider dataProvider,
+        IContextPublisher eventHandler,
+        IContextEventLogger eventLogger,
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher,
+        ILoggerFactory loggerFactory)
+        : this(config, clock, dataProvider, eventHandler, eventLogger, variableParser, audienceMatcher,
+            loggerFactory)
+    {
+        SetInitialData(data, null);
+    }
+
+    // Creates a context that is not ready until dataTask settles: the load runs in
+    // the background, so calls made in the meantime see the not-ready state.
+    internal static Context CreatePending(ContextConfig config,
+        Task<ContextData> dataTask,
+        Clock clock,
+        IContextDataProvider dataProvider,
+        IContextPublisher eventHandler,
+        IContextEventLogger eventLogger,
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher,
+        ILoggerFactory loggerFactory)
+    {
+        if (dataTask == null) throw new ArgumentNullException(nameof(dataTask));
+
+        var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
+            audienceMatcher, loggerFactory);
+        context._readyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        context._loadSettledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = context.LoadAsync(dataTask);
+        return context;
+    }
+
+    private Context(ContextConfig config,
+        Clock clock,
+        IContextDataProvider dataProvider,
+        IContextPublisher eventHandler,
+        IContextEventLogger eventLogger,
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher,
+        ILoggerFactory loggerFactory)
     {
         if (config == null) throw new ArgumentNullException(nameof(config), "Context configuration is required");
 
-        _logger = loggerFactory.CreateLogger<Context>();
+        _logger = loggerFactory?.CreateLogger<Context>();
         _clock = clock;
         _publishDelay = Convert.ToInt32(config.PublishDelay.TotalMilliseconds);
         _refreshInterval = Convert.ToInt32(config.RefreshInterval.TotalMilliseconds);
@@ -105,50 +194,163 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             SetAttributes(config.Attributes);
 
         _overrides = config.Overrides != null
-            ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock),
-                config.Overrides)
-            : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
+            ? new ConcurrentDictionary<string, int?>(config.Overrides.Select(kv => new KeyValuePair<string, int?>(kv.Key, kv.Value)))
+            : new ConcurrentDictionary<string, int?>();
 
         _customAssignments = config.CustomAssignments != null
             ? new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock),
                 config.CustomAssignments)
             : new DictionaryLockableAdapter<string, int?>(new LockableCollectionSlimLock(_contextLock));
+    }
 
-        if (data != null)
+    // Settles the initial load: ready with data, or failed. Readiness completes before
+    // the Ready/Error event, so a callback may wait for it. A failed load keeps the
+    // error that caused it as ReadyError; null data with no error is the legacy
+    // "initialized with failed data" path.
+    private void SetInitialData(ContextData data, Exception error)
+    {
+        if (error == null && data != null)
         {
             SetData(data);
-            LogEvent(EventType.Ready, data);
-
-            if (_pendingCount > 0) SetTimeout();
+            _readyTcs?.TrySetResult(true);
+            try
+            {
+                LogEvent(EventType.Ready, data);
+            }
+            finally
+            {
+                if (_pendingCount > 0 && !IsDisposing()) SetTimeout();
+            }
+        }
+        else if (error != null)
+        {
+            SetDataFailed(error);
+            _readyTcs?.TrySetResult(true);
+            _logger?.LogWarning(error, "Context data failed to load: {Message}", error.Message);
+            LogError(error);
         }
         else
         {
             const string errorMessage = "Context initialized with failed data.";
             SetDataFailed();
-            _logger.LogWarning(errorMessage);
+            _readyTcs?.TrySetResult(true);
+            _logger?.LogWarning(errorMessage);
             LogEvent(EventType.Error, errorMessage);
         }
     }
+
+    private async Task LoadAsync(Task<ContextData> dataTask)
+    {
+        try
+        {
+            Exception loadError = null;
+            ContextData data = null;
+            try
+            {
+                data = await dataTask.ConfigureUnboundContinuation();
+            }
+            catch (Exception e)
+            {
+                loadError = e;
+            }
+
+            // Closed before the load settled: the context is sealed, so the late data
+            // is dropped. During a close still in progress the data is applied, since
+            // the close may fail and leave the context open.
+            lock (_closeLock)
+            {
+                if (_closed) return;
+                _settlingLoad = true;
+            }
+
+            try
+            {
+                SetInitialData(data, loadError);
+            }
+            catch (Exception e) when (!IsReady())
+            {
+                // A malformed payload must settle readiness as failed rather than hang.
+                SetInitialData(null, e);
+            }
+            finally
+            {
+                bool disposeLocks;
+                lock (_closeLock)
+                {
+                    _settlingLoad = false;
+                    disposeLocks = _locksDisposePending;
+                }
+
+                if (disposeLocks) DisposeLocks();
+            }
+        }
+        catch (Exception e)
+        {
+            // The load has already settled; only a Ready/Error event logger callback
+            // gets here. Readiness is unaffected, but CreateContext/CreateContextAsync
+            // rethrow it, as 1.3.0 did when the logger threw during creation.
+            _logger?.LogError(e, "Error while settling the context data load");
+            _readyTcs.TrySetResult(true);
+            _loadSettledTcs.TrySetException(e);
+            // CreatePendingContext callers never observe the settle signal; the error
+            // must not surface as an UnobservedTaskException.
+            _ = _loadSettledTcs.Task.Exception;
+        }
+        finally
+        {
+            _readyTcs.TrySetResult(true);
+            _loadSettledTcs.TrySetResult(true);
+        }
+    }
+
+    // The SDK's own default provider (exactly that type) fetches through a path that throws
+    // the real cause of a failure. Any other provider, including a subclass of the default
+    // one, which may reimplement GetContextDataAsync (for example to serve cached data),
+    // is called through its public IContextDataProvider.GetContextDataAsync, as in 1.3.0.
+    internal static Task<ContextData> FetchContextData(IContextDataProvider provider) =>
+        provider != null && provider.GetType() == typeof(Services.DefaultContextDataProvider)
+            ? ((Services.IThrowingContextDataProvider)provider).FetchContextDataAsync()
+            : provider.GetContextDataAsync();
+
+    // Waits until the load has settled and its Ready/Error event was logged, so a
+    // caller that returns afterwards has observed that event (as the JavaScript SDK
+    // logs "ready" before resolving ready()). Throws the exception of an event logger
+    // that threw on that Ready/Error event, as context creation did in 1.3.0.
+    internal async Task WaitUntilLoadSettledAsync()
+    {
+        var settled = _loadSettledTcs;
+        if (settled != null) await settled.Task.ConfigureUnboundContinuation();
+    }
+
+    private bool IsDisposing() => _closed || _closing > 0;
 
     #endregion
 
     public int PendingCount => _pendingCount;
 
 
-    public string[] GetExperiments()
+    public string[] Experiments
     {
-        CheckReady(true);
+        get
+        {
+            CheckReady(false);
 
-        try
-        {
+            if (IsClosed()) return _data.Experiments.Select(x => x.Name).ToArray();
+
             _dataLock.EnterReadLock();
-            return _data.Experiments.Select(x => x.Name).ToArray();
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
+            try
+            {
+                return _data.Experiments.Select(x => x.Name).ToArray();
+            }
+            finally
+            {
+                _dataLock.ExitReadLock();
+            }
         }
     }
+
+    [Obsolete("Use the Experiments property instead.")]
+    public string[] GetExperiments() => Experiments;
 
     public ContextData GetContextData()
     {
@@ -205,74 +407,36 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private async Task Flush()
     {
+        var outcome = await FlushCore().ConfigureUnboundContinuation();
+        ReportFlush(outcome);
+    }
+
+    private readonly struct FlushOutcome
+    {
+        public FlushOutcome(PublishEvent published, Exception error)
+        {
+            Published = published;
+            Error = error;
+        }
+
+        public PublishEvent Published { get; }
+        public Exception Error { get; }
+    }
+
+    // Publishes the pending events without notifying the event logger, so a caller
+    // (CloseAsync) can settle its own state before observers run.
+    //
+    // As the Java SDK and 1.3.0, the batch is detached from the queue (and PendingCount
+    // reset to 0) under _eventLock before the publisher is called, and no lock is held
+    // across the publisher callback: a publisher that calls PublishAsync/FinalizeAsync
+    // on this context re-enters without deadlocking, and concurrent flushes each
+    // publish a disjoint batch. On failure the batch is put back at the front of the
+    // queue and PendingCount restored, so the events stay retryable.
+    private async Task<FlushOutcome> FlushCore()
+    {
         ClearTimeout();
 
-        if (!_failed)
-        {
-            if (_pendingCount > 0)
-            {
-                Exposure[] exposures = null;
-                GoalAchievement[] achievements = null;
-                int eventCount;
-
-                try
-                {
-                    Monitor.Enter(_eventLock);
-
-                    eventCount = _pendingCount;
-                    if (eventCount > 0)
-                    {
-                        if (_exposures.Count > 0)
-                        {
-                            exposures = _exposures.ToArray();
-                            _exposures.Clear();
-                        }
-
-                        if (_achievements.Count > 0)
-                        {
-                            achievements = _achievements.ToArray();
-                            _achievements.Clear();
-                        }
-
-                        _pendingCount = 0;
-                    }
-                }
-                finally
-                {
-                    Monitor.Exit(_eventLock);
-                }
-
-                if (eventCount > 0)
-                    try
-                    {
-                        var publishEvent = new PublishEvent
-                        {
-                            Hashed = true,
-                            PublishedAt = _clock.Millis(),
-                            Units = _units
-                                .Select(kv => new Unit
-                                {
-                                    Type = kv.Key,
-                                    Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
-                                })
-                                .ToArray(),
-                            Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
-                            Exposures = exposures,
-                            Goals = achievements
-                        };
-
-                        await _eventHandler.PublishAsync(this, publishEvent).ConfigureUnboundContinuation();
-                        LogEvent(EventType.Publish, publishEvent);
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.LogError(e, "{Publish}", EventType.Publish);
-                        LogError(e);
-                        throw;
-                    }
-            }
-        }
-        else
+        if (_failed)
         {
             try
             {
@@ -286,7 +450,180 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             {
                 Monitor.Exit(_eventLock);
             }
+
+            return default;
         }
+
+        if (_pendingCount <= 0) return default;
+
+        Exposure[] exposures = null;
+        GoalAchievement[] achievements = null;
+        TaskCompletionSource<bool> inFlight = null;
+        int eventCount;
+
+        try
+        {
+            Monitor.Enter(_eventLock);
+
+            // While a close is in progress only its own flush takes the batch: a flush that
+            // detached it after the close looked for outstanding publications could fail
+            // after the context is sealed and strand its events. The close publishes them.
+            eventCount = _closing > 0 && !_inCloseFlush.Value ? 0 : _pendingCount;
+            if (eventCount > 0)
+            {
+                if (_exposures.Count > 0)
+                {
+                    exposures = _exposures.ToArray();
+                    _exposures.Clear();
+                }
+
+                if (_achievements.Count > 0)
+                {
+                    achievements = _achievements.ToArray();
+                    _achievements.Clear();
+                }
+
+                Interlocked.Exchange(ref _pendingCount, 0);
+
+                inFlight = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _inFlightPublishes.Add(inFlight.Task);
+            }
+        }
+        finally
+        {
+            Monitor.Exit(_eventLock);
+        }
+
+        if (eventCount <= 0) return default;
+
+        try
+        {
+            try
+            {
+                var publishEvent = new PublishEvent
+                {
+                    Hashed = true,
+                    PublishedAt = _clock.Millis(),
+                    Units = _units
+                        .Select(kv => new Unit
+                        {
+                            Type = kv.Key,
+                            Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
+                        })
+                        .ToArray(),
+                    Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
+                    Exposures = exposures,
+                    Goals = achievements
+                };
+
+                _publishScope.Value = new PublishScope(inFlight.Task, _publishScope.Value);
+                var publishTask = _eventHandler.PublishAsync(this, publishEvent) ??
+                                  throw new InvalidOperationException("Context publisher returned no task.");
+                await publishTask.ConfigureUnboundContinuation();
+                return new FlushOutcome(publishEvent, null);
+            }
+            catch (Exception e)
+            {
+                try
+                {
+                    Monitor.Enter(_eventLock);
+
+                    if (exposures != null) _exposures.InsertRange(0, exposures);
+                    if (achievements != null) _achievements.InsertRange(0, achievements);
+                    Interlocked.Add(ref _pendingCount, eventCount);
+                }
+                finally
+                {
+                    Monitor.Exit(_eventLock);
+                }
+
+                return new FlushOutcome(null, e);
+            }
+        }
+        finally
+        {
+            // Settled only after a failed batch is restored, so a close waiting for this
+            // publication sees the restored events and can retry them.
+            lock (_eventLock) _inFlightPublishes.Remove(inFlight.Task);
+            inFlight.TrySetResult(true);
+        }
+    }
+
+    private sealed class PublishScope
+    {
+        public PublishScope(Task publication, PublishScope parent)
+        {
+            Publication = publication;
+            Parent = parent;
+        }
+
+        public Task Publication { get; }
+        public PublishScope Parent { get; }
+    }
+
+    // Waits until every publication already handed to the publisher has settled, except
+    // those whose publisher callback is the caller (a publisher that closes this context
+    // cannot wait for its own publication without deadlocking).
+    private async Task WaitForOutstandingPublishes()
+    {
+        while (true)
+        {
+            Task[] outstanding;
+            lock (_eventLock)
+            {
+                outstanding = _inFlightPublishes.Where(t => !IsOwnPublication(t)).ToArray();
+            }
+
+            if (outstanding.Length == 0) return;
+
+            await Task.WhenAll(outstanding).ConfigureUnboundContinuation();
+        }
+    }
+
+    private bool HasOwnOutstandingPublication()
+    {
+        if (_publishScope.Value == null) return false;
+
+        lock (_eventLock)
+        {
+            return _inFlightPublishes.Any(IsOwnPublication);
+        }
+    }
+
+    // A synchronous Close()/Dispose() blocks the calling thread. Waiting there for a
+    // publication that resumes on this thread's SynchronizationContext (a UI thread, or
+    // classic ASP.NET) would deadlock, so it waits only when the thread has none; use
+    // FinalizeAsync/DisposeAsync to wait on such threads.
+    private static bool CanBlockOnOutstandingPublishes()
+    {
+        var context = SynchronizationContext.Current;
+        return (context == null || context.GetType() == typeof(SynchronizationContext)) &&
+               TaskScheduler.Current == TaskScheduler.Default;
+    }
+
+    private bool IsOwnPublication(Task publication)
+    {
+        for (var scope = _publishScope.Value; scope != null; scope = scope.Parent)
+        {
+            if (ReferenceEquals(scope.Publication, publication)) return true;
+        }
+
+        return false;
+    }
+
+    // Notifies the event logger of a flush outcome, then rethrows a publish error.
+    // A throwing logger cannot turn a delivered publish into a failure (or mask the
+    // publish error), as the Java SDK.
+    private void ReportFlush(FlushOutcome outcome)
+    {
+        if (outcome.Error != null)
+        {
+            _logger?.LogError(outcome.Error, "{Publish}", EventType.Publish);
+            LogEventSafely(EventType.Error, outcome.Error.Message);
+            ExceptionDispatchInfo.Capture(outcome.Error).Throw();
+        }
+
+        if (outcome.Published != null) LogEventSafely(EventType.Publish, outcome.Published);
     }
 
     private byte[] GetUnitHash(string unitType, string unitUid)
@@ -294,6 +631,51 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return _hashedUnits.ConcurrentGetOrAdd(unitType, _ => Md5.HashToUtf8Bytes(unitUid));
     }
 
+    private Dictionary<string, object> BuildAttributesDictionary()
+    {
+        var attrs = new Dictionary<string, object>(_attributes.Count);
+        foreach (var attribute in _attributes)
+        {
+            attrs[attribute.Name] = attribute.Value;
+        }
+        return attrs;
+    }
+
+    private bool? EvaluateAudience(string audience)
+    {
+        if (string.IsNullOrEmpty(audience))
+        {
+            return null;
+        }
+
+        var attrs = BuildAttributesDictionary();
+        return _audienceMatcher.Evaluate(audience, attrs);
+    }
+
+    private bool AudienceMatches(Experiment experiment, Assignment assignment)
+    {
+        if (!string.IsNullOrEmpty(experiment.Audience))
+        {
+            // Read before evaluating: an attribute set meanwhile must trigger a new check.
+            var attrsSeq = _attrsSeq;
+            if (attrsSeq > assignment.AttrsSeq)
+            {
+                var match = EvaluateAudience(experiment.Audience);
+                var newAudienceMismatch = match != null ? !match.Value : false;
+                if (newAudienceMismatch != assignment.AudienceMismatch)
+                {
+                    return false;
+                }
+
+                // Still valid for these attributes: record it, so the audience is not
+                // re-evaluated on every call until the next SetAttribute (as the JS SDK).
+                // A racing reader can only store an older sequence, which merely causes
+                // one more evaluation.
+                assignment.AttrsSeq = attrsSeq;
+            }
+        }
+        return true;
+    }
 
     private Assignment GetAssignment(string experimentName)
     {
@@ -321,7 +703,8 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 else if (!_customAssignments.TryGetValue(experimentName, out var custom) ||
                          custom == assignment.Variant)
                 {
-                    if (ExperimentMatches(experiment.Data, assignment))
+                    if (ExperimentMatches(experiment.Data, assignment) &&
+                        AudienceMatches(experiment.Data, assignment))
                         // assignment is up-to-date
                         return assignment;
                 }
@@ -364,10 +747,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
                     if (!string.IsNullOrEmpty(experiment.Data.Audience))
                     {
-                        var attrs = new Dictionary<string, object>(_attributes.Count);
-                        foreach (var attribute in _attributes) attrs.Add(attribute.Name, attribute.Value);
-
-                        var match = _audienceMatcher.Evaluate(experiment.Data.Audience, attrs);
+                        var match = EvaluateAudience(experiment.Data.Audience);
                         if (match != null) assignment.AudienceMismatch = !match.Value;
                     }
 
@@ -422,9 +802,10 @@ public class Context : IContext, IDisposable, IAsyncDisposable
                 }
             }
 
-            if (experiment != null && assignment.Variant < experiment.Data.Variants.Length)
+            if (experiment != null && assignment.Variant >= 0 && assignment.Variant < experiment.Data.Variants.Length)
                 assignment.Variables = experiment.Variables[assignment.Variant];
 
+            assignment.AttrsSeq = _attrsSeq;
             _assignmentCache[experimentName] = assignment;
 
             return assignment;
@@ -446,8 +827,19 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private Assignment GetVariableAssignment(string key)
     {
-        var experiment = GetVariableExperiment(key);
-        return experiment != null ? GetAssignment(experiment.Data.Name) : null;
+        var experiments = GetVariableExperiments(key);
+        if (experiments == null) return null;
+        foreach (var experiment in experiments)
+        {
+            var assignment = GetAssignment(experiment.Data.Name);
+            // As the Java SDK: the first assigned (or overridden) experiment by id wins, even
+            // if its selected variant does not define the key (the caller then returns the
+            // default). It is the experiment exposed, so units in its control arm are
+            // counted too.
+            if (assignment.Assigned || assignment.Overridden)
+                return assignment;
+        }
+        return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name) : null;
     }
 
     private ExperimentVariables GetExperiment(string experimentName)
@@ -463,77 +855,53 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
     
-    public List<String> GetCustomFieldKeys()
+    // Custom-field reads stay available after close, as in 1.3.0 and the Java SDK
+    // (checkReady(false)).
+    public List<string> GetCustomFieldKeys()
     {
+        CheckReady(false);
+
+        // Data locks are disposed once the context is disposed; no writer runs after close.
+        if (IsClosed()) return CollectCustomFieldKeys();
+
         try
         {
             _dataLock.EnterReadLock();
-
-            var keys = new List<String>();
-            
-            foreach (var experiment in _data.Experiments)
-            {
-                var customFieldValues = experiment.CustomFieldValues;
-                if (customFieldValues != null)
-                {
-                    foreach (var customFieldValue in customFieldValues)
-                    {
-                        keys.Add(customFieldValue.Name);
-                    }
-                }
-            }
-            
-            return keys.OrderBy(q => q).Distinct().ToList();
+            return CollectCustomFieldKeys();
         }
         finally
         {
             _dataLock.ExitReadLock();
         }
     }
-    
-    public Object GetCustomFieldValue(String environmentName, String key)
+
+    private List<string> CollectCustomFieldKeys()
     {
-        try
+        var keys = new List<string>();
+
+        foreach (var experiment in _data.Experiments)
         {
-            _dataLock.EnterReadLock();
-
-            _contextCustomFields.TryGetValue(environmentName, out var customFieldValues);
-
+            var customFieldValues = experiment.CustomFieldValues;
             if (customFieldValues != null)
             {
-                customFieldValues.TryGetValue(key, out var field);
-                if (field != null)
+                foreach (var customFieldValue in customFieldValues)
                 {
-                    return field.Value;
+                    keys.Add(customFieldValue.Name);
                 }
             }
+        }
 
-            return null;
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
+        return keys.OrderBy(q => q).Distinct().ToList();
     }
-    
-    public Object GetCustomFieldType(String environmentName, String key)
+
+    private ContextCustomFieldValue GetCustomField(string experimentName, string key)
     {
+        if (IsClosed()) return FindCustomField(experimentName, key);
+
         try
         {
             _dataLock.EnterReadLock();
-
-            _contextCustomFields.TryGetValue(environmentName, out var customFieldValues);
-
-            if (customFieldValues != null)
-            {
-                customFieldValues.TryGetValue(key, out var field);
-                if (field != null)
-                {
-                    return field.Type;
-                }
-            }
-
-            return null;
+            return FindCustomField(experimentName, key);
         }
         finally
         {
@@ -541,7 +909,43 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
-    private ExperimentVariables GetVariableExperiment(string key)
+    private ContextCustomFieldValue FindCustomField(string experimentName, string key)
+    {
+        if (_contextCustomFields != null &&
+            _contextCustomFields.TryGetValue(experimentName, out var customFieldValues) &&
+            customFieldValues != null &&
+            customFieldValues.TryGetValue(key, out var field))
+        {
+            return field;
+        }
+
+        return null;
+    }
+
+    // The parameter is an experiment name; it keeps its 1.3.0 name for named-argument callers.
+    public object GetCustomFieldValue(string environmentName, string key)
+    {
+        CheckReady(false);
+
+        var field = GetCustomField(environmentName, key);
+        return field?.Value;
+    }
+
+    public object GetCustomFieldValueType(string experimentName, string key)
+    {
+        CheckReady(false);
+
+        var field = GetCustomField(experimentName, key);
+        return field?.Type;
+    }
+
+    // The parameter is an experiment name; it keeps its 1.3.0 name for named-argument callers.
+    public object GetCustomFieldType(string environmentName, string key)
+    {
+        return GetCustomFieldValueType(environmentName, key);
+    }
+
+    private List<ExperimentVariables> GetVariableExperiments(string key)
     {
         return _indexVariables.ConcurrentGetValueOrDefault(key);
     }
@@ -564,6 +968,23 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         return _failed;
     }
 
+    public Exception ReadyError => _failedError;
+
+    public async Task<IContextV2> WaitUntilReadyAsync()
+    {
+        var readyTcs = _readyTcs;
+        if (readyTcs != null) await readyTcs.Task.ConfigureUnboundContinuation();
+        return this;
+    }
+
+    public IContextV2 WaitUntilReady()
+    {
+        // The load continuation never needs the caller's synchronization context,
+        // so blocking on it here cannot deadlock.
+        _readyTcs?.Task.GetAwaiter().GetResult();
+        return this;
+    }
+
     public bool IsClosed()
     {
         return _closed;
@@ -573,6 +994,10 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     {
         return !_closed && _closing > 0;
     }
+
+    public bool IsFinalized => IsClosed();
+
+    public bool IsFinalizing => IsClosing();
 
     #endregion
 
@@ -585,12 +1010,61 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
         var attribute = new Attribute { Name = name, Value = value, SetAt = _clock.Millis() };
         _attributes.ConcurrentAdd(attribute);
+        Interlocked.Increment(ref _attrsSeq);
     }
 
     public void SetAttributes(Dictionary<string, object> attributes)
     {
         foreach (var kvp in attributes) SetAttribute(kvp.Key, kvp.Value);
     }
+
+    // Read under the context read lock, as Context.java getAttribute(s): SetAttribute
+    // appends under the write lock, and enumerating a List<T> while it is appended
+    // to throws InvalidOperationException.
+    public object GetAttribute(string name)
+    {
+        return ReadAttributes(attributes =>
+        {
+            for (var i = attributes.Count - 1; i >= 0; i--)
+                if (attributes[i].Name == name)
+                    return attributes[i].Value;
+            return null;
+        });
+    }
+
+    public Dictionary<string, object> Attributes
+    {
+        get
+        {
+            return ReadAttributes(attributes =>
+            {
+                var result = new Dictionary<string, object>(attributes.Count);
+                foreach (var attribute in attributes)
+                    result[attribute.Name] = attribute.Value;
+                return result;
+            });
+        }
+    }
+
+    private T ReadAttributes<T>(Func<List<Attribute>, T> read)
+    {
+        // Once closed no writer can run (SetAttribute throws), and Dispose may have
+        // released the lock, so read without it.
+        if (IsClosed()) return read(_attributes);
+
+        _contextLock.EnterReadLock();
+        try
+        {
+            return read(_attributes);
+        }
+        finally
+        {
+            _contextLock.ExitReadLock();
+        }
+    }
+
+    [Obsolete("Use the Attributes property instead.")]
+    public Dictionary<string, object> GetAttributes() => Attributes;
 
     #endregion
 
@@ -619,13 +1093,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     public void SetOverride(string experimentName, int variant)
     {
-        CheckNotClosed();
-        _overrides.ConcurrentSet(experimentName, variant);
+        _overrides[experimentName] = variant;
     }
 
     public int? GetOverride(string experimentName)
     {
-        return _overrides.ConcurrentGetValueOrDefault(experimentName);
+        return _overrides.TryGetValue(experimentName, out var v) ? v : null;
     }
 
     public void SetOverrides(Dictionary<string, int> overrides)
@@ -675,8 +1148,12 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _contextLock.EnterWriteLock();
 
             var previous = _units.TryGetValue(unitType, out var u) ? u : null;
-            if (previous != null && !previous.Equals(uidTrimmed))
-                throw new ArgumentException($"Unit '{unitType}' already set.");
+            if (previous != null)
+            {
+                if (!previous.Equals(uidTrimmed))
+                    throw new ArgumentException($"Unit '{unitType}' UID already set.");
+                return;
+            }
 
             _units.Add(unitType, uidTrimmed);
         }
@@ -691,28 +1168,68 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
     }
 
+    public Dictionary<string, string> Units
+    {
+        get
+        {
+            try
+            {
+                _contextLock.EnterReadLock();
+                return new Dictionary<string, string>(_units);
+            }
+            finally
+            {
+                _contextLock.ExitReadLock();
+            }
+        }
+    }
+
+    [Obsolete("Use the Units property instead.")]
+    public Dictionary<string, string> GetUnits() => Units;
+
     #endregion
 
     #region Variable
 
+    public Dictionary<string, List<string>> VariableKeys
+    {
+        get
+        {
+            CheckReady(true);
+
+            var variableKeys = new Dictionary<string, List<string>>(_indexVariables.Count);
+
+            try
+            {
+                _dataLock.EnterReadLock();
+
+                foreach (var kv in _indexVariables)
+                {
+                    var names = new List<string>(kv.Value.Count);
+                    foreach (var ev in kv.Value) names.Add(ev.Data.Name);
+                    variableKeys.Add(kv.Key, names);
+                }
+            }
+            finally
+            {
+                _dataLock.ExitReadLock();
+            }
+
+            return variableKeys;
+        }
+    }
+
+    [Obsolete("Use the VariableKeys property instead.")]
+    public Dictionary<string, List<string>> GetVariableExperimentKeys() => VariableKeys;
+
+    [Obsolete("Use the VariableKeys property instead.")]
     public Dictionary<string, string> GetVariableKeys()
     {
-        CheckReady(true);
-
-        var variableKeys = new Dictionary<string, string>(_indexVariables.Count);
-
-        try
-        {
-            _dataLock.EnterReadLock();
-
-            foreach (var kv in _indexVariables) variableKeys.Add(kv.Key, kv.Value.Data.Name);
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
-
-        return variableKeys;
+        var full = VariableKeys;
+        var result = new Dictionary<string, string>(full.Count);
+        foreach (var kv in full)
+            if (kv.Value.Count > 0) result[kv.Key] = kv.Value[0];
+        return result;
     }
 
     public object GetVariableValue(string key, object defaultValue)
@@ -759,14 +1276,23 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         AsyncHelpers.RunSync(async () => await RefreshAsync());
     }
 
+    // Like the JavaScript SDK: throws when the context is not ready or is finalized,
+    // and is a successful no-op on a failed context (a failed context is not recovered).
     public async Task RefreshAsync()
     {
-        CheckNotClosed();
+        CheckReady(true);
+
+        if (_failed) return;
 
         if (Interlocked.CompareExchange(ref _refreshing, 1, 0) == 0)
             try
             {
-                var data = await _dataProvider.GetContextDataAsync().ConfigureUnboundContinuation();
+                var data = await FetchContextData(_dataProvider).ConfigureUnboundContinuation();
+
+                // Closed while the fetch was in flight: the context is sealed (and its
+                // locks may already be disposed), so the late data is dropped.
+                if (IsDisposing()) return;
+
                 SetData(data);
                 LogEvent(EventType.Refresh, data);
             }
@@ -821,8 +1347,14 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     private void CheckReady(bool expectNotClosed)
     {
-        if (!IsReady()) throw new Exception("ABSmartly Context is not yet ready");
-        if (expectNotClosed) CheckNotClosed();
+        if (!IsReady())
+        {
+            throw new InvalidOperationException("ABSmartly Context is not yet ready");
+        }
+        if (expectNotClosed)
+        {
+            CheckNotClosed();
+        }
     }
 
     #endregion
@@ -844,11 +1376,29 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _timeout = new CancellationTokenSource();
             var token = _timeout.Token;
 
-            Task.Run(async () =>
+            var task = Task.Run(async () =>
             {
-                await Task.Delay(_publishDelay, token).ConfigureUnboundContinuation();
-                await Flush().ConfigureUnboundContinuation();
+                try
+                {
+                    await Task.Delay(_publishDelay, token).ConfigureUnboundContinuation();
+                    await Flush().ConfigureUnboundContinuation();
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception e)
+                {
+                    _logger?.LogError(e, "Error during flush timeout");
+                }
             }, token);
+
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                {
+                    _logger?.LogError(t.Exception, "Unhandled exception in flush timeout task");
+                }
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
         finally
         {
@@ -867,6 +1417,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             if (_timeout == null) return;
 
             _timeout.Cancel();
+            _timeout.Dispose();
             _timeout = null;
         }
         finally
@@ -882,6 +1433,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private void SetRefreshTimer()
     {
         if (_refreshInterval <= 0 || _refreshTimer != null) return;
+        if (IsDisposing()) return;
 
         try
         {
@@ -892,14 +1444,33 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _refreshTimer = new CancellationTokenSource();
             var token = _refreshTimer.Token;
 
-            Task.Run(async () =>
+            var task = Task.Run(async () =>
             {
                 while (!token.IsCancellationRequested)
                 {
-                    await Task.Delay(_refreshInterval, token).ConfigureUnboundContinuation();
-                    await RefreshAsync();
+                    try
+                    {
+                        await Task.Delay(_refreshInterval, token).ConfigureUnboundContinuation();
+                        await RefreshAsync().ConfigureUnboundContinuation();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception e)
+                    {
+                        _logger?.LogError(e, "Error during refresh timer");
+                    }
                 }
             }, token);
+
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                {
+                    _logger?.LogError(t.Exception, "Unhandled exception in refresh timer task");
+                }
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
         finally
         {
@@ -918,6 +1489,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             if (_refreshTimer == null) return;
 
             _refreshTimer.Cancel();
+            _refreshTimer.Dispose();
             _refreshTimer = null;
         }
         finally
@@ -933,7 +1505,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     private void SetData(ContextData data)
     {
         var index = new Dictionary<string, ExperimentVariables>();
-        var indexVariables = new Dictionary<string, ExperimentVariables>();
+        var indexVariables = new Dictionary<string, List<ExperimentVariables>>();
         var contextCustomFields = new Dictionary<string, Dictionary<string, ContextCustomFieldValue>>();
 
         foreach (var experiment in data.Experiments)
@@ -947,11 +1519,39 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             foreach (var variant in experiment.Variants)
                 if (variant.Config != null && !string.IsNullOrWhiteSpace(variant.Config))
                 {
-                    var variables = _variableParser.Parse(this, experiment.Name, variant.Name, variant.Config);
+                    try
+                    {
+                        var variables = _variableParser.Parse(this, experiment.Name, variant.Name, variant.Config);
 
-                    foreach (var key in variables.Keys) indexVariables[key] = experimentVariables;
-
-                    experimentVariables.Variables.Add(variables);
+                        if (variables != null)
+                        {
+                            foreach (var key in variables.Keys)
+                            {
+                                if (!indexVariables.TryGetValue(key, out var list))
+                                {
+                                    list = new List<ExperimentVariables>();
+                                    indexVariables[key] = list;
+                                }
+                                if (list.Find(ev => ev.Data.Id == experiment.Id) == null)
+                                {
+                                    var insertAt = list.FindIndex(ev => ev.Data.Id > experiment.Id);
+                                    if (insertAt < 0) list.Add(experimentVariables);
+                                    else list.Insert(insertAt, experimentVariables);
+                                }
+                            }
+                            experimentVariables.Variables.Add(variables);
+                        }
+                        else
+                        {
+                            _logger?.LogWarning("Variable parser returned null for experiment '{ExperimentName}', variant '{VariantName}'", experiment.Name, variant.Name);
+                            experimentVariables.Variables.Add(new Dictionary<string, object>());
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        _logger?.LogError(e, "Failed to parse variables for experiment '{ExperimentName}', variant '{VariantName}'", experiment.Name, variant.Name);
+                        experimentVariables.Variables.Add(new Dictionary<string, object>());
+                    }
                 }
                 else
                 {
@@ -972,23 +1572,38 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
                 if (customFieldValue.Value != null)
                 {
-                    var customValue = customFieldValue.Value;
+                    try
+                    {
+                        var customValue = customFieldValue.Value;
 
-                    if (customFieldValue.Type.StartsWith("json"))
-                    {
-                        value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
+                        if (customFieldValue.Type.StartsWith("json"))
+                        {
+                            // Through the configured parser, as 1.3.0 and Java (variableParser.parse).
+                            value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
+                        }
+                        else if(customFieldValue.Type.StartsWith("boolean"))
+                        {
+                            value.Value = Convert.ToBoolean(customValue);
+                        }
+                        else if(customFieldValue.Type.StartsWith("number"))
+                        {
+                            // Invariant culture: the payload is JSON-formatted ("1.5"), whatever
+                            // the server's culture is.
+                            value.Value = long.TryParse(customValue, NumberStyles.Integer,
+                                CultureInfo.InvariantCulture, out var longVal)
+                                ? (object)longVal
+                                : double.Parse(customValue, NumberStyles.Float, CultureInfo.InvariantCulture);
+                        }
+                        else
+                        {
+                            value.Value = customValue;
+                        }
                     }
-                    else if(customFieldValue.Type.StartsWith("boolean"))
+                    catch (Exception e)
                     {
-                        value.Value = Convert.ToBoolean(customValue);
-                    }
-                    else if(customFieldValue.Type.StartsWith("number"))
-                    {
-                        value.Value = Convert.ToInt64(customValue);
-                    }
-                    else
-                    {
-                        value.Value = customValue;
+                        _logger?.LogWarning(e, "Failed to convert custom field '{FieldName}' of type '{FieldType}' for experiment '{ExperimentName}'. Value: '{Value}'",
+                            customFieldValue.Name, customFieldValue.Type, experiment.Name, customFieldValue.Value);
+                        value.Value = null;
                     }
                 }
 
@@ -1005,7 +1620,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
             _index = index;
             _contextCustomFields = contextCustomFields;
             _indexVariables =
-                new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock),
+                new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock),
                     indexVariables);
             _data = data;
 
@@ -1017,16 +1632,19 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         }
     }
 
-    private void SetDataFailed()
+    private void SetDataFailed(Exception error = null)
     {
         try
         {
             _dataLock.EnterWriteLock();
             _index = new Dictionary<string, ExperimentVariables>();
             _indexVariables =
-                new DictionaryLockableAdapter<string, ExperimentVariables>(new LockableCollectionSlimLock(_dataLock));
-            _data = new ContextData();
+                new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock));
+            // Empty, not null, experiments: reads on a failed context (Experiments,
+            // GetCustomFieldKeys) return empty instead of throwing.
+            _data = new ContextData(Array.Empty<Experiment>());
             _failed = true;
+            _failedError = error;
         }
         finally
         {
@@ -1038,14 +1656,31 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     #region Log
 
+    // As 1.3.0 and the Java SDK, event logger exceptions propagate to the caller,
+    // except where they would change a publish outcome (see LogEventSafely).
     private void LogEvent(EventType eventType, object data)
     {
         _eventLogger?.HandleEvent(this, eventType, data);
     }
 
+    // For the Publish event and a publish Error: a throwing logger must not turn a
+    // delivered publish into a failure (which would resend the batch) or mask the
+    // publish error, so its exception is logged and dropped, as Context.java flush().
+    private void LogEventSafely(EventType eventType, object data)
+    {
+        try
+        {
+            LogEvent(eventType, data);
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, "Context event logger threw while handling {EventType}", eventType);
+        }
+    }
+
     private void LogError(Exception error)
     {
-        _eventLogger?.HandleEvent(this, EventType.Error, error.Message);
+        LogEvent(EventType.Error, error.Message);
     }
 
     #endregion
@@ -1053,26 +1688,224 @@ public class Context : IContext, IDisposable, IAsyncDisposable
 
     #region Close & Dispose
 
-    private async Task CloseAsync()
+    // Concurrent callers share one close attempt. If the final publish fails, the
+    // context stays open with its events queued and the error is rethrown, so a
+    // later Close/Dispose retries the publish (as closeAsync() in the Java SDK).
+    //
+    // The attempt is settled (closed, or reset for a retry) before any event logger
+    // callback runs, so a logger that synchronously hands Close()/Dispose() to another
+    // thread and waits for it cannot wait on this attempt.
+    private Task CloseAsync() => CloseAsync(true);
+
+    private async Task CloseAsync(bool waitForOutstanding)
     {
         if (_closed) return;
 
-        if (Interlocked.CompareExchange(ref _closing, 1, 0) == 0)
+        // Called back from this context's own close: by the publisher during the
+        // final flush, or synchronously by the event logger it notifies. A no-op, as
+        // the _closing guard in 1.3.0: waiting would deadlock, retrying would recurse.
+        if (_inCloseFlush.Value || ReferenceEquals(t_notifyingClose, this)) return;
+
+        TaskCompletionSource<bool> attempt;
+        bool owner;
+        lock (_closeLock)
         {
-            ClearRefreshTimer();
+            if (_closed) return;
+            owner = _closeAttempt == null;
+            if (owner)
+                _closeAttempt = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            attempt = _closeAttempt;
+        }
 
-            try
+        if (!owner)
+        {
+            // Called from a publisher callback whose publication is still in flight while
+            // another close is under way: that close waits for this publication, so
+            // waiting for it here would deadlock. A no-op, as a close called back during
+            // the close's own flush.
+            if (HasOwnOutstandingPublication()) return;
+
+            // A synchronous Close()/Dispose() on a thread with a SynchronizationContext
+            // (UI, classic ASP.NET) blocks that thread. The close in progress may be
+            // waiting for a publication whose continuation needs this thread, so joining
+            // it here could deadlock: return without waiting, as a second close did in
+            // 1.3.0. The close in progress finishes the job (and keeps failed events
+            // retryable); use FinalizeAsync/DisposeAsync to wait for it on such threads.
+            if (!waitForOutstanding) return;
+
+            await attempt.Task.ConfigureUnboundContinuation();
+            return;
+        }
+
+        // Set under _eventLock, so a flush either detached its batch before this point
+        // (and is registered as outstanding below) or sees the close and leaves the batch.
+        lock (_eventLock) Interlocked.Exchange(ref _closing, 1);
+        ClearRefreshTimer();
+
+        // A publication started before this close may still fail and restore its
+        // events: wait for it, so they are retried by the flush below (or, if that
+        // fails too, the context stays open and they remain retryable).
+        if (waitForOutstanding) await WaitForOutstandingPublishes().ConfigureUnboundContinuation();
+
+        // Publications this caller cannot wait for remain: its own (a publisher closing
+        // its context), or any, for a synchronous Close()/Dispose() on a thread with a
+        // SynchronizationContext. The events queued now are still published before the
+        // caller returns (an app may exit right after Dispose()), as the close's own
+        // flush. Sealing now could strand the outstanding publications' events if they
+        // fail, so the close then stays in progress and finishes in the background once
+        // they settle, retrying any events they restore. The caller returns without
+        // waiting for them (waiting could deadlock); FinalizeAsync or DisposeAsync from
+        // elsewhere waits for the whole close.
+        FlushOutcome earlier = default;
+        if (HasOutstandingPublishes())
+        {
+            earlier = await FlushForCloseAsync().ConfigureUnboundContinuation();
+            if (earlier.Error != null)
             {
-                if (_pendingCount > 0) await Flush().ConfigureUnboundContinuation();
-
-                LogEvent(EventType.Close, null);
+                SettleCloseAttempt(attempt, earlier);
+                ReportCloseOutcome(default, earlier, false, false); // throws the publish error
+                return;
             }
-            finally
+
+            if (HasOutstandingPublishes())
             {
-                _closed = true;
-                Interlocked.Exchange(ref _closing, 0);
+                // Its Publish event is reported once the attempt settles, as any close
+                // observer: a logger that hands a close to another thread and waits for
+                // it must not find this attempt still in progress.
+                _ = CompleteCloseWhenPublishesSettle(attempt, earlier);
+                return;
             }
         }
+
+        await CompleteCloseAsync(attempt, earlier).ConfigureUnboundContinuation();
+    }
+
+    private bool HasOutstandingPublishes()
+    {
+        lock (_eventLock) return _inFlightPublishes.Count > 0;
+    }
+
+    private Task CompleteCloseWhenPublishesSettle(TaskCompletionSource<bool> attempt, FlushOutcome earlier) =>
+        Task.Run(async () =>
+        {
+            // A fresh flow: not part of the publisher callback or close that started it.
+            _publishScope.Value = null;
+            _inCloseFlush.Value = false;
+            try
+            {
+                await WaitForOutstandingPublishes().ConfigureUnboundContinuation();
+                await CompleteCloseAsync(attempt, earlier).ConfigureUnboundContinuation();
+            }
+            catch (Exception)
+            {
+                // Reported through the event logger (Error); the attempt carries it to
+                // any waiter, and the context stays open with its events retryable.
+            }
+        });
+
+    // Publishes what is pending, then seals the context or, if that fails, leaves it
+    // open for a retry, and notifies the event logger (first of an earlier successful
+    // flush of this close, if any).
+    private async Task CompleteCloseAsync(TaskCompletionSource<bool> attempt, FlushOutcome earlier)
+    {
+        var outcome = await FlushForCloseAsync().ConfigureUnboundContinuation();
+        var disposeLocks = SettleCloseAttempt(attempt, outcome);
+        ReportCloseOutcome(earlier, outcome, true, disposeLocks);
+    }
+
+    // The close's own flush: it takes the batch while the close is in progress, and a
+    // close called back from its publisher is a no-op.
+    private async Task<FlushOutcome> FlushForCloseAsync()
+    {
+        if (_pendingCount <= 0) return default;
+
+        _inCloseFlush.Value = true;
+        try
+        {
+            return await FlushCore().ConfigureUnboundContinuation();
+        }
+        finally
+        {
+            _inCloseFlush.Value = false;
+        }
+    }
+
+    // Settles the attempt before any observer runs: a logger that hands Close()/Dispose()
+    // to another thread and waits for it then finds the context closed, or (after a
+    // failure) starts a fresh attempt, instead of waiting on this one. Returns whether
+    // the locks must now be disposed.
+    private bool SettleCloseAttempt(TaskCompletionSource<bool> attempt, FlushOutcome outcome)
+    {
+        if (outcome.Error != null)
+        {
+            // As Java: the context stays open for a retry, without a refresh timer.
+            lock (_closeLock)
+            {
+                _closeAttempt = null;
+                Interlocked.Exchange(ref _closing, 0);
+            }
+
+            attempt.TrySetException(outcome.Error);
+            // Waiters, if any, observe the error; without them it must not surface
+            // as an UnobservedTaskException.
+            _ = attempt.Task.Exception;
+            return false;
+        }
+
+        bool disposeLocks;
+        lock (_closeLock)
+        {
+            _closed = true;
+            Interlocked.Exchange(ref _closing, 0);
+            disposeLocks = _disposeAfterClose;
+        }
+
+        attempt.TrySetResult(true);
+        return disposeLocks;
+    }
+
+    private void ReportCloseOutcome(FlushOutcome earlier, FlushOutcome outcome, bool logClose, bool disposeLocks)
+    {
+        var previous = t_notifyingClose;
+        t_notifyingClose = this;
+        try
+        {
+            if (earlier.Published != null) LogEventSafely(EventType.Publish, earlier.Published);
+            ReportFlush(outcome);
+            if (logClose) LogEvent(EventType.Close, null);
+        }
+        finally
+        {
+            t_notifyingClose = previous;
+
+            if (disposeLocks) RequestDisposeLocks();
+        }
+    }
+
+    // After a Dispose: disposes the locks if the context is closed, or, while a close is
+    // in progress that this Dispose did not wait for, asks that close to dispose them.
+    private void DisposeLocksAfterClose()
+    {
+        lock (_closeLock)
+        {
+            if (!_closed)
+            {
+                if (_closeAttempt != null) _disposeAfterClose = true;
+                return;
+            }
+        }
+
+        RequestDisposeLocks();
+    }
+
+    // Finalizes the context (publishes pending events, then seals it) without
+    // releasing its locks, so units, attributes and experiments stay readable.
+    public Task FinalizeAsync() => CloseAsync();
+
+    public void Close()
+    {
+        var wait = CanBlockOnOutstandingPublishes();
+        AsyncHelpers.RunSync(async () => await CloseAsync(wait));
     }
 
     public void Dispose()
@@ -1081,27 +1914,52 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
+    // Public (as in 1.3.0) for binary compatibility.
     public void Dispose(bool disposing)
     {
         if (disposing)
         {
-            AsyncHelpers.RunSync(async () => await CloseAsync());
+            var wait = CanBlockOnOutstandingPublishes();
+            AsyncHelpers.RunSync(async () => await CloseAsync(wait));
 
-            _dataLock?.Dispose();
-            _contextLock?.Dispose();
-            _timeout?.Dispose();
-            _refreshTimer?.Dispose();
+            DisposeLocksAfterClose();
         }
+    }
+
+    private void RequestDisposeLocks()
+    {
+        lock (_closeLock)
+        {
+            if (_settlingLoad)
+            {
+                _locksDisposePending = true;
+                return;
+            }
+        }
+
+        DisposeLocks();
+    }
+
+    private void DisposeLocks()
+    {
+        lock (_closeLock)
+        {
+            if (_locksDisposed) return;
+            _locksDisposed = true;
+        }
+
+        _dataLock?.Dispose();
+        _contextLock?.Dispose();
+        _timeout?.Dispose();
+        _refreshTimer?.Dispose();
     }
 
     public async ValueTask DisposeAsync()
     {
         await CloseAsync().ConfigureUnboundContinuation();
 
-        _dataLock?.Dispose();
-        _contextLock?.Dispose();
-        _timeout?.Dispose();
-        _refreshTimer?.Dispose();
+        DisposeLocksAfterClose();
+        if (!_closed) return;
 
         Dispose(false);
         GC.SuppressFinalize(this);
@@ -1120,9 +1978,9 @@ public class Context : IContext, IDisposable, IAsyncDisposable
     
     public class ContextCustomFieldValue
     {
-        public String Name { get; set; }
-        public String Type { get; set; }
-        public Object Value { get; set; }
+        public string Name { get; set; }
+        public string Type { get; set; }
+        public object Value { get; set; }
     }
 
     public class Assignment
@@ -1144,6 +2002,7 @@ public class Context : IContext, IDisposable, IAsyncDisposable
         public bool Custom { get; set; }
 
         public bool AudienceMismatch { get; set; }
+        public int AttrsSeq { get; set; }
     }
 
     #endregion
