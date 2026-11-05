@@ -52,14 +52,12 @@ public class ErrorRecoveryTests
     public async Task TestNetworkRetryWithBackoff()
     {
         var callCount = 0;
-        var callTimes = new List<DateTime>();
 
         Mock.Get(_dataProvider)
             .Setup(x => x.GetContextDataAsync())
             .Returns(() =>
             {
                 callCount++;
-                callTimes.Add(DateTime.UtcNow);
                 if (callCount < 3)
                 {
                     throw new HttpRequestException("Network error");
