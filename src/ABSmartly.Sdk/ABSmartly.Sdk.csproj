@@ -4,6 +4,7 @@
         <RootNamespace>ABSmartly</RootNamespace>
         <LangVersion>latest</LangVersion>
         <AssemblyName>ABSmartly.Sdk</AssemblyName>
+        <PackageId>ABsmartly.Sdk</PackageId>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageVersion>1.4.0</PackageVersion>
         <Title>A/B Smartly DotNet SDK</Title>
