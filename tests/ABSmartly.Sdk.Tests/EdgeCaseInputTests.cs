@@ -60,13 +60,10 @@ public class EdgeCaseInputTests
         experiments.Should().Contain(unicodeExperimentName);
 
         var treatment = context.GetTreatment(unicodeExperimentName);
-        treatment.Should().BeGreaterThanOrEqualTo(0);
-
         treatment.Should().Be(1);
-        {
-            var variableValue = context.GetVariableValue(unicodeVariableName, "default");
-            variableValue.Should().Be(unicodeVariableValue);
-        }
+
+        var variableValue = context.GetVariableValue(unicodeVariableName, "default");
+        variableValue.Should().Be(unicodeVariableValue);
     }
 
     [Test]
@@ -160,18 +157,15 @@ public class EdgeCaseInputTests
         context.IsReady().Should().BeTrue();
 
         var treatment = context.GetTreatment("exp_nested");
-        treatment.Should().BeGreaterThanOrEqualTo(0);
-
         treatment.Should().Be(1);
-        {
-            var level1 = context.GetVariableValue("level1", null);
-            level1.Should().NotBeNull();
-            level1.Should().BeOfType<Dictionary<string, object>>();
 
-            var arrayNested = context.GetVariableValue("array_nested", null);
-            arrayNested.Should().NotBeNull();
-            arrayNested.Should().BeOfType<List<object>>();
-        }
+        var level1 = context.GetVariableValue("level1", null);
+        level1.Should().NotBeNull();
+        level1.Should().BeOfType<Dictionary<string, object>>();
+
+        var arrayNested = context.GetVariableValue("array_nested", null);
+        arrayNested.Should().NotBeNull();
+        arrayNested.Should().BeOfType<List<object>>();
     }
 
     [Test]
@@ -205,19 +199,18 @@ public class EdgeCaseInputTests
         var treatment = context.GetTreatment("exp_extreme_numbers");
 
         treatment.Should().Be(1);
-        {
-            var maxInt = context.GetVariableValue("max_int", 0);
-            maxInt.Should().Be(2147483647L);
 
-            var minInt = context.GetVariableValue("min_int", 0);
-            minInt.Should().Be(-2147483648L);
+        var maxInt = context.GetVariableValue("max_int", 0);
+        maxInt.Should().Be(2147483647L);
 
-            var zero = context.GetVariableValue("zero", -1);
-            zero.Should().Be(0L);
+        var minInt = context.GetVariableValue("min_int", 0);
+        minInt.Should().Be(-2147483648L);
 
-            var scientificNotation = context.GetVariableValue("scientific_notation", 0.0);
-            scientificNotation.Should().BeOfType<double>();
-        }
+        var zero = context.GetVariableValue("zero", -1);
+        zero.Should().Be(0L);
+
+        var scientificNotation = context.GetVariableValue("scientific_notation", 0.0);
+        scientificNotation.Should().BeOfType<double>();
     }
 
     [Test]
@@ -246,21 +239,20 @@ public class EdgeCaseInputTests
         var treatment = context.GetTreatment("exp_empty_values");
 
         treatment.Should().Be(1);
-        {
-            var emptyString = context.GetVariableValue("empty_string", "default");
-            emptyString.Should().Be("");
 
-            var nullValue = context.GetVariableValue("null_value", "default");
-            nullValue.Should().BeNull();
+        var emptyString = context.GetVariableValue("empty_string", "default");
+        emptyString.Should().Be("");
 
-            var emptyArray = context.GetVariableValue("empty_array", null);
-            emptyArray.Should().BeOfType<List<object>>();
-            ((List<object>)emptyArray).Should().BeEmpty();
+        var nullValue = context.GetVariableValue("null_value", "default");
+        nullValue.Should().BeNull();
 
-            var emptyObject = context.GetVariableValue("empty_object", null);
-            emptyObject.Should().BeOfType<Dictionary<string, object>>();
-            ((Dictionary<string, object>)emptyObject).Should().BeEmpty();
-        }
+        var emptyArray = context.GetVariableValue("empty_array", null);
+        emptyArray.Should().BeOfType<List<object>>();
+        ((List<object>)emptyArray).Should().BeEmpty();
+
+        var emptyObject = context.GetVariableValue("empty_object", null);
+        emptyObject.Should().BeOfType<Dictionary<string, object>>();
+        ((Dictionary<string, object>)emptyObject).Should().BeEmpty();
     }
 
     [Test]
@@ -286,13 +278,12 @@ public class EdgeCaseInputTests
         var treatment = context.GetTreatment("exp_bool_values");
 
         treatment.Should().Be(1);
-        {
-            var trueValue = context.GetVariableValue("true_value", false);
-            trueValue.Should().Be(true);
 
-            var falseValue = context.GetVariableValue("false_value", true);
-            falseValue.Should().Be(false);
-        }
+        var trueValue = context.GetVariableValue("true_value", false);
+        trueValue.Should().Be(true);
+
+        var falseValue = context.GetVariableValue("false_value", true);
+        falseValue.Should().Be(false);
     }
 
     [Test]
@@ -318,11 +309,10 @@ public class EdgeCaseInputTests
         var treatment = context.GetTreatment("exp_long_strings");
 
         treatment.Should().Be(1);
-        {
-            var value = context.GetVariableValue(longKeyName, "default");
-            value.Should().Be(longString);
-            ((string)value).Length.Should().Be(10000);
-        }
+
+        var value = context.GetVariableValue(longKeyName, "default");
+        value.Should().Be(longString);
+        ((string)value).Length.Should().Be(10000);
     }
 
     [Test]
@@ -351,16 +341,15 @@ public class EdgeCaseInputTests
         var treatment = context.GetTreatment("exp_escaped_chars");
 
         treatment.Should().Be(1);
-        {
-            var withQuotes = context.GetVariableValue("with_quotes", "default");
-            withQuotes.Should().Be("value with \"quotes\"");
 
-            var withBackslash = context.GetVariableValue("with_backslash", "default");
-            withBackslash.Should().Be("path\\to\\file");
+        var withQuotes = context.GetVariableValue("with_quotes", "default");
+        withQuotes.Should().Be("value with \"quotes\"");
 
-            var withUnicodeEscape = context.GetVariableValue("with_unicode_escape", "default");
-            withUnicodeEscape.Should().Be("Hello");
-        }
+        var withBackslash = context.GetVariableValue("with_backslash", "default");
+        withBackslash.Should().Be("path\\to\\file");
+
+        var withUnicodeEscape = context.GetVariableValue("with_unicode_escape", "default");
+        withUnicodeEscape.Should().Be("Hello");
     }
 
     private static Experiment CreateExperiment(string name, ExperimentVariant[] variants) => new()
