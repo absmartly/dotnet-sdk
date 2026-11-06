@@ -93,8 +93,6 @@ public class Release130AliasTests
         method.GetCustomAttribute<ObsoleteAttribute>()!.Message.Should().Contain("AddABsmartly");
     }
 
-    // ABSmartly.ABsmartly only existed during 1.4.0 development (never released), so it is
-    // replaced outright by ABsmartly.Sdk with no alias.
     [Test]
     public void EntryPointIsABsmartlySdkWithNoUnreleasedAlias()
     {

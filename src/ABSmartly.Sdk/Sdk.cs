@@ -13,7 +13,7 @@ using Microsoft.Extensions.Options;
 namespace ABsmartly;
 
 /// <summary>
-/// The SDK entry point: creates contexts. Replaces the obsolete <c>ABSmartly.ABSdk</c>.
+/// The SDK entry point: creates contexts.
 /// </summary>
 public class Sdk
 {
