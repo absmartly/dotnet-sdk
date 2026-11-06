@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using ABSmartly;
 using ABSmartly.Concurrency;
 using ABSmartly.Extensions;
 using ABSmartly.Models;
@@ -9,9 +10,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace ABSmartly;
+namespace ABsmartly;
 
-public class ABsmartly
+/// <summary>
+/// The SDK entry point: creates contexts.
+/// </summary>
+public class Sdk
 {
     public const string HttpClientName = "ABSmartlySDK.HttpClient";
 
@@ -30,7 +34,7 @@ public class ABsmartly
     private IVariableParser _variableParser;
 
     [ActivatorUtilitiesConstructor]
-    public ABsmartly(IABsmartlyHttpClientFactory httpClientFactory,
+    public Sdk(IABsmartlyHttpClientFactory httpClientFactory,
         IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABsmartlyConfig> configOptions,
         ILoggerFactory loggerFactory)
@@ -38,7 +42,7 @@ public class ABsmartly
         Init(httpClientFactory, serviceConfiguration.Value, configOptions?.Value, loggerFactory);
     }
 
-    public ABsmartly(IABsmartlyHttpClientFactory httpClientFactory,
+    public Sdk(IABsmartlyHttpClientFactory httpClientFactory,
         ABSmartlyServiceConfiguration serviceConfiguration,
         ABsmartlyConfig config = null,
         ILoggerFactory loggerFactory = null)

@@ -7,19 +7,19 @@ using Microsoft.Extensions.Options;
 namespace ABSmartly;
 
 /// <summary>
-/// Obsolete: Use <see cref="ABsmartly"/> instead.
+/// Obsolete: Use <see cref="ABsmartly.Sdk"/> instead.
 /// </summary>
 /// <remarks>
 /// Keeps the exact 1.3.0 constructor set so existing source and compiled callers keep working.
 /// It deliberately has no <see cref="IABsmartlyHttpClientFactory"/> overloads: those would make
 /// calls passing an <see cref="ABSdkHttpClientFactory"/> (which implements both factory interfaces)
-/// ambiguous. New code should construct <see cref="ABsmartly"/>.
+/// ambiguous. New code should construct <see cref="ABsmartly.Sdk"/>.
 /// </remarks>
-[Obsolete("ABSdk has been renamed to ABsmartly. Please use ABsmartly instead.")]
-public class ABSdk : ABsmartly
+[Obsolete("ABSdk has been renamed to ABsmartly.Sdk. Please use ABsmartly.Sdk instead.")]
+public class ABSdk : ABsmartly.Sdk
 {
     // Redeclared so the 1.3.0 field ABSdk.HttpClientName still exists on this type.
-    public new const string HttpClientName = ABsmartly.HttpClientName;
+    public new const string HttpClientName = ABsmartly.Sdk.HttpClientName;
 
     [ActivatorUtilitiesConstructor]
     public ABSdk(IABSdkHttpClientFactory httpClientFactory,

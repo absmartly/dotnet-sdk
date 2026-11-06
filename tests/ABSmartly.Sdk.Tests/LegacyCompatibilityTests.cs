@@ -30,7 +30,7 @@ public class LegacyCompatibilityTests
         services.AddABsmartly(configuration, HttpClientConfig.CreateDefault());
         using var provider = services.BuildServiceProvider();
 
-        provider.GetRequiredService<ABsmartly>().Should().NotBeNull();
+        provider.GetRequiredService<ABsmartly.Sdk>().Should().NotBeNull();
         provider.GetRequiredService<ABSdk>().Should().NotBeNull();
         provider.GetRequiredService<IABSdkHttpClientFactory>().Should().BeOfType<ABSdkHttpClientFactory>();
     }
@@ -88,7 +88,7 @@ public class LegacyCompatibilityTests
 
         sp.GetRequiredService<IOptions<ABSdkConfig>>().Value.ContextDataProvider.Should().BeSameAs(provider);
         var sdk = sp.GetRequiredService<ABSdk>();
-        var field = typeof(ABsmartly).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+        var field = typeof(ABsmartly.Sdk).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
             .FirstOrDefault(f => f.FieldType == typeof(IContextDataProvider));
         field.Should().NotBeNull();
         field!.GetValue(sdk).Should().BeSameAs(provider);
@@ -108,7 +108,7 @@ public class LegacyCompatibilityTests
         using var provider = services.BuildServiceProvider();
 
         var sdk = provider.GetRequiredService<ABSdk>();
-        var field = typeof(ABsmartly).GetField("_httpClientFactory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var field = typeof(ABsmartly.Sdk).GetField("_httpClientFactory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var wrapped = (IABsmartlyHttpClientFactory)field!.GetValue(sdk)!;
         Moq.Mock.Get(custom).Setup(f => f.CreateClient()).Returns(Moq.Mock.Of<IABSdkHttpClient>());
         using var client = wrapped.CreateClient();
@@ -138,7 +138,7 @@ public class LegacyCompatibilityTests
         sp.GetRequiredService<IOptions<ABSdkConfig>>().Value.ContextDataProvider.Should().BeSameAs(providerA);
         callbackSawA.Should().BeTrue();
         var sdk = sp.GetRequiredService<ABSdk>();
-        var field = typeof(ABsmartly).GetField("_contextDataProvider", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var field = typeof(ABsmartly.Sdk).GetField("_contextDataProvider", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         field!.GetValue(sdk).Should().BeSameAs(providerA);
     }
 
@@ -164,7 +164,7 @@ public class LegacyCompatibilityTests
         var factory = new OriginalShapeFactory();
         var cfg = new ABSmartlyServiceConfiguration { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
         var sdk = new ABSdk(factory, cfg);
-        var field = typeof(ABsmartly).GetField("_httpClientFactory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var field = typeof(ABsmartly.Sdk).GetField("_httpClientFactory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var wrapped = (IABsmartlyHttpClientFactory)field!.GetValue(sdk)!;
         using var client = wrapped.CreateClient();
         factory.Calls.Should().Be(1);
@@ -192,7 +192,7 @@ public class LegacyCompatibilityTests
         }).Build(), HttpClientConfig.CreateDefault());
         using var provider = services.BuildServiceProvider();
 
-        provider.GetRequiredService<ABsmartly>().Should().NotBeNull();
+        provider.GetRequiredService<ABsmartly.Sdk>().Should().NotBeNull();
         provider.GetRequiredService<ABSdk>().Should().NotBeNull();
         provider.GetRequiredService<IOptions<ABSmartlyServiceConfiguration>>().Value.ApiKey.Should().Be("k");
     }

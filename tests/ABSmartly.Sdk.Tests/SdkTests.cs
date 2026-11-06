@@ -3,7 +3,7 @@
 namespace ABSmartly.Sdk.Tests;
 
 [TestFixture]
-public class ABSdkTests
+public class SdkTests
 {
     [SetUp]
     public void SetUp()
@@ -22,13 +22,13 @@ public class ABSdkTests
     [Test]
     public void TestCreateThrowsWithInvalidConfig()
     {
-        Func<ABsmartly> act;
+        Func<ABsmartly.Sdk> act;
 
-        act = () => new ABsmartly(null, _serviceConfig);
+        act = () => new ABsmartly.Sdk(null, _serviceConfig);
         act.Should().Throw<ArgumentNullException>()
             .WithMessage("Missing HTTP client factory configuration (Parameter 'httpClientFactory')");
 
-        act = () => new ABsmartly(_httpClientFactory, null);
+        act = () => new ABsmartly.Sdk(_httpClientFactory, null);
         act.Should().Throw<ArgumentNullException>()
             .WithMessage($"{nameof(ABSmartlyService)} config is required (Parameter 'config')");
     }
@@ -36,7 +36,7 @@ public class ABSdkTests
     [Test]
     public void TestCreateContext_DefaultConfig()
     {
-        var absmartly = new ABsmartly(_httpClientFactory, _serviceConfig);
+        var absmartly = new ABsmartly.Sdk(_httpClientFactory, _serviceConfig);
         var context = absmartly.CreateContext(new ContextConfig());
 
         context.Should().NotBeNull();
@@ -45,7 +45,7 @@ public class ABSdkTests
     [Test]
     public async Task TestCreateContextAsync_DefaultConfig()
     {
-        var absmartly = new ABsmartly(_httpClientFactory, _serviceConfig);
+        var absmartly = new ABsmartly.Sdk(_httpClientFactory, _serviceConfig);
         var context = await absmartly.CreateContextAsync(new ContextConfig());
 
         context.Should().NotBeNull();
@@ -58,7 +58,7 @@ public class ABSdkTests
         var dataProvider = Mock.Of<IContextDataProvider>();
         Mock.Get(dataProvider).Setup(x => x.GetContextDataAsync()).Returns(GetDataFn);
 
-        var absmartly = new ABsmartly(_httpClientFactory, _serviceConfig,
+        var absmartly = new ABsmartly.Sdk(_httpClientFactory, _serviceConfig,
             new ABsmartlyConfig { ContextDataProvider = dataProvider });
         var context = absmartly.CreateContextWith(new ContextConfig(), expected);
 

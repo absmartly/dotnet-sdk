@@ -14,7 +14,7 @@ public class ABsmartlyHttpClientFactory : IABsmartlyHttpClientFactory
 
     public IABsmartlyHttpClient CreateClient()
     {
-        return new HttpClientWrapper(_httpClientFactory.CreateClient(ABsmartly.HttpClientName));
+        return new HttpClientWrapper(_httpClientFactory.CreateClient(ABsmartly.Sdk.HttpClientName));
     }
 
 #pragma warning disable CS0618

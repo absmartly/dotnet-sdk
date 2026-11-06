@@ -43,7 +43,7 @@ public static class ServiceCollectionExtensions
             .PostConfigure<IOptions<ABSdkConfig>>((config, legacy) => config.CopyNonNullFrom(legacy.Value));
 #pragma warning restore CS0618
 
-        var builder = services.AddHttpClient(ABsmartly.HttpClientName);
+        var builder = services.AddHttpClient(ABsmartly.Sdk.HttpClientName);
 
 #if NETCOREAPP2_1_OR_GREATER || NETCOREAPP || NET
         builder = builder
@@ -79,7 +79,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IABsmartlyHttpClientFactory, ABsmartlyHttpClientFactory>();
         services.AddTransient<IJsonOptionsProvider, JsonOptionsProvider>();
 
-        services.AddSingleton<ABsmartly>();
+        services.AddSingleton<ABsmartly.Sdk>();
 
 #pragma warning disable CS0618
         services.AddTransient<IABSdkHttpClientFactory, ABSdkHttpClientFactory>();

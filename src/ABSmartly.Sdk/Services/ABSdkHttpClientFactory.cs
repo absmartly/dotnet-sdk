@@ -26,7 +26,7 @@ public class ABSdkHttpClientFactory : ABsmartlyHttpClientFactory, IABSdkHttpClie
 
     public new IABSdkHttpClient CreateClient()
     {
-        return new HttpClientWrapper(_httpClientFactory.CreateClient(ABsmartly.HttpClientName));
+        return new HttpClientWrapper(_httpClientFactory.CreateClient(ABsmartly.Sdk.HttpClientName));
     }
 
     // Dispatches through IABSdkHttpClientFactory, so a 1.3.0 subclass that re-implements
