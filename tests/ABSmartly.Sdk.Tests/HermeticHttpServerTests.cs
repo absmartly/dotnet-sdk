@@ -115,10 +115,10 @@ public class HermeticHttpServerTests
     // Builds the SDK using ONLY the public configuration surface, wiring the SDK's
     // REAL ABsmartlyHttpClientFactory over a REAL IHttpClientFactory so a genuine
     // System.Net.Http.HttpClient performs the requests.
-    private ABsmartly BuildSdk()
+    private ABsmartly.Sdk BuildSdk()
     {
         var services = new ServiceCollection();
-        services.AddHttpClient(ABsmartly.HttpClientName);
+        services.AddHttpClient(ABsmartly.Sdk.HttpClientName);
         services.AddTransient<IABsmartlyHttpClientFactory, ABsmartlyHttpClientFactory>();
         var provider = services.BuildServiceProvider();
 
@@ -132,7 +132,7 @@ public class HermeticHttpServerTests
             Environment = Environment
         };
 
-        return new ABsmartly(httpClientFactory, serviceConfig);
+        return new ABsmartly.Sdk(httpClientFactory, serviceConfig);
     }
 
     private async Task ServeAsync(CancellationToken token)

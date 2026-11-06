@@ -79,7 +79,7 @@ public class ApiCompatibilityTests
     [Test]
     public void ContextImplementsIContextV2()
     {
-        var sdk = new ABsmartly(Mock.Of<IABsmartlyHttpClientFactory>(), ServiceConfig(),
+        var sdk = new ABsmartly.Sdk(Mock.Of<IABsmartlyHttpClientFactory>(), ServiceConfig(),
             new ABsmartlyConfig { ContextDataProvider = Mock.Of<IContextDataProvider>() });
         IContext context = sdk.CreateContextWith(new ContextConfig(), _data);
         context.Should().BeAssignableTo<IContextV2>();
@@ -89,10 +89,10 @@ public class ApiCompatibilityTests
     [Test]
     public void CreateContextMethodsKeepTheir130ReturnTypes()
     {
-        typeof(ABsmartly).GetMethod(nameof(ABsmartly.CreateContext))!.ReturnType.Should().Be(typeof(IContext));
-        typeof(ABsmartly).GetMethod(nameof(ABsmartly.CreateContextAsync))!.ReturnType.Should()
+        typeof(ABsmartly.Sdk).GetMethod(nameof(ABsmartly.Sdk.CreateContext))!.ReturnType.Should().Be(typeof(IContext));
+        typeof(ABsmartly.Sdk).GetMethod(nameof(ABsmartly.Sdk.CreateContextAsync))!.ReturnType.Should()
             .Be(typeof(Task<IContext>));
-        typeof(ABsmartly).GetMethod(nameof(ABsmartly.CreateContextWith))!.ReturnType.Should().Be(typeof(IContext));
+        typeof(ABsmartly.Sdk).GetMethod(nameof(ABsmartly.Sdk.CreateContextWith))!.ReturnType.Should().Be(typeof(IContext));
     }
 
     // 1.3.0 declared PublishAsync on IContextEventHandler, so explicit implementations name it.
@@ -216,7 +216,7 @@ public class ApiCompatibilityTests
         new ABSdk(new ABSdkHttpClientFactory(Mock.Of<IHttpClientFactory>()), ServiceConfig()).Should().NotBeNull();
         new ABSdk(factory, Options.Create(ServiceConfig()), Options.Create(new ABSdkConfig()), new LoggerFactory())
             .Should().NotBeNull();
-        ABSdk.HttpClientName.Should().Be(ABsmartly.HttpClientName);
+        ABSdk.HttpClientName.Should().Be(ABsmartly.Sdk.HttpClientName);
     }
 
     [Test]
@@ -251,7 +251,7 @@ public class ApiCompatibilityTests
             new DefaultContextEventSerializer());
         (await service.GetContextDataAsync()).Should().BeNull();
 
-        var sdk = new ABsmartly(factory, config);
+        var sdk = new ABsmartly.Sdk(factory, config);
         var context = (IContextV2)await sdk.CreateContextAsync(
             new ContextConfig().SetUnit("session_id", "abc"));
         context.IsFailed().Should().BeTrue();
@@ -275,7 +275,7 @@ public class ApiCompatibilityTests
         var provider = new DefaultContextDataProvider(service);
         (await provider.GetContextDataAsync()).Should().BeNull();
 
-        var sdk = new ABsmartly(factory, config, new ABsmartlyConfig { ContextDataProvider = provider });
+        var sdk = new ABsmartly.Sdk(factory, config, new ABsmartlyConfig { ContextDataProvider = provider });
         var context = (IContextV2)await sdk.CreateContextAsync(new ContextConfig().SetUnit("session_id", "abc"));
         context.IsFailed().Should().BeTrue();
         context.ReadyError.Should().BeOfType<HttpRequestException>().Which.Message.Should().Be("offline");
@@ -291,7 +291,7 @@ public class ApiCompatibilityTests
         var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == client);
         var config = new ABSmartlyServiceConfiguration
             { Endpoint = "https://example.absmartly.io/v1", ApiKey = "k", Application = "a", Environment = "e" };
-        var sdk = new ABsmartly(factory, config);
+        var sdk = new ABsmartly.Sdk(factory, config);
 
         var context = (Context)sdk.CreateContextWith(new ContextConfig().SetUnit("session_id", "abc"), _data);
         Func<Task> refresh = () => context.RefreshAsync();
@@ -329,7 +329,7 @@ public class ApiCompatibilityTests
             new DefaultContextEventSerializer());
         var provider = new CachingProvider(service, _data);
 
-        var sdk = new ABsmartly(factory, config, new ABsmartlyConfig { ContextDataProvider = provider });
+        var sdk = new ABsmartly.Sdk(factory, config, new ABsmartlyConfig { ContextDataProvider = provider });
         var context = (IContextV2)await sdk.CreateContextAsync(new ContextConfig().SetUnit("session_id", "abc"));
         context.IsFailed().Should().BeFalse();
         context.ReadyError.Should().BeNull();
@@ -370,7 +370,7 @@ public class ApiCompatibilityTests
         var service = new CachingService(config, factory.Object, _data);
         var provider = new DefaultContextDataProvider(service);
 
-        var sdk = new ABsmartly(factory.Object, config, new ABsmartlyConfig { ContextDataProvider = provider });
+        var sdk = new ABsmartly.Sdk(factory.Object, config, new ABsmartlyConfig { ContextDataProvider = provider });
         var context = (IContextV2)await sdk.CreateContextAsync(new ContextConfig().SetUnit("session_id", "abc"));
         context.IsFailed().Should().BeFalse();
         context.ReadyError.Should().BeNull();
