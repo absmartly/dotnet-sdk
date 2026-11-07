@@ -1580,20 +1580,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                         {
                             // Through the configured parser, as 1.3.0 and Java
                             // (variableParser.parse): a consumer's custom IVariableParser
-                            // keeps control of JSON custom fields.
-                            //
-                            // The built-in default parser returns the full JSON value,
-                            // mirroring the JavaScript SDK (context.ts _customFieldValue):
-                            // objects, arrays, numbers, strings and booleans are all
-                            // supported, not just objects. "null" -> null, "" -> "", and a
-                            // parse error logs a warning and yields null. This fixes the
-                            // default path without bypassing a configured parser.
-                            //
-                            // Only the exact built-in type takes the full-value path. A
-                            // consumer subclass of DefaultVariableParser reimplementing
-                            // IVariableParser.Parse stays a configured parser and keeps
-                            // control through Parse, so its custom-field transformation is
-                            // not silently replaced by built-in parsing.
+                            // keeps control of JSON custom fields. Only the exact built-in
+                            // type takes the full-value path (see
+                            // DefaultVariableParser.ParseCustomFieldValue for the supported
+                            // JSON kinds). A consumer subclass of DefaultVariableParser
+                            // reimplementing IVariableParser.Parse stays a configured parser
+                            // and keeps control through Parse, so its custom-field
+                            // transformation is not silently replaced by built-in parsing.
                             if (_variableParser.GetType() == typeof(DefaultVariableParser))
                             {
                                 value.Value = ((DefaultVariableParser)_variableParser).ParseCustomFieldValue(
