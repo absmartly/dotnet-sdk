@@ -1578,8 +1578,31 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
                         if (customFieldValue.Type.StartsWith("json"))
                         {
-                            // Through the configured parser, as 1.3.0 and Java (variableParser.parse).
-                            value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
+                            // Return the full JSON value, mirroring the JavaScript SDK
+                            // (context.ts _customFieldValue): arrays, numbers, strings,
+                            // booleans and objects are all supported. "null" -> null,
+                            // "" -> "", and a parse error logs and yields null.
+                            if (customValue == "null")
+                            {
+                                value.Value = null;
+                            }
+                            else if (customValue == "")
+                            {
+                                value.Value = "";
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    value.Value = DefaultVariableParser.ParseValue(customValue);
+                                }
+                                catch (Exception e)
+                                {
+                                    _logger?.LogWarning(e, "Failed to parse JSON custom field value '{FieldName}' for experiment '{ExperimentName}': {Message}",
+                                        customFieldValue.Name, experiment.Name, e.Message);
+                                    value.Value = null;
+                                }
+                            }
                         }
                         else if(customFieldValue.Type.StartsWith("boolean"))
                         {

@@ -26,7 +26,7 @@ There are no source or binary API breaks against 1.3.0; this is enforced at buil
 
 ### Fixed
 - Number custom fields parse with the invariant culture (`"1.5"` was read as `15` on de-DE, pt-BR, fr-FR, ...).
-- `json` custom fields use the configured `IVariableParser` again.
+- `json` custom fields return the full parsed JSON value, as the JavaScript SDK: objects, arrays, numbers, strings and booleans are all supported, not just objects (which previously returned `null`). `"null"` yields `null`, `""` yields `""`, and an invalid value logs a warning and yields `null`. Variant-config parsing is unchanged.
 - `GetAttribute()`/`Attributes` take the context read lock, so they can no longer throw while `SetAttribute` runs concurrently.
 - The audience is no longer re-evaluated on every `GetTreatment`/`GetVariableValue` after a `SetAttribute` once the assignment has been revalidated.
 - The default publisher and data provider no longer resume on the caller's `SynchronizationContext`, so a close run off a UI thread that blocks on it (`Task.Run(() => context.Dispose()).Wait()`) no longer waits on a continuation queued to that thread.
