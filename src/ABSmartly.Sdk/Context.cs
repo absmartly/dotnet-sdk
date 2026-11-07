@@ -1578,8 +1578,24 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
                         if (customFieldValue.Type.StartsWith("json"))
                         {
-                            // Through the configured parser, as 1.3.0 and Java (variableParser.parse).
-                            value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
+                            // Through the configured parser, as 1.3.0 and Java
+                            // (variableParser.parse): a consumer's custom IVariableParser
+                            // keeps control of JSON custom fields. Only the exact built-in
+                            // type takes the full-value path (see
+                            // DefaultVariableParser.ParseCustomFieldValue for the supported
+                            // JSON kinds). A consumer subclass of DefaultVariableParser
+                            // reimplementing IVariableParser.Parse stays a configured parser
+                            // and keeps control through Parse, so its custom-field
+                            // transformation is not silently replaced by built-in parsing.
+                            if (_variableParser.GetType() == typeof(DefaultVariableParser))
+                            {
+                                value.Value = ((DefaultVariableParser)_variableParser).ParseCustomFieldValue(
+                                    experiment.Name, customFieldValue.Name, customValue);
+                            }
+                            else
+                            {
+                                value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
+                            }
                         }
                         else if(customFieldValue.Type.StartsWith("boolean"))
                         {

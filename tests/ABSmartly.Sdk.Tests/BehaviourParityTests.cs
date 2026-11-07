@@ -80,6 +80,8 @@ public class BehaviourParityTests
         }
     }
 
+    // A consumer-configured IVariableParser keeps control of JSON custom fields,
+    // as in 1.3.0 and Java (variableParser.parse): its result is returned verbatim.
     [Test]
     public void JsonCustomFieldsGoThroughTheConfiguredVariableParser()
     {
@@ -93,6 +95,116 @@ public class BehaviourParityTests
 
         context.GetCustomFieldValue("exp", "settings").Should().BeSameAs(parsed);
         parser.Verify(p => p.Parse(It.IsAny<IContext>(), "exp", "settings", "{\"a\":1}"), Times.Once);
+    }
+
+    // A consumer subclass of DefaultVariableParser that reimplements IVariableParser.Parse
+    // is still a configured parser: it keeps control of JSON custom fields through its own
+    // Parse, and is not bypassed by the built-in full-value path (which is reserved for the
+    // exact built-in type).
+    private sealed class SubclassedVariableParser : DefaultVariableParser, IVariableParser
+    {
+        private readonly Dictionary<string, object> _result;
+        public int Calls;
+
+        public SubclassedVariableParser(Dictionary<string, object> result) => _result = result;
+
+        public new Dictionary<string, object> Parse(IContext context, string experimentName, string variantName,
+            string variableValue)
+        {
+            Calls++;
+            return _result;
+        }
+    }
+
+    [Test]
+    public void JsonCustomFieldsGoThroughAConfiguredDefaultParserSubclass()
+    {
+        var parsed = new Dictionary<string, object> { ["from"] = "subclass parser" };
+        var parser = new SubclassedVariableParser(parsed);
+        _variableParser = parser;
+
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "settings", Type = "json", Value = "{\"a\":1}" }));
+
+        context.GetCustomFieldValue("exp", "settings").Should().BeSameAs(parsed);
+        parser.Calls.Should().Be(1, "a configured subclass keeps its IVariableParser dispatch");
+    }
+
+    // With no configured parser, the built-in default parser returns the full parsed
+    // JSON value, mirroring the JavaScript SDK (context.ts _customFieldValue): objects,
+    // arrays, numbers, strings and booleans are all supported, not just objects. This
+    // must not touch the variant-config parser.
+    [Test]
+    public void JsonCustomFieldObjectReturnsADictionary()
+    {
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "settings", Type = "json", Value = "{\"a\":1,\"b\":\"x\"}" }));
+
+        context.GetCustomFieldValue("exp", "settings").Should().BeEquivalentTo(
+            new Dictionary<string, object> { ["a"] = 1L, ["b"] = "x" });
+    }
+
+    [Test]
+    public void JsonCustomFieldArrayReturnsAList()
+    {
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "list", Type = "json", Value = "[1,2,3]" }));
+
+        context.GetCustomFieldValue("exp", "list").Should().BeEquivalentTo(new List<object> { 1L, 2L, 3L });
+    }
+
+    [Test]
+    public void JsonCustomFieldNumberReturnsANumber()
+    {
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "n", Type = "json", Value = "42" }));
+
+        context.GetCustomFieldValue("exp", "n").Should().Be(42L);
+    }
+
+    [Test]
+    public void JsonCustomFieldStringReturnsAString()
+    {
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "s", Type = "json", Value = "\"hello\"" }));
+
+        context.GetCustomFieldValue("exp", "s").Should().Be("hello");
+    }
+
+    [Test]
+    public void JsonCustomFieldBooleanReturnsABoolean()
+    {
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "b", Type = "json", Value = "true" }));
+
+        context.GetCustomFieldValue("exp", "b").Should().Be(true);
+    }
+
+    [Test]
+    public void JsonCustomFieldLiteralNullReturnsNull()
+    {
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "nothing", Type = "json", Value = "null" }));
+
+        context.GetCustomFieldValue("exp", "nothing").Should().BeNull();
+    }
+
+    [Test]
+    public void JsonCustomFieldEmptyStringReturnsEmptyString()
+    {
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "empty", Type = "json", Value = "" }));
+
+        context.GetCustomFieldValue("exp", "empty").Should().Be("");
+    }
+
+    [Test]
+    public void JsonCustomFieldInvalidJsonReturnsNull()
+    {
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "bad", Type = "json", Value = "{not valid json" }));
+
+        context.GetCustomFieldValue("exp", "bad").Should().BeNull();
     }
 
     #endregion
