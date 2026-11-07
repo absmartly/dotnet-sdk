@@ -80,9 +80,27 @@ public class BehaviourParityTests
         }
     }
 
-    // JSON custom fields return the full parsed JSON value, mirroring the JavaScript SDK
-    // (context.ts _customFieldValue): objects, arrays, numbers, strings and booleans are
-    // all supported, not just objects. This must not touch the variant-config parser.
+    // A consumer-configured IVariableParser keeps control of JSON custom fields,
+    // as in 1.3.0 and Java (variableParser.parse): its result is returned verbatim.
+    [Test]
+    public void JsonCustomFieldsGoThroughTheConfiguredVariableParser()
+    {
+        var parsed = new Dictionary<string, object> { ["from"] = "custom parser" };
+        var parser = new Mock<IVariableParser>();
+        parser.Setup(p => p.Parse(It.IsAny<IContext>(), "exp", "settings", "{\"a\":1}")).Returns(parsed);
+        _variableParser = parser.Object;
+
+        var context = CreateContext(DataWithCustomFields(
+            new CustomFieldValue { Name = "settings", Type = "json", Value = "{\"a\":1}" }));
+
+        context.GetCustomFieldValue("exp", "settings").Should().BeSameAs(parsed);
+        parser.Verify(p => p.Parse(It.IsAny<IContext>(), "exp", "settings", "{\"a\":1}"), Times.Once);
+    }
+
+    // With no configured parser, the built-in default parser returns the full parsed
+    // JSON value, mirroring the JavaScript SDK (context.ts _customFieldValue): objects,
+    // arrays, numbers, strings and booleans are all supported, not just objects. This
+    // must not touch the variant-config parser.
     [Test]
     public void JsonCustomFieldObjectReturnsADictionary()
     {

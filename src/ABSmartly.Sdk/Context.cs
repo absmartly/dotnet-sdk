@@ -1578,30 +1578,24 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
                         if (customFieldValue.Type.StartsWith("json"))
                         {
-                            // Return the full JSON value, mirroring the JavaScript SDK
-                            // (context.ts _customFieldValue): arrays, numbers, strings,
-                            // booleans and objects are all supported. "null" -> null,
-                            // "" -> "", and a parse error logs and yields null.
-                            if (customValue == "null")
+                            // Through the configured parser, as 1.3.0 and Java
+                            // (variableParser.parse): a consumer's custom IVariableParser
+                            // keeps control of JSON custom fields.
+                            //
+                            // The built-in default parser returns the full JSON value,
+                            // mirroring the JavaScript SDK (context.ts _customFieldValue):
+                            // objects, arrays, numbers, strings and booleans are all
+                            // supported, not just objects. "null" -> null, "" -> "", and a
+                            // parse error logs a warning and yields null. This fixes the
+                            // default path without bypassing a configured parser.
+                            if (_variableParser is DefaultVariableParser defaultParser)
                             {
-                                value.Value = null;
-                            }
-                            else if (customValue == "")
-                            {
-                                value.Value = "";
+                                value.Value = defaultParser.ParseCustomFieldValue(
+                                    experiment.Name, customFieldValue.Name, customValue);
                             }
                             else
                             {
-                                try
-                                {
-                                    value.Value = DefaultVariableParser.ParseValue(customValue);
-                                }
-                                catch (Exception e)
-                                {
-                                    _logger?.LogWarning(e, "Failed to parse JSON custom field value '{FieldName}' for experiment '{ExperimentName}': {Message}",
-                                        customFieldValue.Name, experiment.Name, e.Message);
-                                    value.Value = null;
-                                }
+                                value.Value = _variableParser.Parse(this, experiment.Name, customFieldValue.Name, customValue);
                             }
                         }
                         else if(customFieldValue.Type.StartsWith("boolean"))
