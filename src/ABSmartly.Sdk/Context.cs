@@ -152,9 +152,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // Creates a ready context from already-loaded data, with the system attributes
     // installed before the data is applied, so a Ready event logger that reads a treatment
-    // evaluates audiences against them. The public constructors set the data in their body
-    // (after any object initializer runs), which is too late for that callback; this path
-    // avoids that ordering problem while keeping those constructors unchanged.
+    // evaluates audiences against them. The public constructors set the data in their body,
+    // which runs before any object initializer, so assigning SystemAttributes that way is
+    // too late for that callback; this path sets them before SetInitialData, keeping those
+    // constructors unchanged.
     internal static Context CreateWithData(ContextConfig config,
         ContextData data,
         Clock clock,
