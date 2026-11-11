@@ -51,6 +51,21 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private readonly object _timeoutLock = new();
     private readonly Dictionary<string, string> _units;
     private readonly IVariableParser _variableParser;
+
+    // Application/environment names from the service config, exactly as configured, that
+    // audience evaluation sees as attributes. The collector also attaches both to every
+    // exposure server-side, so nothing extra is published. User-set attributes overlay
+    // these (see BuildAttributesDictionary). Empty unless set by the SDK that creates the
+    // context; defaults keep the public constructors backward compatible.
+    private static readonly IReadOnlyDictionary<string, object> EmptySystemAttributes =
+        new Dictionary<string, object>(0);
+    private IReadOnlyDictionary<string, object> _systemAttributes = EmptySystemAttributes;
+
+    internal IReadOnlyDictionary<string, object> SystemAttributes
+    {
+        set => _systemAttributes = value ?? EmptySystemAttributes;
+    }
+
     private volatile bool _closed;
     private int _closing;
     private readonly object _closeLock = new();
@@ -135,6 +150,32 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         SetInitialData(data, null);
     }
 
+    // Creates a ready context from already-loaded data, with the system attributes
+    // installed before the data is applied, so a Ready event logger that reads a treatment
+    // evaluates audiences against them. The public constructors set the data in their body,
+    // which runs before any object initializer, so assigning SystemAttributes that way is
+    // too late for that callback; this path sets them before SetInitialData, keeping those
+    // constructors unchanged.
+    internal static Context CreateWithData(ContextConfig config,
+        ContextData data,
+        Clock clock,
+        IContextDataProvider dataProvider,
+        IContextPublisher eventHandler,
+        IContextEventLogger eventLogger,
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher,
+        ILoggerFactory loggerFactory,
+        IReadOnlyDictionary<string, object> systemAttributes = null)
+    {
+        var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
+            audienceMatcher, loggerFactory)
+        {
+            SystemAttributes = systemAttributes
+        };
+        context.SetInitialData(data, null);
+        return context;
+    }
+
     // Creates a context that is not ready until dataTask settles: the load runs in
     // the background, so calls made in the meantime see the not-ready state.
     internal static Context CreatePending(ContextConfig config,
@@ -145,12 +186,16 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         IContextEventLogger eventLogger,
         IVariableParser variableParser,
         AudienceMatcher audienceMatcher,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IReadOnlyDictionary<string, object> systemAttributes = null)
     {
         if (dataTask == null) throw new ArgumentNullException(nameof(dataTask));
 
         var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
-            audienceMatcher, loggerFactory);
+            audienceMatcher, loggerFactory)
+        {
+            SystemAttributes = systemAttributes
+        };
         context._readyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         context._loadSettledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = context.LoadAsync(dataTask);
@@ -631,9 +676,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return _hashedUnits.ConcurrentGetOrAdd(unitType, _ => Md5.HashToUtf8Bytes(unitUid));
     }
 
+    // The attribute map audience filters evaluate against: system values (application,
+    // environment) first, then user-set attributes overlaid on top, so a user-set value
+    // always wins, including one set after an assignment was cached (SetAttribute bumps
+    // _attrsSeq, which invalidates it). System attributes are not published; the collector
+    // attaches them server-side.
     private Dictionary<string, object> BuildAttributesDictionary()
     {
-        var attrs = new Dictionary<string, object>(_attributes.Count);
+        var attrs = new Dictionary<string, object>(_systemAttributes.Count + _attributes.Count);
+        foreach (var systemAttribute in _systemAttributes)
+        {
+            attrs[systemAttribute.Key] = systemAttribute.Value;
+        }
         foreach (var attribute in _attributes)
         {
             attrs[attribute.Name] = attribute.Value;
