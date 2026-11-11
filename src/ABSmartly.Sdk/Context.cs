@@ -150,6 +150,31 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         SetInitialData(data, null);
     }
 
+    // Creates a ready context from already-loaded data, with the system attributes
+    // installed before the data is applied, so a Ready event logger that reads a treatment
+    // evaluates audiences against them. The public constructors set the data in their body
+    // (after any object initializer runs), which is too late for that callback; this path
+    // avoids that ordering problem while keeping those constructors unchanged.
+    internal static Context CreateWithData(ContextConfig config,
+        ContextData data,
+        Clock clock,
+        IContextDataProvider dataProvider,
+        IContextPublisher eventHandler,
+        IContextEventLogger eventLogger,
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher,
+        ILoggerFactory loggerFactory,
+        IReadOnlyDictionary<string, object> systemAttributes = null)
+    {
+        var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
+            audienceMatcher, loggerFactory)
+        {
+            SystemAttributes = systemAttributes
+        };
+        context.SetInitialData(data, null);
+        return context;
+    }
+
     // Creates a context that is not ready until dataTask settles: the load runs in
     // the background, so calls made in the meantime see the not-ready state.
     internal static Context CreatePending(ContextConfig config,

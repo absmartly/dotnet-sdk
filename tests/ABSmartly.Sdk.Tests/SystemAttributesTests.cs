@@ -296,15 +296,49 @@ public class SystemAttributesTests
         var httpClientFactory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == httpClient);
         var serviceConfig = H.ServiceConfig("website", "http://localhost/v1", "production", "test-api-key");
 
-        var dataProvider = Mock.Of<IContextDataProvider>();
-        Mock.Get(dataProvider).Setup(x => x.GetContextDataAsync()).Returns(Task.FromResult(data));
-
         var absmartly = new ABsmartly(httpClientFactory, serviceConfig,
-            new ABsmartlyConfig { ContextDataProvider = dataProvider, ContextPublisher = _eventHandler });
+            new ABsmartlyConfig { ContextPublisher = _eventHandler });
 
         var config = new ContextConfig { PublishDelay = PublishDelay }.SetUnits(_units);
         var context = absmartly.CreateContextWith(config, data);
 
         context.GetTreatment("exp_test_ab").Should().Be(1);
+    }
+
+    // The Ready event logger runs synchronously while CreateContextWith applies the loaded
+    // data. The system attributes must already be installed by then, so a treatment read
+    // from that callback evaluates the audience against them (and does not cache a mismatch
+    // that would survive after creation returns). Regression test for the initialization
+    // order: assigning them after SetInitialData would be too late for this callback.
+    [Test]
+    public void ReadyCallbackSeesSystemAttributes()
+    {
+        var data = AudienceData(ProductionEnvironmentFilter, strict: true);
+
+        var httpClient = Mock.Of<IABsmartlyHttpClient>();
+        var httpClientFactory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == httpClient);
+        var serviceConfig = H.ServiceConfig("website", "http://localhost/v1", "production", "test-api-key");
+
+        int? treatmentDuringReady = null;
+        var readyLogger = Mock.Of<IContextEventLogger>();
+        Mock.Get(readyLogger)
+            .Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Ready, It.IsAny<object>()))
+            .Callback<IContext, EventType, object>((ctx, _, _) =>
+                treatmentDuringReady = ctx.PeekTreatment("exp_test_ab"));
+
+        var absmartly = new ABsmartly(httpClientFactory, serviceConfig,
+            new ABsmartlyConfig
+            {
+                ContextPublisher = _eventHandler,
+                ContextEventLogger = readyLogger
+            });
+
+        var config = new ContextConfig { PublishDelay = PublishDelay }.SetUnits(_units);
+        var context = absmartly.CreateContextWith(config, data);
+
+        // The Ready callback evaluated the matching audience and did not cache control...
+        treatmentDuringReady.Should().Be(1);
+        // ...and a read after creation returns agrees.
+        context.PeekTreatment("exp_test_ab").Should().Be(1);
     }
 }

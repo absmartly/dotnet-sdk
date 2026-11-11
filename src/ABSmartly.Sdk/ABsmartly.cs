@@ -143,7 +143,7 @@ public class ABsmartly
 
     public IContext CreateContextWith(ContextConfig config, ContextData data)
     {
-        var context = new Context(config,
+        var context = Context.CreateWithData(config,
             data,
             Clock.SystemUtc(),
             _contextDataProvider,
@@ -151,10 +151,8 @@ public class ABsmartly
             _contextEventLogger,
             _variableParser,
             new AudienceMatcher(_audienceDeserializer),
-            _loggerFactory)
-        {
-            SystemAttributes = _systemAttributes
-        };
+            _loggerFactory,
+            _systemAttributes);
 
         return context;
     }
