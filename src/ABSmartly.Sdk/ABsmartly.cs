@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using ABSmartly.Concurrency;
 using ABSmartly.Extensions;
@@ -28,6 +29,11 @@ public class ABsmartly
 
     private ILoggerFactory _loggerFactory;
     private IVariableParser _variableParser;
+
+    // Non-empty application/environment names from the service config. The collector also
+    // attaches both to every exposure server-side, so audiences can target them locally
+    // without the SDK publishing anything extra. User-set attributes still overlay these.
+    private IReadOnlyDictionary<string, object> _systemAttributes;
 
     [ActivatorUtilitiesConstructor]
     public ABsmartly(IABsmartlyHttpClientFactory httpClientFactory,
@@ -73,6 +79,25 @@ public class ABsmartly
 
         _variableParser = config?.VariableParser ?? new DefaultVariableParser(_loggerFactory);
         _audienceDeserializer = config?.AudienceDeserializer ?? new DefaultAudienceDeserializer(_loggerFactory);
+
+        _systemAttributes = BuildSystemAttributes(serviceConfiguration);
+    }
+
+    // System attributes made available to every context's audience evaluation: the
+    // application name and the environment name, exactly as configured, skipping any that
+    // is null or empty.
+    private static IReadOnlyDictionary<string, object> BuildSystemAttributes(
+        ABSmartlyServiceConfiguration serviceConfiguration)
+    {
+        var systemAttributes = new Dictionary<string, object>(2);
+
+        if (!string.IsNullOrEmpty(serviceConfiguration?.Application))
+            systemAttributes["application"] = serviceConfiguration.Application;
+
+        if (!string.IsNullOrEmpty(serviceConfiguration?.Environment))
+            systemAttributes["environment"] = serviceConfiguration.Environment;
+
+        return systemAttributes;
     }
 
     public IContext CreateContext(ContextConfig config)
@@ -112,7 +137,8 @@ public class ABsmartly
             _contextEventLogger,
             _variableParser,
             new AudienceMatcher(_audienceDeserializer),
-            _loggerFactory);
+            _loggerFactory,
+            _systemAttributes);
     }
 
     public IContext CreateContextWith(ContextConfig config, ContextData data)
@@ -125,7 +151,10 @@ public class ABsmartly
             _contextEventLogger,
             _variableParser,
             new AudienceMatcher(_audienceDeserializer),
-            _loggerFactory);
+            _loggerFactory)
+        {
+            SystemAttributes = _systemAttributes
+        };
 
         return context;
     }
