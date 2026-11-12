@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using System.Text.Json.Serialization;
+using ABSmartly.Services.Json;
 using ABSmartly.EqualityComparison;
 using ABSmartly.Extensions;
 
@@ -23,9 +25,14 @@ public class Experiment
     public CustomFieldValue[] CustomFieldValues { get; set; }
     public bool AudienceStrict { get; set; }
     public string Audience { get; set; }
+    // The experiment's ordered assignment rules, a JSON string such as
+    // {"rules":[{"type":"assign","variant":1,"conditions":{...},"environments":[]}]}. A value
+    // that is not a string is read as null, so it does not fail the whole context.
+    [JsonConverter(typeof(AssignmentRulesConverter))]
+    public string AssignmentRules { get; set; }
 
     private string DebugView =>
-        $"ContextExperiment{{id={Id}, name={Name}, unitType={UnitType}, iteration={Iteration}, seedHi={SeedHi}, seedLo={SeedLo}, split={Split.ToArrayString()}, trafficSeedHi={TrafficSeedHi}, trafficSeedLo={TrafficSeedLo}, trafficSplit={TrafficSplit.ToArrayString()}, fullOnVariant={FullOnVariant}, applications={Applications.ToArrayString()}, variants={Variants.ToArrayString()}, audienceStrict={AudienceStrict}, audience={Audience}}}";
+        $"ContextExperiment{{id={Id}, name={Name}, unitType={UnitType}, iteration={Iteration}, seedHi={SeedHi}, seedLo={SeedLo}, split={Split.ToArrayString()}, trafficSeedHi={TrafficSeedHi}, trafficSeedLo={TrafficSeedLo}, trafficSplit={TrafficSplit.ToArrayString()}, fullOnVariant={FullOnVariant}, applications={Applications.ToArrayString()}, variants={Variants.ToArrayString()}, audienceStrict={AudienceStrict}, audience={Audience}, assignmentRules={AssignmentRules}}}";
 
     public override string ToString()
     {
@@ -48,6 +55,7 @@ public class Experiment
                FullOnVariant == other.FullOnVariant &&
                AudienceStrict == other.AudienceStrict &&
                Audience == other.Audience &&
+               AssignmentRules == other.AssignmentRules &&
                ArrayEquality.Equals(Split, other.Split) &&
                ArrayEquality.Equals(TrafficSplit, other.TrafficSplit) &&
                ArrayEquality.Equals(Applications, other.Applications) &&
@@ -81,6 +89,7 @@ public class Experiment
             hashCode = (hashCode * 397) ^ (Variants?.GetHashCode() ?? 0);
             hashCode = (hashCode * 397) ^ AudienceStrict.GetHashCode();
             hashCode = (hashCode * 397) ^ (Audience?.GetHashCode() ?? 0);
+            hashCode = (hashCode * 397) ^ (AssignmentRules?.GetHashCode() ?? 0);
             return hashCode;
         }
     }
