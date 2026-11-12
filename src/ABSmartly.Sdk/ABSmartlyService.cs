@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
+using ABSmartly.Extensions;
 using ABSmartly.Models;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
@@ -15,12 +16,42 @@ public class ABSmartlyService : IABSmartlyServiceClient
 
     private readonly IContextDataDeserializer _dataDeserializer;
     private readonly IContextEventSerializer _eventSerializer;
-    private readonly IABSdkHttpClientFactory _httpClientFactory;
+    private readonly IABsmartlyHttpClientFactory _httpClientFactory;
     private readonly ILogger<ABSmartlyService> _logger;
     private readonly string _url;
 
+    /// <summary>
+    /// 1.3.0 constructor, kept for source and binary compatibility. The legacy factory is
+    /// wrapped in an adapter.
+    /// </summary>
+    [Obsolete("Use the constructor taking an IABsmartlyHttpClientFactory instead.")]
     public ABSmartlyService(ABSmartlyServiceConfiguration config,
         IABSdkHttpClientFactory httpClientFactory,
+        IContextDataDeserializer dataDeserializer,
+        IContextEventSerializer eventSerializer,
+        ILoggerFactory loggerFactory = null)
+        : this(config, Services.LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), dataDeserializer,
+            eventSerializer, loggerFactory)
+    {
+    }
+
+    /// <summary>
+    /// Kept so that passing an <see cref="Services.ABSdkHttpClientFactory"/> (which implements both
+    /// factory interfaces) or a <c>null</c> factory binds without ambiguity, as it did in 1.3.0.
+    /// </summary>
+    [Obsolete("Use the constructor taking an IABsmartlyHttpClientFactory instead.")]
+    public ABSmartlyService(ABSmartlyServiceConfiguration config,
+        Services.ABSdkHttpClientFactory httpClientFactory,
+        IContextDataDeserializer dataDeserializer,
+        IContextEventSerializer eventSerializer,
+        ILoggerFactory loggerFactory = null)
+        : this(config, Services.LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), dataDeserializer,
+            eventSerializer, loggerFactory)
+    {
+    }
+
+    public ABSmartlyService(ABSmartlyServiceConfiguration config,
+        IABsmartlyHttpClientFactory httpClientFactory,
         IContextDataDeserializer dataDeserializer,
         IContextEventSerializer eventSerializer,
         ILoggerFactory loggerFactory = null)
@@ -49,29 +80,65 @@ public class ABSmartlyService : IABSmartlyServiceClient
         if (string.IsNullOrWhiteSpace(_config.Environment))
             throw new ArgumentNullException(nameof(_config.Environment), "Missing Environment configuration");
 
-        _dataDeserializer = dataDeserializer;
-        _eventSerializer = eventSerializer;
-
-        _url = config.Endpoint + "/context";
         _logger = loggerFactory?.CreateLogger<ABSmartlyService>();
+
+        // As the Java SDK: plain http:// is allowed (in-cluster collectors, sidecars,
+        // local proxies) but warned about; any other scheme is a configuration error.
+        // Transport protection for http:// is delegated to the deployment. This is a deliberate
+        // owner decision; see "Security considerations" in the README.
+        if (!_config.Endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_config.Endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                _logger?.LogWarning(
+                    "ABSmartly SDK endpoint is not using HTTPS. API keys will be transmitted in plaintext: {Endpoint}",
+                    _config.Endpoint);
+            else
+                throw new ArgumentException("Endpoint must use http:// or https:// protocol: " + _config.Endpoint,
+                    nameof(_config.Endpoint));
+        }
+
+        _url = config.Endpoint.TrimEnd('/') + "/context";
     }
 
+    // As 1.3.0: a failed fetch is logged and returns null, so direct callers that check
+    // for null keep working. The SDK's own context loading uses FetchContextDataAsync,
+    // which surfaces the real error (it becomes the context's ReadyError).
     public async Task<ContextData> GetContextDataAsync()
+    {
+        try
+        {
+            return await FetchContextDataAsync().ConfigureUnboundContinuation();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    // A context created from it fails with this error as ReadyError, and Context.Refresh
+    // rethrows it.
+    internal async Task<ContextData> FetchContextDataAsync()
     {
         try
         {
             using var httpClient = _httpClientFactory.CreateClient();
             var uri = QueryHelpers.AddQueryString(_url, GetDefaultQueryParameters());
-            var response = await httpClient.GetAsync(uri);
+            using var response = await httpClient.GetAsync(uri).ConfigureUnboundContinuation();
             response.EnsureSuccessStatusCode();
 
-            var responseStream = await response.Content.ReadAsStreamAsync();
-            return _dataDeserializer.Deserialize(responseStream);
+            var responseStream = await response.Content.ReadAsStreamAsync().ConfigureUnboundContinuation();
+            var result = _dataDeserializer.Deserialize(responseStream);
+
+            if (result == null)
+                throw new InvalidOperationException(
+                    "Context data deserializer returned null - check logs for deserialization errors");
+
+            return result;
         }
         catch (Exception e)
         {
-            _logger?.LogError("Fetch context data: {EMessage}", e.Message);
-            return null;
+            _logger?.LogError(e, "Error fetching context data: {Message}", e.Message);
+            throw;
         }
     }
 
@@ -83,17 +150,21 @@ public class ABSmartlyService : IABSmartlyServiceClient
             SetupDefaultHeaders(httpClient);
 
             var serializedEvent = _eventSerializer.Serialize(publishEvent);
+            if (serializedEvent == null)
+            {
+                var message = "Event serializer returned null";
+                _logger?.LogError(message);
+                return false;
+            }
 
             var content = new ByteArrayContent(serializedEvent);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
-            var result = await httpClient.PutAsync(_url, content);
+            using var result = await httpClient.PutAsync(_url, content).ConfigureUnboundContinuation();
 
             if (!result.IsSuccessStatusCode)
             {
-                _logger?.LogError(
-                    "Publish event unsuccessful request: reason '{ReasonPhrase}', response content = '{S}'",
-                    result.ReasonPhrase, await result.Content.ReadAsStringAsync());
+                _logger?.LogError("Publish event failed: HTTP {StatusCode} {ReasonPhrase}", (int)result.StatusCode, result.ReasonPhrase);
                 return false;
             }
 
@@ -101,12 +172,12 @@ public class ABSmartlyService : IABSmartlyServiceClient
         }
         catch (Exception e)
         {
-            _logger?.LogError("Exception when Publish event: {E}", e);
+            _logger?.LogError(e, "Error publishing event: {Message}", e.Message);
             return false;
         }
     }
 
-    private void SetupDefaultHeaders(IABSdkHttpClient client)
+    private void SetupDefaultHeaders(IABsmartlyHttpClient client)
     {
         client.AddHeader("X-API-Key", _config.ApiKey);
         client.AddHeader("X-Application", _config.Application);

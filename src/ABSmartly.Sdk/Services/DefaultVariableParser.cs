@@ -1,4 +1,5 @@
-﻿using System;
+﻿#nullable enable
+using System;
 using System.Collections.Generic;
 using ABSmartly.Services.Json;
 using Microsoft.Extensions.Logging;
@@ -19,11 +20,41 @@ public class DefaultVariableParser : JsonParserBase, IVariableParser
     {
         try
         {
-            return ParseJsonString(config);
+            var result = ParseJsonString(config);
+            if (result == null)
+            {
+                _logger?.LogWarning("Failed to parse variant config for experiment '{ExperimentName}', variant '{VariantName}' - result was null", experimentName, variantName);
+            }
+            return result;
         }
         catch (Exception e)
         {
-            _logger?.LogError(e.Message);
+            _logger?.LogError(e, "Failed to parse variant config for experiment '{ExperimentName}', variant '{VariantName}': {Message}", experimentName, variantName, e.Message);
+            return null;
+        }
+    }
+
+    public static object? ParseValue(string json) => ParseJsonValue(json);
+
+    // Full JSON value for a custom field, mirroring the JavaScript SDK
+    // (context.ts _customFieldValue): objects, arrays, numbers, strings,
+    // booleans and "null" -> null are all supported, not just objects. A raw
+    // empty string is kept as "" (JSON parsing would reject it), and a parse
+    // error logs a warning and yields null. This is the default parser's path
+    // for JSON custom fields; variant-config parsing (Parse) is unchanged.
+    internal object? ParseCustomFieldValue(string experimentName, string fieldName, string value)
+    {
+        if (value == "")
+            return "";
+
+        try
+        {
+            return ParseJsonValue(value);
+        }
+        catch (Exception e)
+        {
+            _logger?.LogWarning(e, "Failed to parse JSON custom field value '{FieldName}' for experiment '{ExperimentName}': {Message}",
+                fieldName, experimentName, e.Message);
             return null;
         }
     }

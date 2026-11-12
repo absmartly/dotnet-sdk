@@ -1,112 +1,51 @@
-﻿using System;
-using System.Threading.Tasks;
-using ABSmartly.Concurrency;
-using ABSmartly.Extensions;
-using ABSmartly.Models;
+using System;
 using ABSmartly.Services;
-using ABSmartly.Time;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ABSmartly;
 
-public class ABSdk
+/// <summary>
+/// Obsolete: Use <see cref="ABsmartly"/> instead.
+/// </summary>
+/// <remarks>
+/// Keeps the exact 1.3.0 constructor set so existing source and compiled callers keep working.
+/// It deliberately has no <see cref="IABsmartlyHttpClientFactory"/> overloads: those would make
+/// calls passing an <see cref="ABSdkHttpClientFactory"/> (which implements both factory interfaces)
+/// ambiguous. New code should construct <see cref="ABsmartly"/>.
+/// </remarks>
+[Obsolete("ABSdk has been renamed to ABsmartly. Please use ABsmartly instead.")]
+public class ABSdk : ABsmartly
 {
-    public const string HttpClientName = "ABSmartlySDK.HttpClient";
-
-    private IAudienceDeserializer _audienceDeserializer;
-
-    private IABSmartlyServiceClient _client;
-
-    private IContextDataDeserializer _contextDataDeserializer;
-    private IContextDataProvider _contextDataProvider;
-    private IContextEventHandler _contextEventHandler;
-    private IContextEventLogger _contextEventLogger;
-    private IContextEventSerializer _contextEventSerializer;
-    private IABSdkHttpClientFactory _httpClientFactory;
-
-    private ILoggerFactory _loggerFactory;
-    private IVariableParser _variableParser;
+    // Redeclared so the 1.3.0 field ABSdk.HttpClientName still exists on this type.
+    public new const string HttpClientName = ABsmartly.HttpClientName;
 
     [ActivatorUtilitiesConstructor]
     public ABSdk(IABSdkHttpClientFactory httpClientFactory,
         IOptions<ABSmartlyServiceConfiguration> serviceConfiguration,
         IOptions<ABSdkConfig> configOptions,
         ILoggerFactory loggerFactory)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration,
+            Options.Create<ABsmartlyConfig>(configOptions?.Value), loggerFactory)
     {
-        Init(httpClientFactory, serviceConfiguration.Value, configOptions?.Value, loggerFactory);
     }
 
     public ABSdk(IABSdkHttpClientFactory httpClientFactory,
         ABSmartlyServiceConfiguration serviceConfiguration,
         ABSdkConfig config = null,
         ILoggerFactory loggerFactory = null)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, config, loggerFactory)
     {
-        Init(httpClientFactory, serviceConfiguration, config, loggerFactory);
     }
 
-    private void Init(IABSdkHttpClientFactory httpClientFactory,
+    // config has no default here, so new ABSdk(factory, serviceConfig) keeps binding to the
+    // 1.3.0 overload above instead of becoming ambiguous.
+    public ABSdk(IABSdkHttpClientFactory httpClientFactory,
         ABSmartlyServiceConfiguration serviceConfiguration,
-        ABSdkConfig config = null,
+        ABsmartlyConfig config,
         ILoggerFactory loggerFactory = null)
+        : base(LegacyHttpClientFactoryAdapter.Wrap(httpClientFactory), serviceConfiguration, config, loggerFactory)
     {
-        _loggerFactory = loggerFactory ?? new LoggerFactory();
-        _httpClientFactory = httpClientFactory ??
-                             throw new ArgumentNullException(nameof(httpClientFactory),
-                                 "Missing HTTP client factory configuration");
-
-        _contextDataDeserializer =
-            config?.ContextDataDeserializer ?? new DefaultContextDataDeserializer(_loggerFactory);
-        _contextEventSerializer = config?.ContextEventSerializer ?? new DefaultContextEventSerializer(_loggerFactory);
-
-        _client = new ABSmartlyService(
-            serviceConfiguration,
-            _httpClientFactory,
-            _contextDataDeserializer,
-            _contextEventSerializer,
-            _loggerFactory);
-
-        _contextDataProvider = config?.ContextDataProvider ?? new DefaultContextDataProvider(_client);
-        _contextEventHandler = config?.ContextEventHandler ?? new DefaultContextEventHandler(_client);
-        _contextEventLogger = config?.ContextEventLogger;
-
-        _variableParser = config?.VariableParser ?? new DefaultVariableParser(_loggerFactory);
-        _audienceDeserializer = config?.AudienceDeserializer ?? new DefaultAudienceDeserializer(_loggerFactory);
-    }
-
-    public IContext CreateContext(ContextConfig config)
-    {
-        return AsyncHelpers.RunSync(async () => await CreateContextAsync(config));
-    }
-
-    public async Task<IContext> CreateContextAsync(ContextConfig config)
-    {
-        var context = new Context(config,
-            await _contextDataProvider.GetContextDataAsync().ConfigureUnboundContinuation(),
-            Clock.SystemUtc(),
-            _contextDataProvider,
-            _contextEventHandler,
-            _contextEventLogger,
-            _variableParser,
-            new AudienceMatcher(_audienceDeserializer),
-            _loggerFactory);
-
-        return context;
-    }
-
-    public IContext CreateContextWith(ContextConfig config, ContextData data)
-    {
-        var context = new Context(config,
-            data,
-            Clock.SystemUtc(),
-            _contextDataProvider,
-            _contextEventHandler,
-            _contextEventLogger,
-            _variableParser,
-            new AudienceMatcher(_audienceDeserializer),
-            _loggerFactory);
-
-        return context;
     }
 }

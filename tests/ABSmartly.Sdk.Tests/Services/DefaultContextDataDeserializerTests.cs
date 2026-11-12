@@ -27,6 +27,17 @@ public class DefaultContextDataDeserializerTests
         act.Should().NotThrow();
     }
 
+    [Test]
+    public void MalformedJsonReturnsNull()
+    {
+        // As 1.3.0 and the Java SDK.
+        using var malformed = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("{broken"));
+        _deserializer.Deserialize(malformed).Should().BeNull();
+
+        using var validNull = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("null"));
+        _deserializer.Deserialize(validNull).Should().BeNull();
+    }
+
     private ContextData ExpectedData()
     {
         var experiment0 = new Experiment

@@ -22,4 +22,20 @@ public class MatchOperatorTests : OperatorTestBase
         _operator.Evaluate(Evaluator, T.ListOf(null, "abc")).Should().BeNull();
         _operator.Evaluate(Evaluator, T.ListOf("abcdefghijk", null)).Should().BeNull();
     }
+
+    [Test]
+    public void TestInvalidPatternReturnsNull()
+    {
+        _operator.Evaluate(Evaluator, T.ListOf("abc", "(")).Should().BeNull();
+        _operator.Evaluate(Evaluator, T.ListOf("abc", "[a-")).Should().BeNull();
+    }
+
+    [Test]
+    public void TestNoMatchTimeout()
+    {
+        // As 1.3.0 and the Java SDK there is no match timeout: a valid pattern that is
+        // slow to evaluate still yields its result rather than null.
+        var text = new string('a', 24) + "!";
+        _operator.Evaluate(Evaluator, T.ListOf(text, "^(a+)+$")).Should().Be(false);
+    }
 }

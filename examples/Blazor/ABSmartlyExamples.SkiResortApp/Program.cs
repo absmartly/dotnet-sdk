@@ -10,7 +10,7 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddControllers();
 builder.Services.AddHttpClient();
 
-builder.Services.AddABSmartly(builder.Configuration.GetSection("ABSmartly"), HttpClientConfig.CreateDefault());
+builder.Services.AddABsmartly(builder.Configuration.GetSection("ABSmartly"), HttpClientConfig.CreateDefault());
 
 var app = builder.Build();
 

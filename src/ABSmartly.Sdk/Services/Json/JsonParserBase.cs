@@ -30,6 +30,12 @@ public abstract class JsonParserBase
         return parsedObject as Dictionary<string, object>;
     }
 
+    protected static object? ParseJsonValue(string json)
+    {
+        var jToken = JToken.Parse(json);
+        return ParseToken(jToken);
+    }
+
     private static object? ParseToken(JToken? token)
     {
         return token switch
