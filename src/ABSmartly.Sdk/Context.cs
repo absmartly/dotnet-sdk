@@ -52,11 +52,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private readonly Dictionary<string, string> _units;
     private readonly IVariableParser _variableParser;
 
-    // Application/environment names from the service config, exactly as configured, that
-    // audience evaluation sees as attributes. The collector also attaches both to every
-    // exposure server-side, so nothing extra is published. User-set attributes overlay
-    // these (see BuildAttributesDictionary). Empty unless set by the SDK that creates the
-    // context; defaults keep the public constructors backward compatible.
+    // application/environment from the service config, seen by audiences and rules but never
+    // published (the collector adds both). Empty for contexts built with the public constructors.
     private static readonly IReadOnlyDictionary<string, object> EmptySystemAttributes =
         new Dictionary<string, object>(0);
     private IReadOnlyDictionary<string, object> _systemAttributes = EmptySystemAttributes;
@@ -150,12 +147,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         SetInitialData(data, null);
     }
 
-    // Creates a ready context from already-loaded data, with the system attributes
-    // installed before the data is applied, so a Ready event logger that reads a treatment
-    // evaluates audiences against them. The public constructors set the data in their body,
-    // which runs before any object initializer, so assigning SystemAttributes that way is
-    // too late for that callback; this path sets them before SetInitialData, keeping those
-    // constructors unchanged.
+    // Installs the system attributes before the data, so a Ready event logger that reads a
+    // treatment already sees them (an object initializer on a public constructor runs too late).
     internal static Context CreateWithData(ContextConfig config,
         ContextData data,
         Clock clock,

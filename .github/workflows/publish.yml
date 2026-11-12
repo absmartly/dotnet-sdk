@@ -54,6 +54,7 @@ jobs:
 
       - name: Push to nuget.org
         if: github.ref_type == 'tag' || inputs.dry_run == false
-        run: dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json --api-key "$NUGET_AUTH_TOKEN" --skip-duplicate
+        # The unquoted glob is expanded by the shell to the package Pack wrote.
+        run: dotnet nuget push artifacts/*.nupkg --source https://api.nuget.org/v3/index.json --api-key "$NUGET_AUTH_TOKEN" --skip-duplicate
         env:
           NUGET_AUTH_TOKEN: ${{ secrets.NUGET_AUTH_TOKEN }}
