@@ -121,6 +121,7 @@ var absmartly = new ABsmartly.Sdk(new ABsmartlyHttpClientFactory(httpClientFacto
 | ApiKey              | `string`                     | &#9989;   | `null`  | Your API key which can be found on the Web Console.                                                                                                                           |
 | Environment         | `string`                     | &#9989;   | `null`  | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure.   |
 | Application         | `string`                     | &#9989;   | `null`  | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running. |
+| ApplicationVersion  | `string`                     | &#10060;  | `"0"`   | The version of your application, sent as the `X-Application-Version` header.                                                                                                 |
 | ContextEventLogger  | `IContextEventLogger`        | &#10060;  | `null`  | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
 | ContextDataProvider | `IContextDataProvider`       | &#10060;  | auto    | Custom provider for context data (advanced usage)                                                                                                                             |
 | ContextPublisher    | `IContextPublisher`          | &#10060;  | auto    | Custom publisher for events (advanced usage). `ContextEventHandler` (`IContextEventHandler`) still works but is obsolete.                                                     |
@@ -308,6 +309,21 @@ context.SetAttributes(new Dictionary<string, object> {
     { "customer_age", "new_customer" }
 });
 ```
+
+Audience filters and assignment-rule conditions can also use `application` and `environment`, which the SDK takes from `ABSmartlyServiceConfiguration`. An attribute you set with the same name overrides them. They are not added to the published attributes; the collector already records both.
+
+Audience filters and assignment-rule conditions support semantic-version comparisons with `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt` and `semver_lte`, for example `{"semver_gte": [{"var": "app_version"}, {"value": "2.4.0"}]}`. A leading `v` and build metadata are ignored, missing parts count as `0` and a pre-release ranks below its release (`2.4.0-beta.1` < `2.4.0`).
+
+### Assignment Rules
+
+Experiments can define assignment rules in the Web Console. The SDK evaluates them in order, and the first rule whose conditions match the context attributes and whose environments include the configured `Environment` decides the variant:
+
+- An `assign` rule gives a fixed variant.
+- A `split` rule spreads matching units over the variants by its own percentages, for example `20/30/50`. The unit is hashed with the experiment's seed. While the experiment's unit isn't set, the unit gets the variant it would get without a unit (the full-on variant, otherwise `0`); once the unit is set, an assignment that has not been exposed yet is re-randomized.
+
+A rule wins over the audience (including strict audiences), traffic allocation, full-on and `SetCustomAssignment()`. Only `SetOverride()` wins over a rule. Exposures from a rule are flagged `ruleOverride`, so they are excluded from the experiment's analysis.
+
+If the first matching rule's variant doesn't exist, or its split doesn't have one percentage per variant, the unit gets the normal assignment and later rules aren't tried. A malformed rule (unknown type, a variant that isn't an integer, percentages that aren't numbers or don't add up to 100) is skipped in favour of the next rule.
 
 ### Tracking Goals
 
