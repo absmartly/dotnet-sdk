@@ -1,10 +1,20 @@
-name: Publish Nuget
+name: Publish NuGet
 on:
   push:
     tags:
       - v*
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build, test and pack without pushing to nuget.org
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,15 +26,34 @@ jobs:
             6.0.x
             8.0.x
             9.0.x
-        env:
-          NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
 
-      - name: Run Build
-        run: dotnet build src/ABSmartly.Sdk --configuration Release
-        env:
-          NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
+      # The tag (v1.4.0) must match <PackageVersion>, which is also the version sent in X-Agent.
+      - name: Check tag matches package version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(sed -n 's:.*<PackageVersion>\(.*\)</PackageVersion>.*:\1:p' src/ABSmartly.Sdk/ABSmartly.Sdk.csproj)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match PackageVersion $version"
+            exit 1
+          fi
 
-      - name: Run Release
-        run: dotnet nuget push src/ABSmartly.Sdk/bin/Release/*.nupkg -s https://api.nuget.org/v3/index.json -k $NUGET_AUTH_TOKEN
+      # The test project references the SDK, so this builds both (and not the examples).
+      - name: Build
+        run: dotnet build tests/ABSmartly.Sdk.Tests --configuration Release
+
+      - name: Test
+        run: dotnet test tests/ABSmartly.Sdk.Tests --configuration Release --no-build
+
+      - name: Pack
+        run: dotnet pack src/ABSmartly.Sdk --configuration Release --no-build -p:GeneratePackageOnBuild=false --output artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: artifacts/*.nupkg
+
+      - name: Push to nuget.org
+        if: github.ref_type == 'tag' || inputs.dry_run == false
+        run: dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json --api-key "$NUGET_AUTH_TOKEN" --skip-duplicate
         env:
-          NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
+          NUGET_AUTH_TOKEN: ${{ secrets.NUGET_AUTH_TOKEN }}

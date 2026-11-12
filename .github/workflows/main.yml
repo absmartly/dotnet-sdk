@@ -1,5 +1,9 @@
 name: CI
 on: [push, pull_request]
+
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,11 +16,14 @@ jobs:
             6.0.x
             8.0.x
             9.0.x
-        env:
-          NUGET_AUTH_TOKEN: ${{secrets.NUGET_AUTH_TOKEN}}
-          
+
       - name: Run Build
         run: dotnet build src/ABSmartly.Sdk
-        
+
       - name: Run Tests
         run: dotnet test tests/ABSmartly.Sdk.Tests
+
+      # Same pack as the publish workflow, so a packaging or package-validation failure shows
+      # up on the pull request instead of at release time.
+      - name: Pack
+        run: dotnet pack src/ABSmartly.Sdk --configuration Release -p:GeneratePackageOnBuild=false --output artifacts
