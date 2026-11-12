@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using ABSmartly.Extensions;
+using ABSmartly.Internal;
 using ABSmartly.Models;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
@@ -182,8 +183,9 @@ public class ABSmartlyService : IABSmartlyServiceClient
         client.AddHeader("X-API-Key", _config.ApiKey);
         client.AddHeader("X-Application", _config.Application);
         client.AddHeader("X-Environment", _config.Environment);
-        client.AddHeader("X-Application-Version", "0");
-        client.AddHeader("X-Agent", "absmartly-dotnet-sdk");
+        client.AddHeader("X-Application-Version",
+            string.IsNullOrEmpty(_config.ApplicationVersion) ? "0" : _config.ApplicationVersion);
+        client.AddHeader("X-Agent", SdkInfo.Agent);
     }
 
     private Dictionary<string, string> GetDefaultQueryParameters()

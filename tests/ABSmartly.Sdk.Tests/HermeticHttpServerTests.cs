@@ -95,7 +95,7 @@ public class HermeticHttpServerTests
         put.Headers.Should().ContainKey("X-Environment").WhoseValue.Should().Be(Environment);
         put.Headers.Should().ContainKey("X-Application-Version").WhoseValue.Should().Be("0");
         put.Headers.Should().ContainKey("X-Agent");
-        put.Headers["X-Agent"].Should().NotBeNullOrEmpty();
+        put.Headers["X-Agent"].Should().StartWith("absmartly-dotnet-sdk/");
         put.Headers.Should().ContainKey("Content-Type");
         put.Headers["Content-Type"].Should().StartWith("application/json");
 
