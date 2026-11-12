@@ -296,7 +296,7 @@ public class SystemAttributesTests
         var httpClientFactory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == httpClient);
         var serviceConfig = H.ServiceConfig("website", "http://localhost/v1", "production", "test-api-key");
 
-        var absmartly = new ABsmartly(httpClientFactory, serviceConfig,
+        var absmartly = new ABsmartly.Sdk(httpClientFactory, serviceConfig,
             new ABsmartlyConfig { ContextPublisher = _eventHandler });
 
         var config = new ContextConfig { PublishDelay = PublishDelay }.SetUnits(_units);
@@ -326,7 +326,7 @@ public class SystemAttributesTests
             .Callback<IContext, EventType, object>((ctx, _, _) =>
                 treatmentDuringReady = ctx.PeekTreatment("exp_test_ab"));
 
-        var absmartly = new ABsmartly(httpClientFactory, serviceConfig,
+        var absmartly = new ABsmartly.Sdk(httpClientFactory, serviceConfig,
             new ABsmartlyConfig
             {
                 ContextPublisher = _eventHandler,
