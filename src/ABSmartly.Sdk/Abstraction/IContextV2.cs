@@ -12,7 +12,7 @@ namespace ABSmartly;
 /// (decorators, test fakes) keep compiling and loading. New context members are added here
 /// instead. <see cref="Context"/> implements this interface; the <c>CreateContext*</c> methods
 /// keep returning <see cref="IContext"/> for binary compatibility, so cast the result
-/// (<c>(IContextV2)sdk.CreateContext(config)</c>) or use <see cref="ABsmartly.CreatePendingContext"/>,
+/// (<c>(IContextV2)sdk.CreateContext(config)</c>) or use <see cref="ABsmartly.Sdk.CreatePendingContext"/>,
 /// which returns <see cref="IContextV2"/>.
 /// </remarks>
 public interface IContextV2 : IContext

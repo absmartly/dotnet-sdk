@@ -27,9 +27,9 @@ public class Test : ControllerBase
         _ => "Scorching"
     };
 
-    private readonly ABsmartly _absmartly;
+    private readonly ABsmartly.Sdk _absmartly;
 
-    public Test(ABsmartly absmartly)
+    public Test(ABsmartly.Sdk absmartly)
     {
         _absmartly = absmartly;
     }

@@ -204,7 +204,7 @@ public class PendingContextTests
         Mock.Get(httpClient).Setup(x => x.GetAsync(It.IsAny<string>()))
             .ThrowsAsync(new HttpRequestException("Connection refused (127.0.0.1:9)"));
         var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == httpClient);
-        var sdk = new ABsmartly(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
+        var sdk = new ABsmartly.Sdk(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
             new ABsmartlyConfig { ContextEventLogger = _logger, ContextPublisher = _publisher });
 
         var context = (IContextV2)await sdk.CreateContextAsync(Config());
@@ -222,7 +222,7 @@ public class PendingContextTests
         Mock.Get(httpClient).Setup(x => x.GetAsync(It.IsAny<string>()))
             .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.InternalServerError));
         var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == httpClient);
-        var sdk = new ABsmartly(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
+        var sdk = new ABsmartly.Sdk(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
             new ABsmartlyConfig { ContextEventLogger = _logger, ContextPublisher = _publisher });
 
         var context = (IContextV2)await sdk.CreateContextAsync(Config());
@@ -240,7 +240,7 @@ public class PendingContextTests
         Mock.Get(httpClient).Setup(x => x.GetAsync(It.IsAny<string>()))
             .ReturnsAsync(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{broken") });
         var factory = Mock.Of<IABsmartlyHttpClientFactory>(x => x.CreateClient() == httpClient);
-        var sdk = new ABsmartly(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
+        var sdk = new ABsmartly.Sdk(factory, H.ServiceConfig("website", "http://127.0.0.1:9", "dev", "key"),
             new ABsmartlyConfig { ContextEventLogger = _logger, ContextPublisher = _publisher });
 
         var context = (IContextV2)await sdk.CreateContextAsync(Config());
@@ -550,7 +550,7 @@ public class PendingContextTests
                 if (type == expected) throw new InvalidOperationException("sentinel-logger");
             }
         };
-        var sdk = new ABsmartly(Mock.Of<IABsmartlyHttpClientFactory>(),
+        var sdk = new ABsmartly.Sdk(Mock.Of<IABsmartlyHttpClientFactory>(),
             H.ServiceConfig("website", "https://localhost/v1", "dev", "key"),
             new ABsmartlyConfig { ContextDataProvider = provider, ContextEventLogger = logger, ContextPublisher = _publisher });
 
@@ -575,7 +575,7 @@ public class PendingContextTests
                 if (type == EventType.Ready) throw new InvalidOperationException("sentinel-logger");
             }
         };
-        var sdk = new ABsmartly(Mock.Of<IABsmartlyHttpClientFactory>(),
+        var sdk = new ABsmartly.Sdk(Mock.Of<IABsmartlyHttpClientFactory>(),
             H.ServiceConfig("website", "https://localhost/v1", "dev", "key"),
             new ABsmartlyConfig { ContextDataProvider = provider, ContextEventLogger = logger, ContextPublisher = _publisher });
 
@@ -606,17 +606,17 @@ public class PendingContextTests
     private ContextConfig Config() =>
         new ContextConfig { PublishDelay = TimeSpan.FromMilliseconds(-1) }.SetUnits(_units);
 
-    private ABsmartly BuildSdk(Task<ContextData> dataTask)
+    private ABsmartly.Sdk BuildSdk(Task<ContextData> dataTask)
     {
         var provider = Mock.Of<IContextDataProvider>();
         Mock.Get(provider).Setup(x => x.GetContextDataAsync()).Returns(dataTask);
         return BuildSdk(provider);
     }
 
-    private ABsmartly BuildSdk(IContextDataProvider provider)
+    private ABsmartly.Sdk BuildSdk(IContextDataProvider provider)
     {
         var factory = Mock.Of<IABsmartlyHttpClientFactory>();
-        return new ABsmartly(factory, H.ServiceConfig("website", "https://localhost/v1", "dev", "key"),
+        return new ABsmartly.Sdk(factory, H.ServiceConfig("website", "https://localhost/v1", "dev", "key"),
             new ABsmartlyConfig
             {
                 ContextDataProvider = provider,
