@@ -407,6 +407,20 @@ public class ContextAssignmentRulesTests
         context.PeekTreatment(Experiment).Should().Be(1);
     }
 
+    // An out-of-range percentage parses as infinity (double.Parse throws on .NET Framework), so the
+    // split fails the sum check and is skipped.
+    [Test]
+    public void SplitWithAnOverflowingPercentageIsSkipped()
+    {
+        AudienceMatcher.ParseFloat("1e999").Should().Be(double.PositiveInfinity);
+        AudienceMatcher.ParseFloat("-1e999").Should().Be(double.NegativeInfinity);
+
+        var context = CreateContext(Data(Rules(Split("1e999/0/0"), Assign(1, conditions: null))));
+        context.SetAttribute("country", "US");
+
+        context.GetTreatment(Experiment).Should().Be(1);
+    }
+
     [Test]
     public void SplitNotCoveringEveryVariantFallsBackWithoutTryingLaterRules()
     {
@@ -478,6 +492,36 @@ public class ContextAssignmentRulesTests
         context.GetTreatment(Experiment).Should().Be(0);
 
         PublishedExposures(context).Select(e => e.Variant).Should().Equal(0);
+    }
+
+    // A GetTreatment racing SetUnit must never return the no-unit variant without exposing it:
+    // when SetUnit retires the assignment first, the read re-resolves it.
+    [Test]
+    public void GetTreatmentRacingSetUnitExposesTheVariantItReturns()
+    {
+        for (var i = 0; i < 2000; i++)
+        {
+            _published.Clear();
+            var context = CreateContext(Data(Rules(Split("0/100/0"))), withSession: false);
+            context.SetAttribute("country", "US");
+            context.PeekTreatment(Experiment).Should().Be(0);
+
+            using var barrier = new Barrier(2);
+            var read = Task.Run(() =>
+            {
+                barrier.SignalAndWait();
+                return context.GetTreatment(Experiment);
+            });
+            var write = Task.Run(() =>
+            {
+                barrier.SignalAndWait();
+                context.SetUnit("session_id", SessionId);
+            });
+            Task.WaitAll(read, write);
+
+            PublishedExposures(context).Select(e => e.Variant).Should().Equal(new[] { read.Result },
+                "iteration {0} returned variant {1}", i, read.Result);
+        }
     }
 
     [Test]

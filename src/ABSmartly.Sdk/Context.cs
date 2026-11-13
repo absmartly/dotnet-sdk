@@ -1307,9 +1307,15 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         CheckReady(true);
 
-        var assignment = GetAssignment(experimentName);
-        if (doExposure && assignment.Exposed == 0)
-            QueueExposure(assignment);
+        // A concurrent SetUnit may retire the assignment (Exposed 2) after it is read; it is then
+        // re-resolved rather than returned without its exposure.
+        Assignment assignment;
+        do
+        {
+            assignment = GetAssignment(experimentName);
+            if (doExposure && assignment.Exposed == 0)
+                QueueExposure(assignment);
+        } while (Volatile.Read(ref assignment.Exposed) == 2);
 
         return assignment.Variant;
     }
@@ -1449,10 +1455,15 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         CheckReady(true);
 
-        var assignment = GetVariableAssignment(key);
-        if (assignment?.Variables is null) return defaultValue;
+        // Re-resolved when a concurrent SetUnit retires it, as in InternalGetTreatmentAsync.
+        Assignment assignment;
+        do
+        {
+            assignment = GetVariableAssignment(key);
+            if (assignment?.Variables is null) return defaultValue;
 
-        if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);
+            if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);
+        } while (Volatile.Read(ref assignment.Exposed) == 2);
 
         return assignment.Variables.TryGetValue(key, out var variable) ? variable : defaultValue;
     }

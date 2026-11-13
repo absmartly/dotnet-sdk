@@ -229,7 +229,10 @@ public class AudienceMatcher
             if (j > exponentStart) end = j;
         }
 
-        return double.Parse(s.Substring(0, end), NumberStyles.Float, CultureInfo.InvariantCulture);
+        var prefix = s.Substring(0, end);
+        if (double.TryParse(prefix, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)) return parsed;
+        // Out of range on .NET Framework (netstandard2.0): keep the sign so the sum check rejects the split.
+        return prefix[0] == '-' ? double.NegativeInfinity : double.PositiveInfinity;
     }
 
     private static bool IsAsciiDigit(char c) => c >= '0' && c <= '9';
