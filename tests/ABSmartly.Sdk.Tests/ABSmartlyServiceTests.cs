@@ -131,6 +131,7 @@ public class ABSmartlyServiceTests
         Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
         Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
         Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Once);
+        VerifyDefaultHeaders(Mock.Get(_httpClient));
     }
 
     [Test]

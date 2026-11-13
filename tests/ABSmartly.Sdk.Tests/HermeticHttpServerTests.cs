@@ -112,6 +112,33 @@ public class HermeticHttpServerTests
         ((JArray)body["goals"]!).Count.Should().BeGreaterThan(0, "the tracked goal must be published");
     }
 
+    // Cross-SDK scenario 320: the SDK's own context GET carries the same SDK headers as the
+    // publish PUT, with X-Agent in the form absmartly-<lang>-sdk/<semver>.
+    [Test]
+    public async Task ContextFetch_SendsSdkHeaders()
+    {
+        var sdk = BuildSdk();
+
+        var config = new ContextConfig();
+        config.SetUnit("session_id", "svk-unit-1");
+
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+        context.IsFailed().Should().BeFalse();
+
+        var get = WaitForRequest(r => r.Method == "GET");
+        get.Should().NotBeNull("the SDK should have performed a real GET /context");
+        get!.Query.Should().ContainKey("application").WhoseValue.Should().Be(Application);
+        get.Query.Should().ContainKey("environment").WhoseValue.Should().Be(Environment);
+
+        get.Headers.Should().ContainKey("X-API-Key").WhoseValue.Should().Be(ApiKey);
+        get.Headers.Should().ContainKey("X-Application").WhoseValue.Should().Be(Application);
+        get.Headers.Should().ContainKey("X-Environment").WhoseValue.Should().Be(Environment);
+        get.Headers.Should().ContainKey("X-Application-Version").WhoseValue.Should().Be("0");
+        get.Headers.Should().ContainKey("X-Agent").WhoseValue.Should()
+            .MatchRegex(@"^absmartly-[a-z0-9]+-sdk/[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]*)?$");
+    }
+
     // Builds the SDK using ONLY the public configuration surface, wiring the SDK's
     // REAL ABsmartlyHttpClientFactory over a REAL IHttpClientFactory so a genuine
     // System.Net.Http.HttpClient performs the requests.

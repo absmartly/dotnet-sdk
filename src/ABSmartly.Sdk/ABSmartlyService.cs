@@ -123,7 +123,8 @@ public class ABSmartlyService : IABSmartlyServiceClient
         try
         {
             using var httpClient = _httpClientFactory.CreateClient();
-            var uri = QueryHelpers.AddQueryString(_url, GetDefaultQueryParameters());
+            SetupDefaultHeaders(httpClient);
+            var uri =QueryHelpers.AddQueryString(_url, GetDefaultQueryParameters());
             using var response = await httpClient.GetAsync(uri).ConfigureUnboundContinuation();
             response.EnsureSuccessStatusCode();
 
