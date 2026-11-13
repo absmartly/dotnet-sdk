@@ -131,6 +131,7 @@ public class ABSmartlyServiceTests
         Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
         Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
         Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Once);
+        VerifyDefaultHeaders(Mock.Get(_httpClient));
     }
 
     [Test]
@@ -294,7 +295,42 @@ public class ABSmartlyServiceTests
         httpClientMock.Verify(x => x.AddHeader("X-Application", "website"));
         httpClientMock.Verify(x => x.AddHeader("X-Environment", "dev"));
         httpClientMock.Verify(x => x.AddHeader("X-Application-Version", "0"));
-        httpClientMock.Verify(x => x.AddHeader("X-Agent", "absmartly-dotnet-sdk"));
+        httpClientMock.Verify(x => x.AddHeader("X-Agent", "absmartly-dotnet-sdk/" + PackageVersion()));
+    }
+
+    // The <PackageVersion> in the SDK project, which X-Agent must carry.
+    private static string PackageVersion()
+    {
+        var csproj = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory,
+            "..", "..", "..", "..", "..", "src", "ABSmartly.Sdk", "ABSmartly.Sdk.csproj"));
+        var match = System.Text.RegularExpressions.Regex.Match(csproj, "<PackageVersion>([^<]+)</PackageVersion>");
+        match.Success.Should().BeTrue();
+        return match.Groups[1].Value;
+    }
+
+    [Test]
+    public async Task TestPublishSendsConfiguredApplicationVersion()
+    {
+        var config = H.ServiceConfig("website", "https://localhost/v1", "dev", "test-api-key");
+        config.ApplicationVersion = "3.2.1";
+        var service = new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        var publishEvent = new PublishEvent();
+        Mock.Get(_serializer).Setup(x => x.Serialize(publishEvent)).Returns(Array.Empty<byte>());
+        Mock.Get(_httpClient).Setup(x => x.PutAsync("https://localhost/v1/context", It.IsAny<HttpContent>()))
+            .Returns(() => GetResponse(HttpStatusCode.OK, Array.Empty<byte>()));
+
+        (await service.PublishAsync(publishEvent)).Should().BeTrue();
+
+        Mock.Get(_httpClient).Verify(x => x.AddHeader("X-Application-Version", "3.2.1"));
+        Mock.Get(_httpClient).Verify(x => x.AddHeader("X-Application-Version", "0"), Times.Never);
+    }
+
+    [Test]
+    public void AgentIsSdkNameSlashVersion()
+    {
+        ABSmartly.Internal.SdkInfo.Agent.Should().MatchRegex(@"^absmartly-dotnet-sdk/\d+\.\d+\.\d+");
+        ABSmartly.Internal.SdkInfo.Version.Should().Be(PackageVersion());
     }
 
     private Task<HttpResponseMessage> GetResponse(HttpStatusCode statusCode, byte[] bytes)

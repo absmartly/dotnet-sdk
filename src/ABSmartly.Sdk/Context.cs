@@ -51,6 +51,24 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private readonly object _timeoutLock = new();
     private readonly Dictionary<string, string> _units;
     private readonly IVariableParser _variableParser;
+
+    // application/environment from the service config, seen by audiences and rules but never
+    // published (the collector adds both). Empty for contexts built with the public constructors.
+    private static readonly IReadOnlyDictionary<string, object> EmptySystemAttributes =
+        new Dictionary<string, object>(0);
+    private IReadOnlyDictionary<string, object> _systemAttributes = EmptySystemAttributes;
+
+    internal IReadOnlyDictionary<string, object> SystemAttributes
+    {
+        set => _systemAttributes = value ?? EmptySystemAttributes;
+    }
+
+    // Test seam: runs once between an assignment lookup and its exposure, to force a race there.
+    internal Action AfterAssignmentLookup;
+
+    // Test seam: runs once between a cache miss and the write lock, to force a concurrent rebuild.
+    internal Action BeforeAssignmentRebuild;
+
     private volatile bool _closed;
     private int _closing;
     private readonly object _closeLock = new();
@@ -135,6 +153,28 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         SetInitialData(data, null);
     }
 
+    // Installs the system attributes before the data, so a Ready event logger that reads a
+    // treatment already sees them (an object initializer on a public constructor runs too late).
+    internal static Context CreateWithData(ContextConfig config,
+        ContextData data,
+        Clock clock,
+        IContextDataProvider dataProvider,
+        IContextPublisher eventHandler,
+        IContextEventLogger eventLogger,
+        IVariableParser variableParser,
+        AudienceMatcher audienceMatcher,
+        ILoggerFactory loggerFactory,
+        IReadOnlyDictionary<string, object> systemAttributes = null)
+    {
+        var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
+            audienceMatcher, loggerFactory)
+        {
+            SystemAttributes = systemAttributes
+        };
+        context.SetInitialData(data, null);
+        return context;
+    }
+
     // Creates a context that is not ready until dataTask settles: the load runs in
     // the background, so calls made in the meantime see the not-ready state.
     internal static Context CreatePending(ContextConfig config,
@@ -145,12 +185,16 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         IContextEventLogger eventLogger,
         IVariableParser variableParser,
         AudienceMatcher audienceMatcher,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IReadOnlyDictionary<string, object> systemAttributes = null)
     {
         if (dataTask == null) throw new ArgumentNullException(nameof(dataTask));
 
         var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
-            audienceMatcher, loggerFactory);
+            audienceMatcher, loggerFactory)
+        {
+            SystemAttributes = systemAttributes
+        };
         context._readyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         context._loadSettledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = context.LoadAsync(dataTask);
@@ -384,7 +428,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 Overridden = assignment.Overridden,
                 FullOn = assignment.FullOn,
                 Custom = assignment.Custom,
-                AudienceMismatch = assignment.AudienceMismatch
+                AudienceMismatch = assignment.AudienceMismatch,
+                RuleOverride = assignment.RuleOverride
             };
 
             try
@@ -631,9 +676,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return _hashedUnits.ConcurrentGetOrAdd(unitType, _ => Md5.HashToUtf8Bytes(unitUid));
     }
 
+    // The attribute map audience filters evaluate against: system values (application,
+    // environment) first, then user-set attributes overlaid on top, so a user-set value
+    // always wins, including one set after an assignment was cached (SetAttribute bumps
+    // _attrsSeq, which invalidates it). System attributes are not published; the collector
+    // attaches them server-side.
     private Dictionary<string, object> BuildAttributesDictionary()
     {
-        var attrs = new Dictionary<string, object>(_attributes.Count);
+        var attrs = new Dictionary<string, object>(_systemAttributes.Count + _attributes.Count);
+        foreach (var systemAttribute in _systemAttributes)
+        {
+            attrs[systemAttribute.Key] = systemAttribute.Value;
+        }
         foreach (var attribute in _attributes)
         {
             attrs[attribute.Name] = attribute.Value;
@@ -652,29 +706,187 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return _audienceMatcher.Evaluate(audience, attrs);
     }
 
-    private bool AudienceMatches(Experiment experiment, Assignment assignment)
+    private bool AudienceMatches(Experiment experiment, Assignment assignment, int attrsSeq)
     {
-        if (!string.IsNullOrEmpty(experiment.Audience))
-        {
-            // Read before evaluating: an attribute set meanwhile must trigger a new check.
-            var attrsSeq = _attrsSeq;
-            if (attrsSeq > assignment.AttrsSeq)
-            {
-                var match = EvaluateAudience(experiment.Audience);
-                var newAudienceMismatch = match != null ? !match.Value : false;
-                if (newAudienceMismatch != assignment.AudienceMismatch)
-                {
-                    return false;
-                }
+        // A rule-won assignment never consulted the audience, so an audience change cannot make
+        // it stale.
+        if (assignment.RuleOverride) return true;
 
-                // Still valid for these attributes: record it, so the audience is not
-                // re-evaluated on every call until the next SetAttribute (as the JS SDK).
-                // A racing reader can only store an older sequence, which merely causes
-                // one more evaluation.
-                assignment.AttrsSeq = attrsSeq;
+        if (!string.IsNullOrEmpty(experiment.Audience) && attrsSeq > assignment.AttrsSeq)
+        {
+            var match = EvaluateAudience(experiment.Audience);
+            var newAudienceMismatch = match != null ? !match.Value : false;
+            if (newAudienceMismatch != assignment.AudienceMismatch)
+            {
+                return false;
             }
         }
         return true;
+    }
+
+    // Called with the read lock held, so it does not write any cache: a changed rule outcome is
+    // reported as stale for the write path to rebuild. Rules are re-resolved only when they
+    // changed (a refresh) or an attribute was set since the assignment was built.
+    private bool RuleMatches(ExperimentVariables experiment, Assignment assignment, int attrsSeq)
+    {
+        var rulesChanged = !string.Equals(experiment.Data.AssignmentRules, assignment.RuleKey, StringComparison.Ordinal);
+        if (!rulesChanged && attrsSeq <= assignment.AttrsSeq) return true;
+
+        // An exposed split resolved without its unit keeps resolving as if the unit were still
+        // missing, so a unit set afterwards cannot switch the variant the user already saw.
+        var unitPinnedMissing = assignment.RuleMissingUnit && assignment.Exposed != 0;
+        var rule = ResolveRule(experiment, unitPinnedMissing, false);
+        int? cachedRuleVariant = assignment.RuleOverride ? assignment.Variant : null;
+        if (rule?.Variant != cachedRuleVariant) return false;
+
+        // Same variant, but now resolved by a split without its unit (or no longer so): stale, so
+        // the write path rebuilds an unexposed assignment (letting SetUnit evict and re-randomize
+        // it later) and updates an exposed one in place (see ReuseExposedRuleAssignment).
+        return (rule?.MissingUnit ?? false) == assignment.RuleMissingUnit;
+    }
+
+    private readonly struct RuleResolution
+    {
+        public RuleResolution(int variant, bool missingUnit)
+        {
+            Variant = variant;
+            MissingUnit = missingUnit;
+        }
+
+        public int Variant { get; }
+        public bool MissingUnit { get; }
+    }
+
+    // Resolves the experiment's assignment rules to a variant, or null when no rule applies. As the
+    // JavaScript and Java SDKs, the first matching rule decides: an assign variant out of range, or
+    // a split without one percentage per variant, falls back to normal assignment without trying
+    // later rules. A split is hashed with the experiment's own seed; with no unit to hash it gives
+    // the experiment's no-unit result (the full-on variant, or 0) and is flagged MissingUnit.
+    // Called with the context lock held. cacheAssigner is false on the read path, where the
+    // hashed-unit and assigner caches must not be written (that would need the write lock).
+    private RuleResolution? ResolveRule(ExperimentVariables experiment, bool unitPinnedMissing, bool cacheAssigner)
+    {
+        if (experiment.AssignmentRules == null || _audienceMatcher == null) return null;
+
+        var data = experiment.Data;
+        var action = _audienceMatcher.EvaluateRules(experiment.AssignmentRules, EnvironmentName,
+            BuildAttributesDictionary(), data.Name, _logger);
+        if (action == null) return null;
+
+        var variantCount = data.Variants?.Length ?? 0;
+        if (!action.IsSplit)
+            return action.Variant >= 0 && action.Variant < variantCount
+                ? new RuleResolution(action.Variant, false)
+                : null;
+
+        var split = action.Split;
+        if (split.Length != variantCount) return null;
+
+        var unitType = data.UnitType;
+        var uid = unitType != null && !unitPinnedMissing && _units.TryGetValue(unitType, out var u) ? u : null;
+        if (uid == null) return new RuleResolution(data.FullOnVariant, true);
+
+        VariantAssigner assigner;
+        if (cacheAssigner)
+            assigner = GetVariantAssigner(unitType, GetUnitHash(unitType, uid));
+        else if (!_assigners.TryGetValue(unitType, out assigner))
+            assigner = new VariantAssigner(_hashedUnits.TryGetValue(unitType, out var hash)
+                ? hash
+                : Md5.HashToUtf8Bytes(uid));
+
+        return new RuleResolution(assigner.Assign(split, data.SeedHi, data.SeedLo), false);
+    }
+
+    // Called with the write lock held. When the freshly resolved assignment is a rule win with
+    // the same variant as an already-exposed cached one for the same experiment run, the cached
+    // object is kept and only its rule bookkeeping refreshed: a new Assignment would reset its
+    // exposure and publish the same decision a second time.
+    private static Assignment ReuseExposedRuleAssignment(ExperimentVariables experiment, Assignment previous,
+        Assignment fresh)
+    {
+        if (previous == null || experiment == null || !fresh.RuleOverride || !previous.RuleOverride ||
+            previous.Overridden || previous.Variant != fresh.Variant || previous.Exposed == 0 ||
+            !ExperimentMatches(experiment.Data, previous))
+            return null;
+
+        previous.RuleKey = fresh.RuleKey;
+        previous.RuleMissingUnit = fresh.RuleMissingUnit;
+        previous.AttrsSeq = fresh.AttrsSeq;
+        return previous;
+    }
+
+    private static bool ExperimentMatches(Experiment experiment, Assignment assignment)
+    {
+        return experiment.Id == assignment.Id &&
+               string.Equals(experiment.UnitType, assignment.UnitType) &&
+               experiment.Iteration == assignment.Iteration &&
+               experiment.FullOnVariant == assignment.FullOnVariant &&
+               ArrayEquality.Equals(experiment.TrafficSplit, assignment.TrafficSplit);
+    }
+
+    // The environment assignment rules are scoped to: the one configured on the service, the same
+    // value the system attributes carry. Null for contexts created without one.
+    private string EnvironmentName =>
+        _systemAttributes.TryGetValue("environment", out var environment) ? environment as string : null;
+
+    private AudienceMatcher.ParsedRules ParseAssignmentRules(Experiment experiment)
+    {
+        if (string.IsNullOrEmpty(experiment.AssignmentRules) || _audienceMatcher == null) return null;
+
+        var parsed = _audienceMatcher.ParseRules(experiment.AssignmentRules);
+        if (parsed is { IsInvalid: true })
+            _logger?.LogWarning("Invalid assignmentRules JSON for experiment '{ExperimentName}'; its rules are ignored",
+                experiment.Name);
+        return parsed;
+    }
+
+    // The cached assignment when it is still up to date, else null. Called with the context lock
+    // held (read or write); it takes none itself.
+    private Assignment TryGetUpToDateAssignment(string experimentName)
+    {
+        var assignment = _assignmentCache.TryGetValue(experimentName, out var e) ? e : null;
+        if (assignment != null)
+        {
+            var experiment = GetExperiment(experimentName);
+
+            if (_overrides.TryGetValue(experimentName, out var @override))
+            {
+                if (assignment.Overridden && assignment.Variant == @override)
+                    // override is up-to-date
+                    return assignment;
+            }
+            else if (experiment == null)
+            {
+                // A rule-won assignment is not "assigned" either, but its variant came from
+                // the experiment's rules, so it is rebuilt once the experiment is gone.
+                if (!assignment.Assigned && !assignment.RuleOverride)
+                    // previously not-running experiment
+                    return assignment;
+            }
+            else if (assignment.RuleOverride ||
+                     !_customAssignments.TryGetValue(experimentName, out var custom) ||
+                     custom == assignment.Variant)
+            {
+                // A matching rule wins over a custom assignment, so a custom mismatch is not
+                // staleness for a rule-won assignment.
+                // Read before evaluating: an attribute set meanwhile must trigger a new check.
+                var attrsSeq = _attrsSeq;
+                if (ExperimentMatches(experiment.Data, assignment) &&
+                    RuleMatches(experiment, assignment, attrsSeq) &&
+                    AudienceMatches(experiment.Data, assignment, attrsSeq))
+                {
+                    // Still valid for these attributes: record it, so rules and audience are
+                    // not re-evaluated on every call until the next SetAttribute (as the JS
+                    // SDK). A racing reader can only store an older sequence, which merely
+                    // causes one more evaluation.
+                    if (attrsSeq > assignment.AttrsSeq) assignment.AttrsSeq = attrsSeq;
+                    // assignment is up-to-date
+                    return assignment;
+                }
+            }
+        }
+
+        return null;
     }
 
     private Assignment GetAssignment(string experimentName)
@@ -683,44 +895,28 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             _contextLock.EnterReadLock();
 
-            var assignment = _assignmentCache.TryGetValue(experimentName, out var e) ? e : null;
-            if (assignment != null)
-            {
-                var experiment = GetExperiment(experimentName);
-
-                if (_overrides.TryGetValue(experimentName, out var @override))
-                {
-                    if (assignment.Overridden && assignment.Variant == @override)
-                        // override is up-to-date
-                        return assignment;
-                }
-                else if (experiment == null)
-                {
-                    if (!assignment.Assigned)
-                        // previously not-running experiment
-                        return assignment;
-                }
-                else if (!_customAssignments.TryGetValue(experimentName, out var custom) ||
-                         custom == assignment.Variant)
-                {
-                    if (ExperimentMatches(experiment.Data, assignment) &&
-                        AudienceMatches(experiment.Data, assignment))
-                        // assignment is up-to-date
-                        return assignment;
-                }
-            }
+            var current = TryGetUpToDateAssignment(experimentName);
+            if (current != null) return current;
         }
         finally
         {
             _contextLock.ExitReadLock();
         }
 
+        Interlocked.Exchange(ref BeforeAssignmentRebuild, null)?.Invoke();
+
         // cache miss or out-dated
         try
         {
             _contextLock.EnterWriteLock();
 
+            // Another reader may have rebuilt the entry while this one waited for the write lock;
+            // replacing it would hide that assignment from SetUnit's retirement.
+            var current = TryGetUpToDateAssignment(experimentName);
+            if (current != null) return current;
+
             var experiment = GetExperiment(experimentName);
+            var attrsSeqAtBuild = _attrsSeq;
 
             var assignment = new Assignment
             {
@@ -745,13 +941,27 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 {
                     var unitType = experiment.Data.UnitType;
 
-                    if (!string.IsNullOrEmpty(experiment.Data.Audience))
+                    // Recorded for every assignment, including those no rule matched, so RuleMatches
+                    // only re-resolves after a refresh changes the rules or an attribute is set.
+                    assignment.RuleKey = experiment.Data.AssignmentRules;
+                    var rule = ResolveRule(experiment, false, true);
+
+                    if (rule == null && !string.IsNullOrEmpty(experiment.Data.Audience))
                     {
                         var match = EvaluateAudience(experiment.Data.Audience);
                         if (match != null) assignment.AudienceMismatch = !match.Value;
                     }
 
-                    if (experiment.Data.AudienceStrict && assignment.AudienceMismatch)
+                    if (rule is { } ruleResolution)
+                    {
+                        // A matching rule is an explicit, author-specified assignment, like an
+                        // override: it wins over the audience, traffic, full-on and custom
+                        // assignments. Assigned stays false, so the exposure is not analysed.
+                        assignment.RuleOverride = true;
+                        assignment.RuleMissingUnit = ruleResolution.MissingUnit;
+                        assignment.Variant = ruleResolution.Variant;
+                    }
+                    else if (experiment.Data.AudienceStrict && assignment.AudienceMismatch)
                     {
                         assignment.Variant = 0;
                     }
@@ -805,7 +1015,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (experiment != null && assignment.Variant >= 0 && assignment.Variant < experiment.Data.Variants.Length)
                 assignment.Variables = experiment.Variables[assignment.Variant];
 
-            assignment.AttrsSeq = _attrsSeq;
+            assignment.AttrsSeq = attrsSeqAtBuild;
+
+            var reused = ReuseExposedRuleAssignment(experiment,
+                _assignmentCache.TryGetValue(experimentName, out var previous) ? previous : null, assignment);
+            if (reused != null) return reused;
+
             _assignmentCache[experimentName] = assignment;
 
             return assignment;
@@ -813,15 +1028,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         finally
         {
             _contextLock.ExitWriteLock();
-        }
-
-        static bool ExperimentMatches(Experiment experiment, Assignment assignment)
-        {
-            return experiment.Id == assignment.Id &&
-                   string.Equals(experiment.UnitType, assignment.UnitType) &&
-                   experiment.Iteration == assignment.Iteration &&
-                   experiment.FullOnVariant == assignment.FullOnVariant &&
-                   ArrayEquality.Equals(experiment.TrafficSplit, assignment.TrafficSplit);
         }
     }
 
@@ -836,7 +1042,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // if its selected variant does not define the key (the caller then returns the
             // default). It is the experiment exposed, so units in its control arm are
             // counted too.
-            if (assignment.Assigned || assignment.Overridden)
+            if (assignment.Assigned || assignment.Overridden || assignment.RuleOverride)
                 return assignment;
         }
         return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name) : null;
@@ -1124,9 +1330,16 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         CheckReady(true);
 
-        var assignment = GetAssignment(experimentName);
-        if (doExposure && assignment.Exposed == 0)
-            QueueExposure(assignment);
+        // A concurrent SetUnit may retire the assignment (Exposed 2) after it is read; it is then
+        // re-resolved rather than returned without its exposure.
+        Assignment assignment;
+        do
+        {
+            assignment = GetAssignment(experimentName);
+            Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
+            if (doExposure && assignment.Exposed == 0)
+                QueueExposure(assignment);
+        } while (Volatile.Read(ref assignment.Exposed) == 2);
 
         return assignment.Variant;
     }
@@ -1156,6 +1369,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
 
             _units.Add(unitType, uidTrimmed);
+            InvalidateRuleAssignmentsWithMissingUnit(unitType);
         }
         finally
         {
@@ -1166,6 +1380,25 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     public void SetUnits(Dictionary<string, string> units)
     {
         foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
+    }
+
+    // Called with the write lock held. A split rule resolved without its unit gave the no-unit
+    // variant; with the unit now set it is evicted so the next call randomizes it, but only while
+    // that variant is still unseen. Retiring it (Exposed 0 -> 2) makes a racing GetTreatment that
+    // already holds it skip the exposure, so the user never gets two different variants exposed.
+    private void InvalidateRuleAssignmentsWithMissingUnit(string unitType)
+    {
+        List<string> evicted = null;
+        foreach (var entry in _assignmentCache)
+        {
+            var assignment = entry.Value;
+            if (assignment.RuleOverride && assignment.RuleMissingUnit && unitType == assignment.UnitType &&
+                Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0)
+                (evicted ??= new List<string>()).Add(entry.Key);
+        }
+
+        if (evicted == null) return;
+        foreach (var name in evicted) _assignmentCache.Remove(name);
     }
 
     public Dictionary<string, string> Units
@@ -1246,10 +1479,15 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         CheckReady(true);
 
-        var assignment = GetVariableAssignment(key);
-        if (assignment?.Variables is null) return defaultValue;
+        Assignment assignment;
+        do
+        {
+            assignment = GetVariableAssignment(key);
+            Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
+            if (assignment?.Variables is null) return defaultValue;
 
-        if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);
+            if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);
+        } while (Volatile.Read(ref assignment.Exposed) == 2);
 
         return assignment.Variables.TryGetValue(key, out var variable) ? variable : defaultValue;
     }
@@ -1557,6 +1795,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 {
                     experimentVariables.Variables.Add(new Dictionary<string, object>());
                 }
+
+            experimentVariables.AssignmentRules = ParseAssignmentRules(experiment);
 
             index[experiment.Name] = experimentVariables;
 
@@ -1990,6 +2230,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         public Experiment Data { get; set; }
         public List<Dictionary<string, object>> Variables { get; set; }
+
+        // Data.AssignmentRules parsed once when the data is installed (null when there are none).
+        internal AudienceMatcher.ParsedRules AssignmentRules { get; set; }
     }
     
     public class ContextCustomFieldValue
@@ -2019,6 +2262,17 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         public bool AudienceMismatch { get; set; }
         public int AttrsSeq { get; set; }
+
+        // The variant was set by a matching assignment rule. It wins over the audience, traffic,
+        // full-on and custom assignments; the exposure is flagged so the collector excludes it
+        // from analysis.
+        internal bool RuleOverride { get; set; }
+        // The assignmentRules string this assignment was resolved against (the environment is
+        // fixed for the context's lifetime), so a refresh that changes the rules makes it stale.
+        internal string RuleKey { get; set; }
+        // A split rule matched while the experiment's unit was not set, so the experiment's own
+        // no-unit variant was given instead of randomizing.
+        internal bool RuleMissingUnit { get; set; }
     }
 
     #endregion
