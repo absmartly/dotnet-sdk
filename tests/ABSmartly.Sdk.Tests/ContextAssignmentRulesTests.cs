@@ -522,6 +522,39 @@ public class ContextAssignmentRulesTests
         PublishedExposures(context).Select(e => e.Variant).Should().Equal(1);
     }
 
+    // Two reads miss the cache; the first builds the no-unit assignment and pauses before exposing
+    // it while the second takes the write lock. The second must reuse that assignment rather than
+    // replace it, or SetUnit retires only the replacement and the unit is exposed twice.
+    [Test]
+    public void ConcurrentCacheMissesShareOneAssignment()
+    {
+        var context = CreateContext(Data(Rules(Split("0/100/0"))), withSession: false);
+        context.SetAttribute("country", "US");
+
+        using var looked = new ManualResetEventSlim();
+        using var resume = new ManualResetEventSlim();
+        Task<int>? first = null;
+        context.AfterAssignmentLookup = () =>
+        {
+            looked.Set();
+            resume.Wait();
+        };
+        context.BeforeAssignmentRebuild = () =>
+        {
+            first = Task.Run(() => context.GetTreatment(Experiment));
+            looked.Wait();
+        };
+
+        context.PeekTreatment(Experiment);
+        context.SetUnit("session_id", SessionId);
+        resume.Set();
+
+        first!.Wait();
+        var current = context.GetTreatment(Experiment);
+        first.Result.Should().Be(current);
+        PublishedExposures(context).Select(e => e.Variant).Should().Equal(current);
+    }
+
     [Test]
     public void SplitRuleGivesTheFullOnVariantWhileTheUnitIsMissingOnAFullOnExperiment()
     {

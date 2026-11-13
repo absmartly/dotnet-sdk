@@ -66,6 +66,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // Test seam: runs once between an assignment lookup and its exposure, to force a race there.
     internal Action AfterAssignmentLookup;
 
+    // Test seam: runs once between a cache miss and the write lock, to force a concurrent rebuild.
+    internal Action BeforeAssignmentRebuild;
+
     private volatile bool _closed;
     private int _closing;
     private readonly object _closeLock = new();
@@ -837,63 +840,80 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return parsed;
     }
 
+    // The cached assignment when it is still up to date, else null. Called with the context lock
+    // held (read or write); it takes none itself.
+    private Assignment TryGetUpToDateAssignment(string experimentName)
+    {
+        var assignment = _assignmentCache.TryGetValue(experimentName, out var e) ? e : null;
+        if (assignment != null)
+        {
+            var experiment = GetExperiment(experimentName);
+
+            if (_overrides.TryGetValue(experimentName, out var @override))
+            {
+                if (assignment.Overridden && assignment.Variant == @override)
+                    // override is up-to-date
+                    return assignment;
+            }
+            else if (experiment == null)
+            {
+                // A rule-won assignment is not "assigned" either, but its variant came from
+                // the experiment's rules, so it is rebuilt once the experiment is gone.
+                if (!assignment.Assigned && !assignment.RuleOverride)
+                    // previously not-running experiment
+                    return assignment;
+            }
+            else if (assignment.RuleOverride ||
+                     !_customAssignments.TryGetValue(experimentName, out var custom) ||
+                     custom == assignment.Variant)
+            {
+                // A matching rule wins over a custom assignment, so a custom mismatch is not
+                // staleness for a rule-won assignment.
+                // Read before evaluating: an attribute set meanwhile must trigger a new check.
+                var attrsSeq = _attrsSeq;
+                if (ExperimentMatches(experiment.Data, assignment) &&
+                    RuleMatches(experiment, assignment, attrsSeq) &&
+                    AudienceMatches(experiment.Data, assignment, attrsSeq))
+                {
+                    // Still valid for these attributes: record it, so rules and audience are
+                    // not re-evaluated on every call until the next SetAttribute (as the JS
+                    // SDK). A racing reader can only store an older sequence, which merely
+                    // causes one more evaluation.
+                    if (attrsSeq > assignment.AttrsSeq) assignment.AttrsSeq = attrsSeq;
+                    // assignment is up-to-date
+                    return assignment;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private Assignment GetAssignment(string experimentName)
     {
         try
         {
             _contextLock.EnterReadLock();
 
-            var assignment = _assignmentCache.TryGetValue(experimentName, out var e) ? e : null;
-            if (assignment != null)
-            {
-                var experiment = GetExperiment(experimentName);
-
-                if (_overrides.TryGetValue(experimentName, out var @override))
-                {
-                    if (assignment.Overridden && assignment.Variant == @override)
-                        // override is up-to-date
-                        return assignment;
-                }
-                else if (experiment == null)
-                {
-                    // A rule-won assignment is not "assigned" either, but its variant came from
-                    // the experiment's rules, so it is rebuilt once the experiment is gone.
-                    if (!assignment.Assigned && !assignment.RuleOverride)
-                        // previously not-running experiment
-                        return assignment;
-                }
-                else if (assignment.RuleOverride ||
-                         !_customAssignments.TryGetValue(experimentName, out var custom) ||
-                         custom == assignment.Variant)
-                {
-                    // A matching rule wins over a custom assignment, so a custom mismatch is not
-                    // staleness for a rule-won assignment.
-                    // Read before evaluating: an attribute set meanwhile must trigger a new check.
-                    var attrsSeq = _attrsSeq;
-                    if (ExperimentMatches(experiment.Data, assignment) &&
-                        RuleMatches(experiment, assignment, attrsSeq) &&
-                        AudienceMatches(experiment.Data, assignment, attrsSeq))
-                    {
-                        // Still valid for these attributes: record it, so rules and audience are
-                        // not re-evaluated on every call until the next SetAttribute (as the JS
-                        // SDK). A racing reader can only store an older sequence, which merely
-                        // causes one more evaluation.
-                        if (attrsSeq > assignment.AttrsSeq) assignment.AttrsSeq = attrsSeq;
-                        // assignment is up-to-date
-                        return assignment;
-                    }
-                }
-            }
+            var current = TryGetUpToDateAssignment(experimentName);
+            if (current != null) return current;
         }
         finally
         {
             _contextLock.ExitReadLock();
         }
 
+        Interlocked.Exchange(ref BeforeAssignmentRebuild, null)?.Invoke();
+
         // cache miss or out-dated
         try
         {
             _contextLock.EnterWriteLock();
+
+            // Another reader may have rebuilt the entry while this one waited for the write lock;
+            // replacing it would hide that assignment from SetUnit's retirement.
+            var current = TryGetUpToDateAssignment(experimentName);
+            if (current != null) return current;
 
             var experiment = GetExperiment(experimentName);
             var attrsSeqAtBuild = _attrsSeq;
