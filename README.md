@@ -17,7 +17,7 @@ Through .NET Standard 2.0 it is compatible with:
 - .NET Core 2.0+
 - .NET Framework 4.6.1+
 
-**Note on Naming:** The main SDK class has been renamed from `ABSdk` to `ABsmartly` (with uppercase AB and lowercase smartly) to standardize naming across all SDKs. The old class names (`ABSdk`, `ABSdkConfig`, `ABSdkHttpClientFactory`, etc.) are still available as obsolete aliases for backwards compatibility, but new code should use the updated naming: `ABsmartly`.
+**Note on Naming:** The SDK entry point is now `ABsmartly.Sdk` (class `Sdk` in the `ABsmartly` namespace), replacing `ABSmartly.ABSdk`. The other types stay in the `ABSmartly` namespace. Only the names published in 1.3.0 are kept as obsolete aliases (`ABSdk`, `ABSdkConfig`, `ABSdkHttpClientFactory`, `IABSdkHttpClientFactory`, `IABSdkHttpClient`, `AddABSmartly()`, `IContextEventHandler`, `DefaultContextEventHandler`); they still compile and work, but new code should use `ABsmartly.Sdk`, `ABsmartlyConfig`, `ABsmartlyHttpClientFactory`, `IABsmartlyHttpClientFactory`, `AddABsmartly()` and `IContextPublisher`.
 
 ## Installation
 
@@ -47,7 +47,7 @@ using ABSmartly.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// AddABsmartly registers its own named HttpClient (ABsmartly.HttpClientName),
+// AddABsmartly registers its own named HttpClient (ABsmartly.Sdk.HttpClientName),
 // so no separate AddHttpClient() call is needed.
 builder.Services.AddABsmartly(
     builder.Configuration.GetSection("ABSmartly"),
@@ -70,7 +70,7 @@ app.Run();
 }
 ```
 
-The `ABsmartly` instance is added as a singleton and can be injected where needed:
+The `ABsmartly.Sdk` instance is added as a singleton and can be injected where needed:
 
 ```csharp
 using ABSmartly;
@@ -80,9 +80,9 @@ using Microsoft.AspNetCore.Mvc;
 [Route("[controller]")]
 public class TestController : ControllerBase
 {
-    private readonly ABsmartly _absmartly;
+    private readonly ABsmartly.Sdk _absmartly;
 
-    public TestController(ABsmartly absmartly)
+    public TestController(ABsmartly.Sdk absmartly)
     {
         _absmartly = absmartly;
     }
@@ -104,7 +104,7 @@ using Microsoft.Extensions.DependencyInjection;
 var serviceProvider = new ServiceCollection().AddHttpClient().BuildServiceProvider();
 var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
 
-var absmartly = new ABsmartly(new ABsmartlyHttpClientFactory(httpClientFactory), new ABSmartlyServiceConfiguration
+var absmartly = new ABsmartly.Sdk(new ABsmartlyHttpClientFactory(httpClientFactory), new ABSmartlyServiceConfiguration
 {
     Environment = "development",
     Application = "website",
@@ -144,7 +144,7 @@ These are deliberate decisions by the SDK owners. They keep the behaviour of the
 
 When injecting `IABsmartlyHttpClientFactory`, ensure it creates instances of the `IABsmartlyHttpClient` interface, which is a wrapper on top of `HttpClient`. The SDK provides `ABSmartly.Services.ABsmartlyHttpClientFactory.HttpClientWrapper` for this purpose.
 
-When injecting `IHttpClientFactory`, ensure it creates named `HttpClient` instances with the name `ABSmartlySDK.HttpClient` (available as `ABsmartly.HttpClientName`).
+When injecting `IHttpClientFactory`, ensure it creates named `HttpClient` instances with the name `ABSmartlySDK.HttpClient` (available as `ABsmartly.Sdk.HttpClientName`).
 
 ## Creating a New Context
 
@@ -394,7 +394,7 @@ builder.Services.AddABsmartly(
     config => config.ContextEventLogger = new CustomEventLogger());
 
 // Or when creating SDK instance manually
-var absmartly = new ABsmartly(
+var absmartly = new ABsmartly.Sdk(
     new ABsmartlyHttpClientFactory(httpClientFactory),
     new ABSmartlyServiceConfiguration { /* Endpoint, ApiKey, Environment, Application */ },
     new ABsmartlyConfig { ContextEventLogger = new CustomEventLogger() });
@@ -446,7 +446,7 @@ var app = builder.Build();
 
 app.UseSession();
 
-app.MapGet("/", async (ABsmartly absmartly, HttpContext httpContext) =>
+app.MapGet("/", async (ABsmartly.Sdk absmartly, HttpContext httpContext) =>
 {
     var sessionId = httpContext.Session.GetString("SessionId")
         ?? Guid.NewGuid().ToString();
@@ -501,9 +501,9 @@ using Microsoft.AspNetCore.Mvc;
 
 public class HomeController : Controller
 {
-    private readonly ABsmartly _absmartly;
+    private readonly ABsmartly.Sdk _absmartly;
 
-    public HomeController(ABsmartly absmartly)
+    public HomeController(ABsmartly.Sdk absmartly)
     {
         _absmartly = absmartly;
     }
@@ -579,11 +579,11 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 public class IndexModel : PageModel
 {
-    private readonly ABsmartly _absmartly;
+    private readonly ABsmartly.Sdk _absmartly;
 
     public int Treatment { get; set; }
 
-    public IndexModel(ABsmartly absmartly)
+    public IndexModel(ABsmartly.Sdk absmartly)
     {
         _absmartly = absmartly;
     }
@@ -634,7 +634,7 @@ app.Run();
 @* Pages/Index.razor *@
 @page "/"
 @using ABSmartly
-@inject ABsmartly Sdk
+@inject ABsmartly.Sdk Sdk
 
 <h1>@(treatment == 0 ? "Control Group" : "Treatment Group")</h1>
 
@@ -726,7 +726,7 @@ For Blazor or other component-based scenarios with navigation. `CreateContextAsy
 @page "/guarded"
 @using ABSmartly
 @implements IDisposable
-@inject ABsmartly Sdk
+@inject ABsmartly.Sdk Sdk
 
 <h1>@(treatment == 0 ? "Control Group" : "Treatment Group")</h1>
 

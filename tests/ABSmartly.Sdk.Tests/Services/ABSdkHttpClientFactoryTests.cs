@@ -13,6 +13,6 @@ public class ABSdkHttpClientFactoryTests
 
         var _ = sdkClient.CreateClient();
 
-        Mock.Get(httpClientFactory).Verify(x => x.CreateClient(ABsmartly.HttpClientName), Times.Once);
+        Mock.Get(httpClientFactory).Verify(x => x.CreateClient(ABsmartly.Sdk.HttpClientName), Times.Once);
     }
 }
