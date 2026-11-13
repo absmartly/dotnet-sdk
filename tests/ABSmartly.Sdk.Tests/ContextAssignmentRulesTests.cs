@@ -494,34 +494,32 @@ public class ContextAssignmentRulesTests
         PublishedExposures(context).Select(e => e.Variant).Should().Equal(0);
     }
 
-    // A GetTreatment racing SetUnit must never return the no-unit variant without exposing it:
-    // when SetUnit retires the assignment first, the read re-resolves it.
+    // SetUnit retires the no-unit assignment after GetTreatment has looked it up but before it is
+    // exposed: the read must re-resolve rather than return variant 0 with no exposure.
     [Test]
-    public void GetTreatmentRacingSetUnitExposesTheVariantItReturns()
+    public void GetTreatmentReresolvesAnAssignmentRetiredBeforeItsExposure()
     {
-        for (var i = 0; i < 2000; i++)
-        {
-            _published.Clear();
-            var context = CreateContext(Data(Rules(Split("0/100/0"))), withSession: false);
-            context.SetAttribute("country", "US");
-            context.PeekTreatment(Experiment).Should().Be(0);
+        var context = CreateContext(Data(Rules(Split("0/100/0"))), withSession: false);
+        context.SetAttribute("country", "US");
+        context.PeekTreatment(Experiment).Should().Be(0);
 
-            using var barrier = new Barrier(2);
-            var read = Task.Run(() =>
-            {
-                barrier.SignalAndWait();
-                return context.GetTreatment(Experiment);
-            });
-            var write = Task.Run(() =>
-            {
-                barrier.SignalAndWait();
-                context.SetUnit("session_id", SessionId);
-            });
-            Task.WaitAll(read, write);
+        context.AfterAssignmentLookup = () => context.SetUnit("session_id", SessionId);
 
-            PublishedExposures(context).Select(e => e.Variant).Should().Equal(new[] { read.Result },
-                "iteration {0} returned variant {1}", i, read.Result);
-        }
+        context.GetTreatment(Experiment).Should().Be(1);
+        PublishedExposures(context).Select(e => e.Variant).Should().Equal(1);
+    }
+
+    [Test]
+    public void GetVariableValueReresolvesAnAssignmentRetiredBeforeItsExposure()
+    {
+        var context = CreateContext(Data(Rules(Split("0/100/0"))), withSession: false);
+        context.SetAttribute("country", "US");
+        context.PeekTreatment(Experiment).Should().Be(0);
+
+        context.AfterAssignmentLookup = () => context.SetUnit("session_id", SessionId);
+
+        context.GetVariableValue("button.color", "default").Should().Be("blue");
+        PublishedExposures(context).Select(e => e.Variant).Should().Equal(1);
     }
 
     [Test]

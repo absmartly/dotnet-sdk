@@ -63,6 +63,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         set => _systemAttributes = value ?? EmptySystemAttributes;
     }
 
+    // Test seam: runs once between an assignment lookup and its exposure, to force a race there.
+    internal Action AfterAssignmentLookup;
+
     private volatile bool _closed;
     private int _closing;
     private readonly object _closeLock = new();
@@ -1313,6 +1316,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         do
         {
             assignment = GetAssignment(experimentName);
+            Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
             if (doExposure && assignment.Exposed == 0)
                 QueueExposure(assignment);
         } while (Volatile.Read(ref assignment.Exposed) == 2);
@@ -1455,11 +1459,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         CheckReady(true);
 
-        // Re-resolved when a concurrent SetUnit retires it, as in InternalGetTreatmentAsync.
         Assignment assignment;
         do
         {
             assignment = GetVariableAssignment(key);
+            Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
             if (assignment?.Variables is null) return defaultValue;
 
             if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);
