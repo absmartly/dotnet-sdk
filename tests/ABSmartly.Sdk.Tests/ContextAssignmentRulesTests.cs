@@ -231,10 +231,11 @@ public class ContextAssignmentRulesTests
         PublishedExposures(context).Single().RuleOverride.Should().BeFalse();
     }
 
-    [Test]
-    public void AssignVariantBeyondIntRangeFallsBackWithoutTryingLaterRules()
+    [TestCase("2147483648")]
+    [TestCase("99999999999999999999")]
+    public void AssignVariantBeyondIntRangeFallsBackWithoutTryingLaterRules(string variant)
     {
-        var overflowing = "{\"type\":\"assign\",\"variant\":2147483648,\"conditions\":null}";
+        var overflowing = "{\"type\":\"assign\",\"variant\":" + variant + ",\"conditions\":null}";
         var context = CreateContext(Data(Rules(overflowing, Assign(1, conditions: null))));
 
         context.GetTreatment(Experiment).Should().Be(NormalVariant);

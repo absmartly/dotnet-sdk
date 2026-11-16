@@ -140,6 +140,9 @@ public class AudienceMatcherRulesTests
         ShouldAssign(EvaluateUs(Assign(null, "[]", "1e100"), Fallback), int.MaxValue);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "-2147483649"), Fallback), int.MinValue);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "2147483647"), Fallback), int.MaxValue);
+        // Beyond Int64, Json.NET reads a BigInteger.
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "99999999999999999999"), Fallback), int.MaxValue);
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "-99999999999999999999"), Fallback), int.MinValue);
     }
 
     [Test]

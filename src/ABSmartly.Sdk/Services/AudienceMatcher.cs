@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Numerics;
 using ABSmartly.JsonExpressions;
 using Microsoft.Extensions.Logging;
 
@@ -146,6 +147,9 @@ public class AudienceMatcher
                 return i;
             case long l:
                 return l < int.MinValue ? int.MinValue : l > int.MaxValue ? int.MaxValue : (int)l;
+            case BigInteger b:
+                // Json.NET reads integers beyond Int64 as BigInteger; never in the int range.
+                return b.Sign < 0 ? int.MinValue : int.MaxValue;
             case double dbl:
                 d = dbl;
                 break;
