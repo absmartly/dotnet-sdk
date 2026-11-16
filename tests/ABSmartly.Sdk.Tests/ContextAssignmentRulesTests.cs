@@ -382,7 +382,6 @@ public class ContextAssignmentRulesTests
         PublishedExposures(context).Should().ContainSingle();
     }
 
-    // An attribute value that counts how often a rule condition reads it.
     private sealed class CountingAttribute : Dictionary<string, object>, IDictionary<string, object>
     {
         public int Lookups;
@@ -642,7 +641,6 @@ public class ContextAssignmentRulesTests
         exposures[0].Variant.Should().Be(0);
         exposures[0].RuleOverride.Should().BeTrue();
 
-        // The exposed no-unit split stays pinned once the unit arrives.
         context.SetUnit("session_id", SessionId);
         context.GetTreatment(Experiment).Should().Be(0);
         PublishedExposures(context).Should().ContainSingle();
