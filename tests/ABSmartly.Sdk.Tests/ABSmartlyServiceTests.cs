@@ -131,6 +131,7 @@ public class ABSmartlyServiceTests
         Mock.Get(_httpClientFactory).Verify(x => x.CreateClient(), Times.Once);
         Mock.Get(_httpClient).Verify(x => x.GetAsync(uri), Times.Once);
         Mock.Get(_deserializer).Verify(x => x.Deserialize(It.IsAny<Stream>()), Times.Once);
+        VerifyDefaultHeaders(Mock.Get(_httpClient));
     }
 
     [Test]
@@ -294,7 +295,69 @@ public class ABSmartlyServiceTests
         httpClientMock.Verify(x => x.AddHeader("X-Application", "website"));
         httpClientMock.Verify(x => x.AddHeader("X-Environment", "dev"));
         httpClientMock.Verify(x => x.AddHeader("X-Application-Version", "0"));
-        httpClientMock.Verify(x => x.AddHeader("X-Agent", "absmartly-dotnet-sdk"));
+        httpClientMock.Verify(x => x.AddHeader("X-Agent", "absmartly-dotnet-sdk/" + PackageVersion()));
+    }
+
+    // The <PackageVersion> in the SDK project, which X-Agent must carry.
+    private static string PackageVersion()
+    {
+        var csproj = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory,
+            "..", "..", "..", "..", "..", "src", "ABSmartly.Sdk", "ABSmartly.Sdk.csproj"));
+        var match = System.Text.RegularExpressions.Regex.Match(csproj, "<PackageVersion>([^<]+)</PackageVersion>");
+        match.Success.Should().BeTrue();
+        return match.Groups[1].Value;
+    }
+
+    // The collector binds X-Application-Version as a Long and rejects anything else with HTTP 400,
+    // so only a whole number of 1-18 ASCII digits (after trimming) is sent; anything else is "0",
+    // as the Java SDK's Client.applicationVersionHeader().
+    [TestCase(null, "0")]
+    [TestCase("", "0")]
+    [TestCase("   ", "0")]
+    [TestCase("1004", "1004")]
+    [TestCase(" 1004 ", "1004")]
+    [TestCase("3.2.1", "0")]
+    [TestCase("-5", "0")]
+    [TestCase("+5", "0")]
+    [TestCase("1e3", "0")]
+    [TestCase("\u0661\u0662", "0")]
+    [TestCase("123456789012345678", "123456789012345678")]
+    [TestCase("1234567890123456789", "0")]
+    public async Task ApplicationVersionHeaderIsAWholeNumberOnGetAndPut(string? configured, string expected)
+    {
+        var endpoint = "https://localhost/v1";
+        var config = H.ServiceConfig("website", endpoint, "dev", "test-api-key");
+        config.ApplicationVersion = configured!;
+        var service = new ABSmartlyService(config, _httpClientFactory, _deserializer, _serializer);
+
+        var getClient = Mock.Of<IABsmartlyHttpClient>();
+        var putClient = Mock.Of<IABsmartlyHttpClient>();
+        Mock.Get(_httpClientFactory).SetupSequence(x => x.CreateClient()).Returns(getClient).Returns(putClient);
+
+        Mock.Get(getClient).Setup(x => x.GetAsync($"{endpoint}/context?application=website&environment=dev"))
+            .Returns(() => GetResponse(HttpStatusCode.OK, Encoding.UTF8.GetBytes("{}")));
+        Mock.Get(_deserializer).Setup(x => x.Deserialize(It.IsAny<Stream>())).Returns(new ContextData());
+        (await service.GetContextDataAsync()).Should().NotBeNull();
+
+        var publishEvent = new PublishEvent();
+        Mock.Get(_serializer).Setup(x => x.Serialize(publishEvent)).Returns(Array.Empty<byte>());
+        Mock.Get(putClient).Setup(x => x.PutAsync($"{endpoint}/context", It.IsAny<HttpContent>()))
+            .Returns(() => GetResponse(HttpStatusCode.OK, Array.Empty<byte>()));
+        (await service.PublishAsync(publishEvent)).Should().BeTrue();
+
+        foreach (var client in new[] { getClient, putClient })
+        {
+            Mock.Get(client).Verify(x => x.AddHeader("X-Application-Version", expected), Times.Once);
+            Mock.Get(client).Verify(x => x.AddHeader("X-Application-Version", It.Is<string>(v => v != expected)),
+                Times.Never);
+        }
+    }
+
+    [Test]
+    public void AgentIsSdkNameSlashVersion()
+    {
+        ABSmartly.Internal.SdkInfo.Agent.Should().MatchRegex(@"^absmartly-dotnet-sdk/\d+\.\d+\.\d+");
+        ABSmartly.Internal.SdkInfo.Version.Should().Be(PackageVersion());
     }
 
     private Task<HttpResponseMessage> GetResponse(HttpStatusCode statusCode, byte[] bytes)

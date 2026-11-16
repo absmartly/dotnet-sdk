@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using ABSmartly.Extensions;
+using ABSmartly.Internal;
 using ABSmartly.Models;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
@@ -122,7 +123,8 @@ public class ABSmartlyService : IABSmartlyServiceClient
         try
         {
             using var httpClient = _httpClientFactory.CreateClient();
-            var uri = QueryHelpers.AddQueryString(_url, GetDefaultQueryParameters());
+            SetupDefaultHeaders(httpClient);
+            var uri =QueryHelpers.AddQueryString(_url, GetDefaultQueryParameters());
             using var response = await httpClient.GetAsync(uri).ConfigureUnboundContinuation();
             response.EnsureSuccessStatusCode();
 
@@ -182,8 +184,24 @@ public class ABSmartlyService : IABSmartlyServiceClient
         client.AddHeader("X-API-Key", _config.ApiKey);
         client.AddHeader("X-Application", _config.Application);
         client.AddHeader("X-Environment", _config.Environment);
-        client.AddHeader("X-Application-Version", "0");
-        client.AddHeader("X-Agent", "absmartly-dotnet-sdk");
+        client.AddHeader("X-Application-Version", ApplicationVersionHeader(_config.ApplicationVersion));
+        client.AddHeader("X-Agent", SdkInfo.Agent);
+    }
+
+    // The collector binds X-Application-Version as a whole number (a Long) and rejects anything else
+    // with HTTP 400, so only 1-18 ASCII digits (no sign, so no overflow) are sent; any other value,
+    // such as "2.4.1", is sent as "0", as the Java SDK.
+    internal static string ApplicationVersionHeader(string applicationVersion)
+    {
+        var version = applicationVersion?.Trim();
+        if (string.IsNullOrEmpty(version) || version.Length > 18) return "0";
+
+        foreach (var c in version)
+        {
+            if (c < '0' || c > '9') return "0";
+        }
+
+        return version;
     }
 
     private Dictionary<string, string> GetDefaultQueryParameters()

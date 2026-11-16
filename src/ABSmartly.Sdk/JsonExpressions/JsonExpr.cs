@@ -19,7 +19,12 @@ public static class JsonExpr
         { "gt", new GreaterThanOperator() },
         { "gte", new GreaterThanOrEqualOperator() },
         { "lt", new LessThanOperator() },
-        { "lte", new LessThanOrEqualOperator() }
+        { "lte", new LessThanOrEqualOperator() },
+        { "semver_eq", new SemverEqualsOperator() },
+        { "semver_gt", new SemverGreaterThanOperator() },
+        { "semver_gte", new SemverGreaterThanOrEqualOperator() },
+        { "semver_lt", new SemverLessThanOperator() },
+        { "semver_lte", new SemverLessThanOrEqualOperator() }
     };
 
     public static bool? EvaluateBooleanExpr(object expression, Dictionary<string, object> variables)

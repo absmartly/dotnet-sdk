@@ -16,9 +16,12 @@ public sealed class Exposure
     public bool FullOn { get; set; }
     public bool Custom { get; set; }
     public bool AudienceMismatch { get; set; }
+    // True when a matching custom assignment rule selected the variant. The collector
+    // excludes this exposure from normal experiment analysis, as it does for overrides.
+    public bool RuleOverride { get; set; }
 
     private string DebugView =>
-        $"Exposure{{id={Id}, name={Name}, unit={Unit}, variant={Variant}, exposedAt={ExposedAt}, assigned={Assigned}, eligible={Eligible}, overridden={Overridden}, fullOn={FullOn}, custom={Custom}, audienceMismatch={AudienceMismatch}}}";
+        $"Exposure{{id={Id}, name={Name}, unit={Unit}, variant={Variant}, exposedAt={ExposedAt}, assigned={Assigned}, eligible={Eligible}, overridden={Overridden}, fullOn={FullOn}, custom={Custom}, audienceMismatch={AudienceMismatch}, ruleOverride={RuleOverride}}}";
 
     public override string ToString()
     {
@@ -39,7 +42,8 @@ public sealed class Exposure
                Overridden == other.Overridden &&
                FullOn == other.FullOn &&
                Custom == other.Custom &&
-               AudienceMismatch == other.AudienceMismatch;
+               AudienceMismatch == other.AudienceMismatch &&
+               RuleOverride == other.RuleOverride;
     }
 
     public override bool Equals(object obj)
@@ -65,6 +69,7 @@ public sealed class Exposure
             hashCode = (hashCode * 397) ^ FullOn.GetHashCode();
             hashCode = (hashCode * 397) ^ Custom.GetHashCode();
             hashCode = (hashCode * 397) ^ AudienceMismatch.GetHashCode();
+            hashCode = (hashCode * 397) ^ RuleOverride.GetHashCode();
             return hashCode;
         }
     }
