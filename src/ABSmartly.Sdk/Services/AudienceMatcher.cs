@@ -134,8 +134,9 @@ public class AudienceMatcher
         }
     }
 
-    // As JavaScript's Number.isInteger: integral numbers (including 2.0) within int range. Strings
-    // and booleans are not numbers.
+    // As JavaScript's Number.isInteger: integral numbers (including 2.0); strings and booleans are
+    // not numbers. One beyond the int range is clamped to int.MinValue/int.MaxValue, which no
+    // experiment has as a variant, so its rule still matches and stops rule evaluation, as JS does.
     private static int? AsInteger(object value)
     {
         double d;
@@ -144,7 +145,7 @@ public class AudienceMatcher
             case int i:
                 return i;
             case long l:
-                return l is >= int.MinValue and <= int.MaxValue ? (int)l : null;
+                return l < int.MinValue ? int.MinValue : l > int.MaxValue ? int.MaxValue : (int)l;
             case double dbl:
                 d = dbl;
                 break;
@@ -158,9 +159,8 @@ public class AudienceMatcher
                 return null;
         }
 
-        if (double.IsNaN(d) || double.IsInfinity(d) || d != Math.Floor(d) || d > int.MaxValue || d < int.MinValue)
-            return null;
-        return (int)d;
+        if (double.IsNaN(d) || double.IsInfinity(d) || d != Math.Floor(d)) return null;
+        return d < int.MinValue ? int.MinValue : d > int.MaxValue ? int.MaxValue : (int)d;
     }
 
     // Each value is parseFloat(value) / 100, as the JavaScript SDK, with no normalisation; any

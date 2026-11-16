@@ -63,7 +63,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         set => _systemAttributes = value ?? EmptySystemAttributes;
     }
 
-    // Test seam: runs once between an assignment lookup and its exposure, to force a race there.
+    // Test seams, null in production (checked before the interlocked exchange, so they cost a plain
+    // field read). Runs once between an assignment lookup and its exposure, to force a race there.
     internal Action AfterAssignmentLookup;
 
     // Test seam: runs once between a cache miss and the write lock, to force a concurrent rebuild.
@@ -724,12 +725,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return true;
     }
 
-    // Called with the read lock held, so it does not write any cache: a changed rule outcome is
-    // reported as stale for the write path to rebuild. Rules are re-resolved only when they
-    // changed (a refresh) or an attribute was set since the assignment was built.
-    private bool RuleMatches(ExperimentVariables experiment, Assignment assignment, int attrsSeq)
+    // Does not write any cache: a changed rule outcome is reported as stale for the write path to
+    // rebuild. Rules are re-resolved only when they changed (a refresh) or an attribute was set
+    // since the assignment was last validated.
+    private bool RuleMatches(ExperimentVariables experiment, Assignment assignment, int attrsSeq, bool rulesChanged)
     {
-        var rulesChanged = !string.Equals(experiment.Data.AssignmentRules, assignment.RuleKey, StringComparison.Ordinal);
         if (!rulesChanged && attrsSeq <= assignment.AttrsSeq) return true;
 
         // An exposed split resolved without its unit keeps resolving as if the unit were still
@@ -841,8 +841,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     }
 
     // The cached assignment when it is still up to date, else null. Called with the context lock
-    // held (read or write); it takes none itself.
-    private Assignment TryGetUpToDateAssignment(string experimentName)
+    // held (read, or write when writeLocked); it takes none itself.
+    private Assignment TryGetUpToDateAssignment(string experimentName, bool writeLocked)
     {
         var assignment = _assignmentCache.TryGetValue(experimentName, out var e) ? e : null;
         if (assignment != null)
@@ -869,16 +869,23 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             {
                 // A matching rule wins over a custom assignment, so a custom mismatch is not
                 // staleness for a rule-won assignment.
+                // Rules changed by a refresh are revalidated only under the write lock, where
+                // recording the new rules together with the sequence they were validated at
+                // cannot race another reader validating different rules or attributes.
+                var rulesChanged = !string.Equals(experiment.Data.AssignmentRules, assignment.RuleKey,
+                    StringComparison.Ordinal);
                 // Read before evaluating: an attribute set meanwhile must trigger a new check.
                 var attrsSeq = _attrsSeq;
-                if (ExperimentMatches(experiment.Data, assignment) &&
-                    RuleMatches(experiment, assignment, attrsSeq) &&
+                if ((writeLocked || !rulesChanged) &&
+                    ExperimentMatches(experiment.Data, assignment) &&
+                    RuleMatches(experiment, assignment, attrsSeq, rulesChanged) &&
                     AudienceMatches(experiment.Data, assignment, attrsSeq))
                 {
-                    // Still valid for these attributes: record it, so rules and audience are
-                    // not re-evaluated on every call until the next SetAttribute (as the JS
-                    // SDK). A racing reader can only store an older sequence, which merely
-                    // causes one more evaluation.
+                    // Still valid for these rules and attributes: record it, so they are not
+                    // re-evaluated on every call until the next SetAttribute or rule change (as
+                    // the JS SDK records ruleKey and attrsSeq). A racing reader can only store an
+                    // older sequence, which merely causes one more evaluation.
+                    if (rulesChanged) assignment.RuleKey = experiment.Data.AssignmentRules;
                     if (attrsSeq > assignment.AttrsSeq) assignment.AttrsSeq = attrsSeq;
                     // assignment is up-to-date
                     return assignment;
@@ -895,7 +902,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             _contextLock.EnterReadLock();
 
-            var current = TryGetUpToDateAssignment(experimentName);
+            var current = TryGetUpToDateAssignment(experimentName, false);
             if (current != null) return current;
         }
         finally
@@ -903,7 +910,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             _contextLock.ExitReadLock();
         }
 
-        Interlocked.Exchange(ref BeforeAssignmentRebuild, null)?.Invoke();
+        if (BeforeAssignmentRebuild != null) Interlocked.Exchange(ref BeforeAssignmentRebuild, null)?.Invoke();
 
         // cache miss or out-dated
         try
@@ -912,7 +919,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
             // Another reader may have rebuilt the entry while this one waited for the write lock;
             // replacing it would hide that assignment from SetUnit's retirement.
-            var current = TryGetUpToDateAssignment(experimentName);
+            var current = TryGetUpToDateAssignment(experimentName, true);
             if (current != null) return current;
 
             var experiment = GetExperiment(experimentName);
@@ -1336,7 +1343,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         do
         {
             assignment = GetAssignment(experimentName);
-            Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
+            if (AfterAssignmentLookup != null) Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
             if (doExposure && assignment.Exposed == 0)
                 QueueExposure(assignment);
         } while (Volatile.Read(ref assignment.Exposed) == 2);
@@ -1483,7 +1490,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         do
         {
             assignment = GetVariableAssignment(key);
-            Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
+            if (AfterAssignmentLookup != null) Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
             if (assignment?.Variables is null) return defaultValue;
 
             if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);

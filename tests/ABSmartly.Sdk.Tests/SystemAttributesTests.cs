@@ -285,6 +285,56 @@ public class SystemAttributesTests
         context.GetTreatment("exp_test_ab").Should().Be(0);
     }
 
+    // Through the production path: with ApplicationVersion configured on the service, nothing named
+    // app_version reaches audiences or rule conditions (checked for presence, not one value) or the
+    // serialized publish body.
+    [Test]
+    public void ConfiguredApplicationVersionIsNeverInjectedOrPublished()
+    {
+        const string present = "{\"not\":{\"null\":{\"var\":\"app_version\"}}}";
+
+        var serviceConfig = H.ServiceConfig("website", "http://localhost/v1", "production", "test-api-key");
+        serviceConfig.ApplicationVersion = "1004";
+        var absmartly = new ABsmartly.Sdk(Mock.Of<IABsmartlyHttpClientFactory>(), serviceConfig,
+            new ABsmartlyConfig { ContextPublisher = _eventHandler });
+
+        var audienceData = AudienceData("{\"filter\":[" + present + "]}", strict: true);
+        var ruleData = AudienceData(null, strict: false);
+        ruleData.Experiments[0].AssignmentRules =
+            "{\"rules\":[{\"type\":\"assign\",\"variant\":0,\"conditions\":" + present + "}]}";
+
+        // Sanity: the same checks match once the user sets app_version themselves.
+        var withUserValue = absmartly.CreateContextWith(
+            new ContextConfig { PublishDelay = PublishDelay }.SetUnits(_units), audienceData);
+        withUserValue.SetAttribute("app_version", "1004");
+        withUserValue.PeekTreatment("exp_test_ab").Should().Be(1);
+
+        var audience = absmartly.CreateContextWith(
+            new ContextConfig { PublishDelay = PublishDelay }.SetUnits(_units), audienceData);
+        audience.GetTreatment("exp_test_ab").Should().Be(0, "a strict audience requiring app_version mismatches");
+
+        var rule = absmartly.CreateContextWith(
+            new ContextConfig { PublishDelay = PublishDelay }.SetUnits(_units), ruleData);
+        rule.GetTreatment("exp_test_ab").Should().Be(1, "a rule requiring app_version does not match");
+
+        var captured = new List<PublishEvent>();
+        Mock.Get(_eventHandler)
+            .Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((_, e) => captured.Add(e))
+            .Returns(Task.CompletedTask);
+        audience.Publish();
+        rule.Publish();
+
+        captured.Should().HaveCount(2);
+        captured[0].Exposures.Should().ContainSingle().Which.AudienceMismatch.Should().BeTrue();
+        foreach (var e in captured)
+        {
+            var serialized = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(e));
+            serialized.Should().NotContain("app_version").And.NotContain("application_version")
+                .And.NotContain("1004");
+        }
+    }
+
     // End-to-end: the application/environment from the service configuration flow through
     // ABsmartly into the context's audience evaluation, with nothing extra to configure.
     [Test]

@@ -125,10 +125,21 @@ public class AudienceMatcherRulesTests
         ShouldAssign(EvaluateUs(Assign(null, "[]", "\"not a number\""), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "null"), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "1.5"), Fallback), 2);
-        ShouldAssign(EvaluateUs(Assign(null, "[]", "1e100"), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "\"1\""), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "true"), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "1.0")), 1);
+    }
+
+    // As JavaScript's Number.isInteger, an integral variant beyond the int range is still an integer:
+    // the rule matches (and its out-of-range variant then stops rule evaluation) rather than being
+    // skipped for the next rule.
+    [Test]
+    public void IntegralVariantBeyondIntRangeIsReturnedOutOfRange()
+    {
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "2147483648"), Fallback), int.MaxValue);
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "1e100"), Fallback), int.MaxValue);
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "-2147483649"), Fallback), int.MinValue);
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "2147483647"), Fallback), int.MaxValue);
     }
 
     [Test]

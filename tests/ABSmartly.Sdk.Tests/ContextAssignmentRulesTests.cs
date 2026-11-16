@@ -232,6 +232,16 @@ public class ContextAssignmentRulesTests
     }
 
     [Test]
+    public void AssignVariantBeyondIntRangeFallsBackWithoutTryingLaterRules()
+    {
+        var overflowing = "{\"type\":\"assign\",\"variant\":2147483648,\"conditions\":null}";
+        var context = CreateContext(Data(Rules(overflowing, Assign(1, conditions: null))));
+
+        context.GetTreatment(Experiment).Should().Be(NormalVariant);
+        PublishedExposures(context).Single().RuleOverride.Should().BeFalse();
+    }
+
+    [Test]
     public void EnvironmentScopedRuleMatchesOnlyItsEnvironment()
     {
         var rules = Rules(Assign(1, conditions: null, environments: "[\"production\"]"));
@@ -239,6 +249,36 @@ public class ContextAssignmentRulesTests
         CreateContext(Data(rules), environment: "production").PeekTreatment(Experiment).Should().Be(1);
         CreateContext(Data(rules), environment: "staging").PeekTreatment(Experiment).Should().Be(NormalVariant);
         CreateContext(Data(rules), environment: null).PeekTreatment(Experiment).Should().Be(NormalVariant);
+    }
+
+    // Rule environment scoping uses the configured environment (the one X-Environment carries),
+    // never a user attribute of the same name; user values win only inside conditions.
+    [Test]
+    public void EnvironmentScopeIgnoresAUserEnvironmentAttribute()
+    {
+        var context = CreateContext(Data(Rules(Assign(1, conditions: null, environments: "[\"staging\"]"))),
+            environment: "production");
+        context.SetAttribute("environment", "staging");
+
+        context.PeekTreatment(Experiment).Should().Be(NormalVariant);
+
+        var unconfigured = CreateContext(Data(Rules(Assign(1, conditions: null, environments: "[\"staging\"]"))),
+            environment: null);
+        unconfigured.SetAttribute("environment", "staging");
+
+        unconfigured.PeekTreatment(Experiment).Should().Be(NormalVariant);
+    }
+
+    [Test]
+    public void RuleConditionSeesTheUserEnvironmentAttribute()
+    {
+        var condition = "{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}";
+        var context = CreateContext(Data(Rules(Assign(1, condition))), environment: "production");
+        context.PeekTreatment(Experiment).Should().Be(NormalVariant);
+
+        context.SetAttribute("environment", "staging");
+
+        context.PeekTreatment(Experiment).Should().Be(1);
     }
 
     [Test]
@@ -288,6 +328,48 @@ public class ContextAssignmentRulesTests
         context.PeekTreatment(Experiment).Should().Be(0);
     }
 
+    // A refresh that changes the rules JSON without changing their outcome revalidates the cached
+    // assignment once; later reads must not evaluate the rules again (as the JS SDK, which records
+    // the validated ruleKey with attrsSeq).
+    [TestCase("US", 1)]
+    [TestCase("GB", NormalVariant)]
+    public void RefreshThatKeepsTheRuleOutcomeRevalidatesOnlyOnce(string country, int expected)
+    {
+        const string probeCondition = "{\"eq\":[{\"var\":\"probe/country\"},{\"value\":\"US\"}]}";
+        var probe = new CountingAttribute { ["country"] = country };
+        var context = CreateContext(Data(Rules(Assign(1, probeCondition))));
+        context.SetAttribute("probe", probe);
+        context.GetTreatment(Experiment).Should().Be(expected);
+
+        var renamed = Rules(Assign(1, probeCondition).Replace("\"name\":\"assign\"", "\"name\":\"renamed\""));
+        Mock.Get(_dataProvider).Setup(x => x.GetContextDataAsync()).ReturnsAsync(Data(renamed));
+        context.Refresh();
+
+        context.GetTreatment(Experiment).Should().Be(expected);
+        probe.Lookups = 0;
+
+        for (var i = 0; i < 5; ++i)
+        {
+            context.GetTreatment(Experiment).Should().Be(expected);
+            context.PeekTreatment(Experiment).Should().Be(expected);
+        }
+
+        probe.Lookups.Should().Be(0);
+        PublishedExposures(context).Should().ContainSingle();
+    }
+
+    // An attribute value that counts how often a rule condition reads it.
+    private sealed class CountingAttribute : Dictionary<string, object>, IDictionary<string, object>
+    {
+        public int Lookups;
+
+        bool IDictionary<string, object>.TryGetValue(string key, out object value)
+        {
+            Interlocked.Increment(ref Lookups);
+            return TryGetValue(key, out value!);
+        }
+    }
+
     [Test]
     public void InvalidRulesJsonIsIgnored()
     {
@@ -310,6 +392,45 @@ public class ContextAssignmentRulesTests
         data.Should().NotBeNull();
         data.Experiments.Single(e => e.Name == Experiment).AssignmentRules.Should().BeNull();
         data.Experiments.Should().HaveCount(4);
+    }
+
+    // Forward compatibility: unknown keys anywhere in the context payload (including future
+    // holdout/switchback fields), unknown rule types and fields, and unknown operators are
+    // ignored. Only the affected rule or experiment loses its rules; the rest assign as usual.
+    [Test]
+    public void UnknownPayloadFieldsAndRuleShapesAreIgnored()
+    {
+        using var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.context.json");
+        var json = new StreamReader(stream!).ReadToEnd();
+        var rules = Rules(
+            "{\"type\":\"holdout\",\"variant\":0,\"conditions\":null}",
+            "{\"type\":\"assign\",\"variant\":0,\"conditions\":{\"future_op\":[{\"var\":\"country\"}]}}",
+            "{\"type\":\"assign\",\"variant\":1,\"conditions\":null,\"futureField\":{\"x\":[1]}}");
+        json = json.Replace("\"experiments\":[",
+                "\"holdouts\":[{\"id\":9,\"name\":\"h\"}],\"switchbacks\":{\"a\":1},\"futureTop\":[1,{}],\"experiments\":[")
+            .Replace("\"name\":\"exp_test_abc\",",
+                "\"name\":\"exp_test_abc\",\"assignmentRules\":" + JsonSerializer.Serialize(rules) +
+                ",\"holdouts\":[1],\"switchback\":{\"period\":60},\"futureExperimentField\":null,")
+            .Replace("\"name\":\"exp_test_ab\",",
+                "\"name\":\"exp_test_ab\",\"assignmentRules\":\"{\\\"rules\\\":\\\"oops\\\"}\",")
+            .Replace("\"name\":\"A\",", "\"name\":\"A\",\"futureVariantField\":[true],")
+            .Replace("\"name\":\"website\"", "\"name\":\"website\",\"futureApplicationField\":1")
+            .Replace("\"name\": \"country\",", "\"name\": \"country\",\"futureCustomField\":{},");
+        json.Should().Contain("futureVariantField").And.Contain("futureApplicationField")
+            .And.Contain("futureCustomField").And.Contain("futureExperimentField").And.Contain("\\\"oops\\\"");
+
+        var data = new DefaultContextDataDeserializer().Deserialize(new MemoryStream(Encoding.UTF8.GetBytes(json)));
+
+        data.Should().NotBeNull();
+        data.Experiments.Should().HaveCount(4);
+        data.Experiments.Single(e => e.Name == Experiment).AssignmentRules.Should().Be(rules);
+
+        var reference = CreateContext(Data(null!));
+        var context = CreateContext(data);
+        context.GetTreatment(Experiment).Should().Be(1, "unknown rule types and operators are skipped");
+        PublishedExposures(context).Single().RuleOverride.Should().BeTrue();
+        foreach (var name in data.Experiments.Select(e => e.Name).Where(n => n != Experiment))
+            context.PeekTreatment(name).Should().Be(reference.PeekTreatment(name), name);
     }
 
     [Test]
@@ -480,6 +601,29 @@ public class ContextAssignmentRulesTests
         PublishedExposures(context).Select(e => e.Variant).Should().Equal(0);
     }
 
+    // An exposed rule assignment re-resolved by a different rule to the same variant, but now
+    // flagged as resolved without its unit, keeps the exposed assignment: one exposure, not two.
+    [Test]
+    public void ExposedRuleAssignmentSwitchingToANoUnitSplitOnTheSameVariantIsExposedOnce()
+    {
+        var context = CreateContext(Data(Rules(Split("0/100/0"), Assign(0, conditions: null))), withSession: false);
+        context.GetTreatment(Experiment).Should().Be(0);
+
+        context.SetAttribute("country", "US");
+        context.GetTreatment(Experiment).Should().Be(0);
+        context.GetTreatment(Experiment).Should().Be(0);
+
+        var exposures = PublishedExposures(context);
+        exposures.Should().ContainSingle();
+        exposures[0].Variant.Should().Be(0);
+        exposures[0].RuleOverride.Should().BeTrue();
+
+        // The exposed no-unit split stays pinned once the unit arrives.
+        context.SetUnit("session_id", SessionId);
+        context.GetTreatment(Experiment).Should().Be(0);
+        PublishedExposures(context).Should().ContainSingle();
+    }
+
     [Test]
     public void ExposedSplitStaysOnVariantZeroWhenACustomAssignmentLostToIt()
     {
@@ -534,22 +678,23 @@ public class ContextAssignmentRulesTests
         using var looked = new ManualResetEventSlim();
         using var resume = new ManualResetEventSlim();
         Task<int>? first = null;
+        var timeout = TimeSpan.FromSeconds(10);
         context.AfterAssignmentLookup = () =>
         {
             looked.Set();
-            resume.Wait();
+            resume.Wait(timeout);
         };
         context.BeforeAssignmentRebuild = () =>
         {
             first = Task.Run(() => context.GetTreatment(Experiment));
-            looked.Wait();
+            looked.Wait(timeout).Should().BeTrue("the first read should reach its exposure");
         };
 
         context.PeekTreatment(Experiment);
         context.SetUnit("session_id", SessionId);
         resume.Set();
 
-        first!.Wait();
+        first!.Wait(timeout).Should().BeTrue("the first read should finish");
         var current = context.GetTreatment(Experiment);
         first.Result.Should().Be(current);
         PublishedExposures(context).Select(e => e.Variant).Should().Equal(current);
