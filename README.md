@@ -121,7 +121,7 @@ var absmartly = new ABsmartly.Sdk(new ABsmartlyHttpClientFactory(httpClientFacto
 | ApiKey              | `string`                     | &#9989;   | `null`  | Your API key which can be found on the Web Console.                                                                                                                           |
 | Environment         | `string`                     | &#9989;   | `null`  | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure.   |
 | Application         | `string`                     | &#9989;   | `null`  | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running. |
-| ApplicationVersion  | `string`                     | &#10060;  | `"0"`   | The version of your application, sent as the `X-Application-Version` header.                                                                                                 |
+| ApplicationVersion  | `string`                     | &#10060;  | `"0"`   | The version of your application as a whole number (for example `"1004"`), sent as the `X-Application-Version` header. Any other value, such as `"2.4.1"`, is sent as `"0"`.                                                                                                 |
 | ContextEventLogger  | `IContextEventLogger`        | &#10060;  | `null`  | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                   |
 | ContextDataProvider | `IContextDataProvider`       | &#10060;  | auto    | Custom provider for context data (advanced usage)                                                                                                                             |
 | ContextPublisher    | `IContextPublisher`          | &#10060;  | auto    | Custom publisher for events (advanced usage). `ContextEventHandler` (`IContextEventHandler`) still works but is obsolete.                                                     |
@@ -310,7 +310,9 @@ context.SetAttributes(new Dictionary<string, object> {
 });
 ```
 
-Audience filters and assignment-rule conditions can also use `application` and `environment`, which the SDK takes from `ABSmartlyServiceConfiguration`. An attribute you set with the same name overrides them. They are not added to the published attributes; the collector already records both.
+Audience filters and assignment-rule conditions can also use `application` and `environment`, which the SDK takes from `ABSmartlyServiceConfiguration`. An attribute you set with the same name overrides them. They are not added to the published attributes; the collector already records both. Assignment-rule `environments` scoping always uses the configured `Environment`, not an `environment` attribute.
+
+Attributes are re-read after every `SetAttribute()`: the next `GetTreatment()`, `PeekTreatment()` or `GetVariableValue()` re-evaluates the experiment's audience and assignment rules, so the variant can change when an attribute changes whether the audience matches or which rule matches, even after it was exposed (the new variant is then exposed too). Set the attributes an experiment depends on before its first exposure.
 
 Audience filters and assignment-rule conditions support semantic-version comparisons with `semver_eq`, `semver_gt`, `semver_gte`, `semver_lt` and `semver_lte`, for example `{"semver_gte": [{"var": "app_version"}, {"value": "2.4.0"}]}`. A leading `v` and build metadata are ignored, missing parts count as `0` and a pre-release ranks below its release (`2.4.0-beta.1` < `2.4.0`).
 
