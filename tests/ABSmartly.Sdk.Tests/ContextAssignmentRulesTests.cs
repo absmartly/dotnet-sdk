@@ -359,6 +359,29 @@ public class ContextAssignmentRulesTests
         PublishedExposures(context).Should().ContainSingle();
     }
 
+    // Rules changed by a refresh are revalidated only under the write lock: the read-locked lookup
+    // must miss and fall through to the rebuild path, which then keeps the cached assignment.
+    [Test]
+    public void ChangedRulesAreRevalidatedOnlyUnderTheWriteLock()
+    {
+        var context = CreateContext(Data(Rules(Assign(1, conditions: null))));
+        context.GetTreatment(Experiment).Should().Be(1);
+
+        var renamed = Rules(Assign(1, conditions: null).Replace("\"name\":\"assign\"", "\"name\":\"renamed\""));
+        Mock.Get(_dataProvider).Setup(x => x.GetContextDataAsync()).ReturnsAsync(Data(renamed));
+        context.Refresh();
+
+        var rebuilds = 0;
+        context.BeforeAssignmentRebuild = () => ++rebuilds;
+        context.GetTreatment(Experiment).Should().Be(1);
+        rebuilds.Should().Be(1);
+
+        context.BeforeAssignmentRebuild = () => ++rebuilds;
+        context.GetTreatment(Experiment).Should().Be(1);
+        rebuilds.Should().Be(1);
+        PublishedExposures(context).Should().ContainSingle();
+    }
+
     // An attribute value that counts how often a rule condition reads it.
     private sealed class CountingAttribute : Dictionary<string, object>, IDictionary<string, object>
     {
