@@ -127,6 +127,9 @@ public class AudienceMatcherRulesTests
         ShouldAssign(EvaluateUs(Assign(null, "[]", "1.5"), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "\"1\""), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "true"), Fallback), 2);
+        // Beyond the double range, as JavaScript's Infinity: not an integer.
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "1" + new string('0', 309)), Fallback), 2);
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "-1" + new string('0', 309)), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "1.0")), 1);
     }
 

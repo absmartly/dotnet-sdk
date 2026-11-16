@@ -149,6 +149,8 @@ public class AudienceMatcher
                 return l < int.MinValue ? int.MinValue : l > int.MaxValue ? int.MaxValue : (int)l;
             case BigInteger b:
                 // Json.NET reads integers beyond Int64 as BigInteger; never in the int range.
+                // Beyond the double range JavaScript reads Infinity, which is not an integer.
+                if (double.IsInfinity((double)b)) return null;
                 return b.Sign < 0 ? int.MinValue : int.MaxValue;
             case double dbl:
                 d = dbl;
