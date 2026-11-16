@@ -38,6 +38,7 @@ public class HermeticHttpServerTests
     [SetUp]
     public void SetUp()
     {
+        _requests.Clear();
         var port = GetFreePort();
         _baseUrl = $"http://127.0.0.1:{port}";
 
@@ -139,10 +140,32 @@ public class HermeticHttpServerTests
             .MatchRegex(@"^absmartly-[a-z0-9]+-sdk/[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]*)?$");
     }
 
+    // The collector binds X-Application-Version as a Long: a dotted version would make it reject
+    // both the context fetch and the publish with HTTP 400, so the SDK sends "0" instead.
+    [TestCase("3.2.1", "0")]
+    [TestCase("1004", "1004")]
+    public async Task ApplicationVersionHeader_IsAWholeNumberOnGetAndPut(string configured, string expected)
+    {
+        var sdk = BuildSdk(configured);
+
+        var config = new ContextConfig();
+        config.SetUnit("session_id", "app-version-unit");
+
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+        context.GetTreatment("exp_test_ab");
+        await context.PublishAsync();
+
+        var get = WaitForRequest(r => r.Method == "GET");
+        var put = WaitForRequest(r => r.Method == "PUT");
+        get!.Headers.Should().ContainKey("X-Application-Version").WhoseValue.Should().Be(expected);
+        put!.Headers.Should().ContainKey("X-Application-Version").WhoseValue.Should().Be(expected);
+    }
+
     // Builds the SDK using ONLY the public configuration surface, wiring the SDK's
     // REAL ABsmartlyHttpClientFactory over a REAL IHttpClientFactory so a genuine
     // System.Net.Http.HttpClient performs the requests.
-    private ABsmartly.Sdk BuildSdk()
+    private ABsmartly.Sdk BuildSdk(string? applicationVersion = null)
     {
         var services = new ServiceCollection();
         services.AddHttpClient(ABsmartly.Sdk.HttpClientName);
@@ -156,7 +179,8 @@ public class HermeticHttpServerTests
             Endpoint = _baseUrl,
             ApiKey = ApiKey,
             Application = Application,
-            Environment = Environment
+            Environment = Environment,
+            ApplicationVersion = applicationVersion!
         };
 
         return new ABsmartly.Sdk(httpClientFactory, serviceConfig);
