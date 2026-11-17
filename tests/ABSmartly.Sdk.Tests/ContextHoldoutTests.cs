@@ -1541,6 +1541,21 @@ public class ContextHoldoutTests
         rebuilds().Should().Be(0);
     }
 
+    // An assignment without holdouts allocates no holdout state (one null reference), so payloads
+    // without holdouts cost no extra memory per assignment beyond it.
+    [Test]
+    public void AssignmentWithoutHoldoutsAllocatesNoHoldoutState()
+    {
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            NewExperiment(1, "exp_uncovered"), CoveredBy(NewExperiment(2, "exp_covered"), 11)));
+
+        context.GetTreatment("exp_uncovered").Should().Be(NormalVariant);
+        context.GetTreatment("exp_covered").Should().Be(0);
+
+        CachedAssignment(context, "exp_uncovered").Holdout.Should().BeNull();
+        CachedAssignment(context, "exp_covered").Holdout.Should().NotBeNull();
+    }
+
     // With nothing assigned, a held-out experiment gives its control value even when a lower-id
     // candidate (unassigned for want of its unit) has the key too; the first held-out one wins.
     [Test]
