@@ -40,6 +40,10 @@
         <EmbeddedResource Include="Resources\audience_strict_context.json"/>
         <None Remove="Resources\audience_context.json"/>
         <EmbeddedResource Include="Resources\audience_context.json"/>
+        <None Remove="Resources\holdouts_context.json"/>
+        <EmbeddedResource Include="Resources\holdouts_context.json"/>
+        <None Remove="Resources\publish_without_holdouts.golden"/>
+        <EmbeddedResource Include="Resources\publish_without_holdouts.golden"/>
     </ItemGroup>
 
 </Project>

@@ -30,9 +30,20 @@ public class Experiment
     // that is not a string is read as null, so it does not fail the whole context.
     [JsonConverter(typeof(AssignmentRulesConverter))]
     public string AssignmentRules { get; set; }
+    // The ids of the holdouts (ContextData.Holdouts) covering this experiment. Null or empty means
+    // it is not covered. Entries that are not integers are skipped, so they do not fail the context.
+    [JsonConverter(typeof(HoldoutIdsConverter))]
+    public int[] HoldoutIds { get; set; }
+    // Set only on ContextData.Holdouts entries ("full", "all_full_on"); informational, the arm
+    // count comes from the split.
+    public string HoldoutType { get; set; }
 
     private string DebugView =>
-        $"ContextExperiment{{id={Id}, name={Name}, unitType={UnitType}, iteration={Iteration}, seedHi={SeedHi}, seedLo={SeedLo}, split={Split.ToArrayString()}, trafficSeedHi={TrafficSeedHi}, trafficSeedLo={TrafficSeedLo}, trafficSplit={TrafficSplit.ToArrayString()}, fullOnVariant={FullOnVariant}, applications={Applications.ToArrayString()}, variants={Variants.ToArrayString()}, audienceStrict={AudienceStrict}, audience={Audience}, assignmentRules={AssignmentRules}}}";
+        $"ContextExperiment{{id={Id}, name={Name}, unitType={UnitType}, iteration={Iteration}, seedHi={SeedHi}, seedLo={SeedLo}, split={Split.ToArrayString()}, trafficSeedHi={TrafficSeedHi}, trafficSeedLo={TrafficSeedLo}, trafficSplit={TrafficSplit.ToArrayString()}, fullOnVariant={FullOnVariant}, applications={Applications.ToArrayString()}, variants={Variants.ToArrayString()}, audienceStrict={AudienceStrict}, audience={Audience}, assignmentRules={AssignmentRules}{HoldoutDebugView}}}";
+
+    private string HoldoutDebugView =>
+        (HoldoutIds == null ? "" : $", holdoutIds={HoldoutIds.ToArrayString()}") +
+        (HoldoutType == null ? "" : $", holdoutType={HoldoutType}");
 
     public override string ToString()
     {
@@ -56,6 +67,8 @@ public class Experiment
                AudienceStrict == other.AudienceStrict &&
                Audience == other.Audience &&
                AssignmentRules == other.AssignmentRules &&
+               HoldoutType == other.HoldoutType &&
+               ArrayEquality.Equals(HoldoutIds, other.HoldoutIds) &&
                ArrayEquality.Equals(Split, other.Split) &&
                ArrayEquality.Equals(TrafficSplit, other.TrafficSplit) &&
                ArrayEquality.Equals(Applications, other.Applications) &&
@@ -90,6 +103,13 @@ public class Experiment
             hashCode = (hashCode * 397) ^ AudienceStrict.GetHashCode();
             hashCode = (hashCode * 397) ^ (Audience?.GetHashCode() ?? 0);
             hashCode = (hashCode * 397) ^ (AssignmentRules?.GetHashCode() ?? 0);
+            // Mixed in only when present, so experiments without holdout fields hash as before.
+            if (HoldoutIds != null)
+            {
+                hashCode = (hashCode * 397) ^ HoldoutIds.Length;
+                foreach (var id in HoldoutIds) hashCode = (hashCode * 397) ^ id;
+            }
+            if (HoldoutType != null) hashCode = (hashCode * 397) ^ HoldoutType.GetHashCode();
             return hashCode;
         }
     }

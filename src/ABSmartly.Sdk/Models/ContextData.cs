@@ -16,9 +16,21 @@ public class ContextData
         Experiments = experiments;
     }
 
+    public ContextData(Experiment[] experiments, Experiment[] holdouts)
+    {
+        Experiments = experiments;
+        Holdouts = holdouts;
+    }
+
     public Experiment[] Experiments { get; set; }
 
-    private string DebugView => $"ContextData{{experiments={Experiments.ToArrayString()}}}";
+    // The holdouts that experiments reference through Experiment.HoldoutIds. Null when the payload
+    // has none. An entry without a split is ignored.
+    public Experiment[] Holdouts { get; set; }
+
+    private string DebugView => Holdouts == null
+        ? $"ContextData{{experiments={Experiments.ToArrayString()}}}"
+        : $"ContextData{{experiments={Experiments.ToArrayString()}, holdouts={Holdouts.ToArrayString()}}}";
 
     public override string ToString()
     {
@@ -30,7 +42,8 @@ public class ContextData
 
     protected bool Equals(ContextData other)
     {
-        return ArrayEquality.Equals(Experiments, other.Experiments);
+        return ArrayEquality.Equals(Experiments, other.Experiments) &&
+               ArrayEquality.Equals(Holdouts, other.Holdouts);
     }
 
     public override bool Equals(object obj)
@@ -43,7 +56,18 @@ public class ContextData
 
     public override int GetHashCode()
     {
-        return Experiments?.GetHashCode() ?? 0;
+        var hashCode = Experiments?.GetHashCode() ?? 0;
+        if (Holdouts == null) return hashCode;
+
+        // Mixed in only when present, so data without holdouts hashes as before. By content,
+        // consistent with Equals.
+        unchecked
+        {
+            hashCode = hashCode * 397 ^ Holdouts.Length;
+            foreach (var holdout in Holdouts)
+                hashCode = hashCode * 397 ^ (holdout == null ? 0 : holdout.Id * 31 + holdout.Iteration);
+            return hashCode;
+        }
     }
 
     #endregion

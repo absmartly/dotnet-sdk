@@ -327,6 +327,17 @@ A rule wins over the audience (including strict audiences), traffic allocation, 
 
 If the first matching rule's variant doesn't exist, or its split doesn't have one percentage per variant, the unit gets the normal assignment and later rules aren't tried. A malformed rule (unknown type, a variant that isn't an integer, percentages that aren't numbers or don't add up to 100) is skipped in favour of the next rule.
 
+### Holdouts
+
+A holdout keeps a share of units out of a group of experiments, so their combined effect can be measured against units that saw none of them. Holdouts are configured in the Web Console; the context data lists them, and each covered experiment names its holdouts. Nothing changes in your code: `GetTreatment()`, `PeekTreatment()`, `GetVariableValue()` and `PeekVariableValue()` apply them.
+
+- The unit is placed in a holdout arm with the covered experiment's unit type. A unit in arm 0 is held out of every experiment the holdout covers. A holdout with three arms also holds arm 1 out of the covered experiments that are not full-on; full-on experiments assign it normally. Any other arm assigns the experiments normally.
+- An experiment covered by several holdouts is held out when any one of them holds the unit out.
+- A held-out experiment returns variant `0` and its control variables, and publishes no exposure of its own. Its audience, full-on variant, traffic allocation and `SetCustomAssignment()` are not applied. When several experiments share a variable key, a held-out one gives its control value only if no other experiment assigns the unit.
+- Each holdout publishes its own exposure (the holdout's id and name, the arm as the variant) the first time an experiment it covers is exposed, once per unit type.
+- `SetOverride()` and a matching assignment rule win over a holdout. The holdout's exposure is still published.
+- The arm is kept until the holdout's iteration changes, even if a refresh changes its seed or split.
+
 ### Tracking Goals
 
 Goals are created in the A/B Smartly web console.
