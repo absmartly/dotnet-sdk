@@ -1576,9 +1576,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     }
 
     // Called with the write lock held. A split rule resolved without its unit gave the no-unit
-    // variant, and a holdout resolved without it has a null entry (it could not suppress and
-    // fires no exposure); with the unit now set such an assignment is evicted so the next call
-    // resolves it again, but only while it is still unexposed. Retiring it (Exposed 0 -> 2) makes
+    // variant, and holdouts resolved without it have null entries (they could not suppress and
+    // fire no exposure; every entry is resolved with the experiment's unit type, so an assignment
+    // of this unit type with holdouts has only null ones); with the unit now set such an
+    // assignment is evicted so the next call resolves it again, but only while it is still
+    // unexposed. Retiring it (Exposed 0 -> 2) makes
     // a racing GetTreatment that already holds it skip the exposure, so the user never gets two
     // different variants exposed.
     private void InvalidateAssignmentsWithMissingUnit(string unitType)
@@ -1589,7 +1591,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var assignment = entry.Value;
             if (unitType == assignment.UnitType &&
                 (assignment.RuleOverride && assignment.RuleMissingUnit ||
-                 assignment.HoldoutAssignments != null && Array.IndexOf(assignment.HoldoutAssignments, null) >= 0) &&
+                 assignment.HoldoutAssignments != null) &&
                 Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0)
                 (evicted ??= new List<string>()).Add(entry.Key);
         }
