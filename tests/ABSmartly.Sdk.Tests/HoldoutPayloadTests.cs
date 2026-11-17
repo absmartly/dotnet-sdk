@@ -112,6 +112,36 @@ public class HoldoutPayloadTests
             .Should().Equal(("holdout_a", 0), ("exp_free", 1));
     }
 
+    // A wrongly typed holdout field loses only that field or holdout: the context still decodes
+    // and the unrelated experiment still assigns (1.3.0 ignored these fields altogether).
+    [TestCase("\"holdouts\":{\"id\":11}", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":7", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":\"oops\"", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":[{\"id\":\"11\",\"name\":\"h\",\"split\":[0.1,0.9]},7,\"x\",null]", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9],\"holdoutType\":3}]", "\"holdoutType\":{\"a\":1}", 1)]
+    public void WronglyTypedHoldoutFieldsDoNotFailTheContext(string holdouts, string holdoutType, int validHoldouts)
+    {
+        var json = "{" + holdouts + ",\"experiments\":[" +
+                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11]," +
+                   holdoutType + "}," +
+                   "{\"id\":2,\"name\":\"exp_free\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}]}]}";
+
+        var data = Deserialize(json);
+
+        data.Should().NotBeNull();
+        (data.Holdouts?.Length ?? 0).Should().Be(validHoldouts);
+        data.Experiments.Should().HaveCount(2);
+        var (publisher, _) = Publisher();
+        var context = CreateContext(data, publisher);
+        context.GetTreatment("exp_free").Should().Be(1);
+        // Held out (variant 0) only when the holdout decoded; otherwise assigned normally.
+        context.GetTreatment("exp_covered").Should().Be(validHoldouts == 1 ? 0 : 1);
+    }
+
     [Test]
     public void HoldoutIdsSerializeBackAsAnArray()
     {

@@ -35,7 +35,8 @@ public class Experiment
     [JsonConverter(typeof(HoldoutIdsConverter))]
     public int[] HoldoutIds { get; set; }
     // Set only on ContextData.Holdouts entries ("full", "all_full_on"); informational, the arm
-    // count comes from the split.
+    // count comes from the split. A value that is not a string is read as null.
+    [JsonConverter(typeof(LenientStringConverter))]
     public string HoldoutType { get; set; }
 
     private string DebugView =>

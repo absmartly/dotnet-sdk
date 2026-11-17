@@ -926,7 +926,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var live = GetHoldoutById(holdout.Id) ?? holdout;
         var key = (live.Id, unitType);
         if (_holdoutAssignments.TryGetValue(key, out var cached) && cached.Iteration == live.Iteration)
+        {
+            // A same-iteration rename keeps the arm but publishes the live name, as JS.
+            cached.Name = live.Name;
             return cached;
+        }
 
         var assigner = GetVariantAssigner(unitType, GetUnitHash(unitType, uid));
         var assignment = new Assignment

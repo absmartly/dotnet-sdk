@@ -1615,6 +1615,23 @@ public class ContextHoldoutTests
         (resolved.Name, resolved.Iteration, resolved.Variant).Should().Be(("holdout_live", 2, 1));
     }
 
+    // As JS, a same-iteration rename keeps the unit's arm but publishes the holdout's live name.
+    [Test]
+    public void SameIterationRenamePublishesTheLiveHoldoutName()
+    {
+        var context = CreateContext(UidNotHeldOut,
+            DataOf(new[] { NewHoldout(11, "holdout_old_name", HoldoutASeedHi, HoldoutASeedLo) },
+                CoveredBy(NewExperiment(1, "exp_rename_a"), 11), CoveredBy(NewExperiment(2, "exp_rename_b"), 11)));
+        context.PeekTreatment("exp_rename_a").Should().Be(0);
+
+        Refresh(context, DataOf(new[] { NewHoldout(11, "holdout_new_name", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_rename_a"), 11), CoveredBy(NewExperiment(2, "exp_rename_b"), 11)));
+        context.GetTreatment("exp_rename_b").Should().Be(0);
+
+        AssertPublished(context, UidNotHeldOut, Exposure(2, "exp_rename_b", 0),
+            HoldoutExposure(11, "holdout_new_name", 1));
+    }
+
     #endregion
 
     #region Assignment rules (javascript-sdk; cross-sdk scenario 305)

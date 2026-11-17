@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using System.Text.Json.Serialization;
+using ABSmartly.Services.Json;
 using ABSmartly.EqualityComparison;
 using ABSmartly.Extensions;
 
@@ -25,7 +27,8 @@ public class ContextData
     public Experiment[] Experiments { get; set; }
 
     // The holdouts that experiments reference through Experiment.HoldoutIds. Null when the payload
-    // has none. An entry without a split is ignored.
+    // has none. An entry without a split is ignored, and a malformed one is skipped.
+    [JsonConverter(typeof(HoldoutsConverter))]
     public Experiment[] Holdouts { get; set; }
 
     private string DebugView => Holdouts == null
