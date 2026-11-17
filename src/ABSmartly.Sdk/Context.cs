@@ -942,7 +942,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             Variant = assigner.Assign(live.Split, live.SeedHi, live.SeedLo),
             Assigned = true,
             Eligible = true,
-            HoldoutArmCount = live.Split.Length
+            Holdout = new HoldoutState { ArmCount = live.Split.Length }
         };
         _holdoutAssignments[key] = assignment;
         return assignment;
@@ -1088,8 +1088,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                         heldOut = true;
                 }
 
-                assignment.Holdouts = holdouts;
-                assignment.HoldoutAssignments = holdoutAssignments;
+                assignment.Holdout = new HoldoutState { Holdouts = holdouts, HoldoutAssignments = holdoutAssignments };
             }
 
             if (_overrides.TryGetValue(experimentName, out var @override) && @override != null)
@@ -1134,7 +1133,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                         // A matching rule wins over suppression (above), as JS and the collector.
                         // Otherwise a held-out unit is not a participant: control, not assigned, and
                         // the audience, full-on, traffic and custom assignment are skipped.
-                        assignment.Suppressed = true;
+                        assignment.Holdout.Suppressed = true;
                         assignment.Variant = 0;
                     }
                     else if (experiment.Data.AudienceStrict && assignment.AudienceMismatch)
@@ -2507,15 +2506,27 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // no-unit variant was given instead of randomizing.
         internal bool RuleMissingUnit { get; set; }
 
+        // Holdout state, allocated only for an experiment with holdouts or a holdout's own
+        // assignment, so assignments without holdouts carry a single null reference.
+        internal HoldoutState Holdout;
+
         // Held out by one of the experiment's holdouts (and no rule matched): control values, not
         // assigned, and no exposure of its own.
-        internal bool Suppressed { get; set; }
+        internal bool Suppressed => Holdout?.Suppressed == true;
         // The holdouts the assignment was resolved against and their decisions, in the same order;
         // a null decision means the experiment's unit was missing. Null when it has no holdouts.
-        internal Experiment[] Holdouts { get; set; }
-        internal Assignment[] HoldoutAssignments { get; set; }
+        internal Experiment[] Holdouts => Holdout?.Holdouts;
+        internal Assignment[] HoldoutAssignments => Holdout?.HoldoutAssignments;
         // For a holdout's own assignment: the split length its arm was drawn from.
-        internal int HoldoutArmCount { get; set; }
+        internal int HoldoutArmCount => Holdout?.ArmCount ?? 0;
+    }
+
+    internal sealed class HoldoutState
+    {
+        public bool Suppressed;
+        public Experiment[] Holdouts;
+        public Assignment[] HoldoutAssignments;
+        public int ArmCount;
     }
 
     #endregion

@@ -1328,6 +1328,25 @@ public class ContextHoldoutTests
             HoldoutExposure(11, "holdout_terminal", 1));
     }
 
+    // On the variable path, a logger throwing on a losing candidate's holdout exposure still
+    // propagates (as Java) once the key is resolved, and the exposure stays queued.
+    [Test]
+    public void ThrowingLoggerOnAVariableCandidatesHoldoutPropagates()
+    {
+        ThrowOnExposure(e => e.Id == 11);
+        var suppressed = CoveredBy(NewExperiment(1, "exp_var_throw_suppressed"), 11);
+        suppressed.Variants[1].Config = "{\"throw_key\":\"from_suppressed\"}";
+        var assigned = NewExperiment(2, "exp_var_throw_assigned");
+        assigned.Variants[1].Config = "{\"throw_key\":\"from_assigned\"}";
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            suppressed, assigned));
+
+        var act = () => context.GetVariableValue("throw_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.PendingCount.Should().Be(1);
+    }
+
     // The held-out experiment has no exposure of its own, so only the holdout's exposure can
     // schedule the flush, even when the logger throws on it.
     [Test]
