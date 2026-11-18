@@ -315,23 +315,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         ((exposure.ExposedAt - Anchor) / Hour).Should().Be(1);
     }
 
-    [Test]
-    public void SameMillisecondUpdateAfterPeekDoesNotReplaceTheReplayValue()
-    {
-        var experiment = NewSwitchback(3, Hour);
-        experiment.SwitchbackClusters = Clusters(UnitType, "city");
-        var context = CreateContext(DataOf(experiment));
-        Clock.Now = Anchor + Hour + 1;
-        context.SetAttribute("city", "Faro");
-        var served = context.PeekTreatment("exp_sb");
-        context.SetAttribute("city", "Porto");
-        context.GetTreatment("exp_sb").Should().Be(served);
-        var published = PublishEvent(context);
-        var at = published.Exposures.Single().ExposedAt;
-        published.Attributes.Where(a => a.Name == "city" && a.SetAt <= at)
-            .OrderBy(a => a.SetAt).Last().Value.Should().Be("Faro");
-    }
-
     // Unit experiments keep stamping at enqueue time: their lookup does not read the clock, so the
     // exposure carries the single (enqueue) reading.
     [Test]

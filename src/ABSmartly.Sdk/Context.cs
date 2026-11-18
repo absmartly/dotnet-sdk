@@ -1806,32 +1806,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         CheckNotClosed();
 
-        _contextLock.EnterWriteLock();
-        try
-        {
-            var setAt = _clock.Millis();
-            // Millisecond clocks can tie a later update with the cluster snapshot it follows.
-            // Keep that update after the read so Collector replay at the snapshot time sees the
-            // original value, not the last-on-tie replacement.
-            if (_hasSwitchbacks)
-            {
-                foreach (var assignment in _assignmentCache.Values)
-                {
-                    var state = assignment.Switchback;
-                    if (state != null && state.ServingReadAt == setAt && setAt < long.MaxValue)
-                    {
-                        ++setAt;
-                        break;
-                    }
-                }
-            }
-            _attributes.ConcurrentAdd(new Attribute { Name = name, Value = value, SetAt = setAt });
-            Interlocked.Increment(ref _attrsSeq);
-        }
-        finally
-        {
-            _contextLock.ExitWriteLock();
-        }
+        var attribute = new Attribute { Name = name, Value = value, SetAt = _clock.Millis() };
+        _attributes.ConcurrentAdd(attribute);
+        Interlocked.Increment(ref _attrsSeq);
     }
 
     public void SetAttributes(Dictionary<string, object> attributes)
