@@ -76,7 +76,7 @@ M = [
  ('custom: change not staleness', S+'Context.cs', 'if (assignment.Switchback != null) return Nullable.Equals(hasCustom ? custom : null, assignment.Switchback.CustomAssignment);', 'if (assignment.Switchback != null) return true;'),
  ('staleness: audience re-run for ineligible slot', S+'Context.cs', 'if (assignment.RuleOverride || assignment.Suppressed || !SwitchbackConsultedRules(assignment)) return true;', 'if (assignment.RuleOverride || assignment.Suppressed) return true;'),
  ('staleness: rules re-run for ineligible slot', S+'Context.cs', '        if (!SwitchbackConsultedRules(assignment)) return true;\n', ''),
- ('value rule: nested Half written as int', S+'Internal/SwitchbackAttributePath.cs', '        options.Converters.Add(new FloatingPointConverter<Half>(v => (double)v));\n', ''),
+ ('value rule: Half written as int', S+'Internal/SwitchbackAttributePath.cs', '        options.Converters.Add(new HalfAsFloatConverterFactory());\n', ''),
  ('value rule: enum keyed by number', S+'Internal/SwitchbackAttributePath.cs', '        options.Converters.Add(new EnumAsNullConverterFactory());\n', ''),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]

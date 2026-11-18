@@ -63,9 +63,6 @@ internal sealed class SwitchbackAttributePath
         if (rootValue == null) return null;
 
         if (rootValue is char c) rootValue = c.ToString();
-#if NET5_0_OR_GREATER
-        if (rootValue is Half) return _keys.Length == 1 ? rootValue : null;
-#endif
         if (IsScalar(rootValue)) return _keys.Length == 1 ? rootValue : null;
 
         JsonElement element;
@@ -196,14 +193,24 @@ internal sealed class SwitchbackAttributePath
     private static readonly Lazy<JsonSerializerOptions> EncodingOptions = new(() =>
     {
         var options = new JsonSerializerOptions(JsonOptionsProvider.Default.SerializerOptions);
-        options.Converters.Add(new FloatingPointConverter<double>(v => v));
-        options.Converters.Add(new FloatingPointConverter<float>(v => v));
-#if NET5_0_OR_GREATER
-        options.Converters.Add(new FloatingPointConverter<Half>(v => (double)v));
-#endif
+        options.Converters.Add(new FloatingPointConverter<double>(v => (double)v));
+        options.Converters.Add(new FloatingPointConverter<float>(v => (float)v));
+        // System.Half, by name: the netstandard2.0 build (used on net6.0 and .NET Framework) does
+        // not see the type, and must still treat it as a float.
+        options.Converters.Add(new HalfAsFloatConverterFactory());
         options.Converters.Add(new EnumAsNullConverterFactory());
         return options;
     });
+
+    private sealed class HalfAsFloatConverterFactory : JsonConverterFactory
+    {
+        public override bool CanConvert(Type typeToConvert) => typeToConvert.FullName == "System.Half";
+
+        public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
+            (JsonConverter)Activator.CreateInstance(typeof(FloatingPointConverter<>).MakeGenericType(typeToConvert),
+                (Func<object, double>)(v => double.Parse(((IFormattable)v).ToString("R", CultureInfo.InvariantCulture),
+                    NumberStyles.Float, CultureInfo.InvariantCulture)));
+    }
 
     // An enum has no cluster value, at the root or nested: the serializer writes its number and
     // java-sdk its name, so neither is a key the Collector and this SDK would agree on.
@@ -226,9 +233,9 @@ internal sealed class SwitchbackAttributePath
 
     private sealed class FloatingPointConverter<T> : JsonConverter<T>
     {
-        private readonly Func<T, double> _toDouble;
+        private readonly Func<object, double> _toDouble;
 
-        public FloatingPointConverter(Func<T, double> toDouble)
+        public FloatingPointConverter(Func<object, double> toDouble)
         {
             _toDouble = toDouble;
         }
@@ -238,7 +245,7 @@ internal sealed class SwitchbackAttributePath
 
         public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
         {
-            var d = _toDouble(value);
+            var d = _toDouble(value!);
             if (double.IsNaN(d) || double.IsInfinity(d))
             {
                 writer.WriteNullValue();
