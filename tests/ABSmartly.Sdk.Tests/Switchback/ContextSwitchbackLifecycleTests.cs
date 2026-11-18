@@ -623,6 +623,49 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.PendingCount.Should().Be(0);
     }
 
+    // An audience deserializer that counts how often an audience (or rules string) is parsed, which
+    // AudienceMatcher does on every evaluation.
+    private sealed class CountingAudienceDeserializer : IAudienceDeserializer
+    {
+        private readonly DefaultAudienceDeserializer _inner = new();
+        public int Calls;
+
+        public Dictionary<string, object> Deserialize(string audience)
+        {
+            Interlocked.Increment(ref Calls);
+            return _inner.Deserialize(audience);
+        }
+    }
+
+    // A switchback slot without an eligible cluster never evaluated its audience, so a later
+    // SetAttribute does not make every read evaluate it (the result could not change anyway).
+    [Test]
+    public void AudienceIsNotReevaluatedForAnIneligibleOrAbsentSlot()
+    {
+        var ineligible = NewSwitchback(1, "exp_ineligible", 2, Hour);
+        ineligible.Audience = StrictGoldAudience;
+        ineligible.SwitchbackClusterValues = new[] { "other-store" };
+        var absent = NewSwitchback(2, "exp_absent", 2, Hour);
+        absent.Audience = StrictGoldAudience;
+        absent.SwitchbackClusters = Clusters("device_id", ClusterPath);
+        var counter = new CountingAudienceDeserializer();
+        var context = CreateContext(new Dictionary<string, string> { [UnitType] = Uid }, DataOf(ineligible, absent),
+            new AudienceMatcher(counter));
+        Clock.Now = Anchor + 10;
+        context.GetTreatment("exp_ineligible").Should().Be(0);
+        context.GetTreatment("exp_absent").Should().Be(0);
+
+        context.SetAttribute("tier", "gold");
+        for (var i = 0; i < 3; ++i)
+        {
+            context.GetTreatment("exp_ineligible").Should().Be(0);
+            context.GetTreatment("exp_absent").Should().Be(0);
+        }
+
+        counter.Calls.Should().Be(0);
+        context.PendingCount.Should().Be(0);
+    }
+
     // An eligible slot re-evaluates its rules after a SetAttribute, once.
     [Test]
     public void StaleRuleTransitionReevaluatesOnce()

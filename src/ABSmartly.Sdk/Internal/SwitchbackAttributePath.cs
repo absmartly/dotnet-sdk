@@ -63,6 +63,9 @@ internal sealed class SwitchbackAttributePath
         if (rootValue == null) return null;
 
         if (rootValue is char c) rootValue = c.ToString();
+#if NET5_0_OR_GREATER
+        if (rootValue is Half) return _keys.Length == 1 ? rootValue : null;
+#endif
         if (IsScalar(rootValue)) return _keys.Length == 1 ? rootValue : null;
 
         JsonElement element;
@@ -195,8 +198,31 @@ internal sealed class SwitchbackAttributePath
         var options = new JsonSerializerOptions(JsonOptionsProvider.Default.SerializerOptions);
         options.Converters.Add(new FloatingPointConverter<double>(v => v));
         options.Converters.Add(new FloatingPointConverter<float>(v => v));
+#if NET5_0_OR_GREATER
+        options.Converters.Add(new FloatingPointConverter<Half>(v => (double)v));
+#endif
+        options.Converters.Add(new EnumAsNullConverterFactory());
         return options;
     });
+
+    // An enum has no cluster value, at the root or nested: the serializer writes its number and
+    // java-sdk its name, so neither is a key the Collector and this SDK would agree on.
+    private sealed class EnumAsNullConverterFactory : JsonConverterFactory
+    {
+        public override bool CanConvert(Type typeToConvert) => typeToConvert.IsEnum;
+
+        public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
+            (JsonConverter)Activator.CreateInstance(typeof(EnumAsNullConverter<>).MakeGenericType(typeToConvert));
+    }
+
+    private sealed class EnumAsNullConverter<T> : JsonConverter<T>
+    {
+        public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
+            writer.WriteNullValue();
+    }
 
     private sealed class FloatingPointConverter<T> : JsonConverter<T>
     {

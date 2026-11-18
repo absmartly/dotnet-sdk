@@ -47,7 +47,7 @@ M = [
  ('seed: sign-extended seedLo', S+'Context.cs', '((long)experiment.SeedHi << 32) | (experiment.SeedLo & 0xffffffffL);', '((long)experiment.SeedHi << 32) | (long)experiment.SeedLo;'),
  ('seed: halves swapped', S+'Internal/SwitchbackAssigner.cs', 'PutUInt32(buffer, 0, unchecked((int)seed));\n        PutUInt32(buffer, 4, unchecked((int)(seed >> 32)));', 'PutUInt32(buffer, 4, unchecked((int)seed));\n        PutUInt32(buffer, 0, unchecked((int)(seed >> 32)));'),
  ('utf8: Encoding.UTF8', S+'Internal/SwitchbackAssigner.cs', 'var keyLength = EncodeUtf8(keyBytes, key);', 'var keyLength = System.Text.Encoding.UTF8.GetBytes(key, 0, key.Length, keyBytes, 0);'),
- ('carryover: switchback exposure stamped at enqueue', S+'Context.cs', 'if (!assignment.Switchback.Silent) EnqueueExposure(assignment, assignment.Name, resolvedAt);', 'if (!assignment.Switchback.Silent) EnqueueExposure(assignment);'),
+ ('carryover: switchback exposure stamped at enqueue', S+'Context.cs', 'EnqueueExposure(assignment, assignment.Name, resolvedAt != ClockNotRead ? resolvedAt : _clock.Millis());', 'EnqueueExposure(assignment);'),
  ('carryover: retain 3 periods', S+'Context.cs', 'private const int SwitchbackRetainedPeriods = 2;', 'private const int SwitchbackRetainedPeriods = 3;'),
  ('carryover: evict just-installed period', S+'Context.cs', 'if (evicted == index) evicted = epoch.Periods.GetViewBetween(index + 1, long.MaxValue).Min;', ''),
  ('carryover: single slot per experiment', S+'Context.cs', 'periodIndex == null ? experimentName : SwitchbackCacheKey(experimentName, periodIndex.Value);', 'experimentName;'),
@@ -74,6 +74,10 @@ M = [
  ('variable: strict-mismatched switchback falls back to control', S+'Context.cs', 'return first.Switchback != null ? null : first;', 'return first;'),
  ('setUnit: absent slot not evicted', S+'Context.cs', 'if (Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0 || !assignment.Overridden)\n                    (evicted ??= new List<string>()).Add(entry.Key);', 'if (false) (evicted ??= new List<string>()).Add(entry.Key);'),
  ('custom: change not staleness', S+'Context.cs', 'if (assignment.Switchback != null) return Nullable.Equals(hasCustom ? custom : null, assignment.Switchback.CustomAssignment);', 'if (assignment.Switchback != null) return true;'),
+ ('staleness: audience re-run for ineligible slot', S+'Context.cs', 'if (assignment.RuleOverride || assignment.Suppressed || !SwitchbackConsultedRules(assignment)) return true;', 'if (assignment.RuleOverride || assignment.Suppressed) return true;'),
+ ('staleness: rules re-run for ineligible slot', S+'Context.cs', '        if (!SwitchbackConsultedRules(assignment)) return true;\n', ''),
+ ('value rule: nested Half written as int', S+'Internal/SwitchbackAttributePath.cs', '        options.Converters.Add(new FloatingPointConverter<Half>(v => (double)v));\n', ''),
+ ('value rule: enum keyed by number', S+'Internal/SwitchbackAttributePath.cs', '        options.Converters.Add(new EnumAsNullConverterFactory());\n', ''),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {
