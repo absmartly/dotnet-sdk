@@ -119,6 +119,14 @@ public class HoldoutPayloadTests
     [TestCase("\"holdouts\":\"oops\"", "\"holdoutType\":\"full\"", 0)]
     [TestCase("\"holdouts\":[{\"id\":\"11\",\"name\":\"h\",\"split\":[0.1,0.9]},7,\"x\",null]", "\"holdoutType\":\"full\"", 0)]
     [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9],\"holdoutType\":3}]", "\"holdoutType\":{\"a\":1}", 1)]
+    // A null, decimal (11.0) or out-of-range id/iteration/seedHi/seedLo drops that holdout, so its
+    // experiments are assigned normally (JS keeps it; the backend never sends these).
+    [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"iteration\":1,\"seedHi\":null,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"iteration\":1,\"seedHi\":13,\"seedLo\":null,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"iteration\":null,\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":[{\"id\":null,\"name\":\"h\",\"iteration\":1,\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":[{\"id\":11.0,\"name\":\"h\",\"iteration\":1,\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"iteration\":1,\"seedHi\":1099511627776,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
     public void WronglyTypedHoldoutFieldsDoNotFailTheContext(string holdouts, string holdoutType, int validHoldouts)
     {
         var json = "{" + holdouts + ",\"experiments\":[" +
