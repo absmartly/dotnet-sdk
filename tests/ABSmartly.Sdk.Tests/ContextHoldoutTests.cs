@@ -1373,6 +1373,32 @@ public class ContextHoldoutTests
         AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 0));
     }
 
+    // When several candidates' holdout loggers throw, the first failure is the one rethrown.
+    [Test]
+    public void VariablePathRethrowsTheFirstHoldoutLoggerFailure()
+    {
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Throws(new InvalidOperationException("first"));
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 12)))
+            .Throws(new InvalidOperationException("second"));
+        var first = CoveredBy(NewExperiment(1, "exp_var_first"), 11);
+        first.Variants[1].Config = "{\"order_key\":\"a\"}";
+        var second = CoveredBy(NewExperiment(2, "exp_var_second"), 12);
+        second.Variants[1].Config = "{\"order_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutASeedHi, HoldoutASeedLo)
+        }, first, second));
+
+        var act = () => context.GetVariableValue("order_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("first");
+        context.PendingCount.Should().Be(2);
+    }
+
     // The held-out experiment has no exposure of its own, so only the holdout's exposure can
     // schedule the flush, even when the logger throws on it.
     [Test]
@@ -1675,7 +1701,9 @@ public class ContextHoldoutTests
         (resolved.Name, resolved.Iteration, resolved.Variant).Should().Be(("holdout_live", 2, 1));
     }
 
-    // As JS, a same-iteration rename keeps the unit's arm but publishes the holdout's live name.
+    // As JS, a same-iteration rename keeps the unit's arm, and an experiment resolved after the
+    // refresh publishes the holdout's live name. (An assignment pinned before the refresh keeps
+    // the name it was resolved with, as JS publishes its pinned holdout snapshot.)
     [Test]
     public void SameIterationRenamePublishesTheLiveHoldoutName()
     {
@@ -1689,24 +1717,6 @@ public class ContextHoldoutTests
         context.GetTreatment("exp_rename_b").Should().Be(0);
 
         AssertPublished(context, UidNotHeldOut, Exposure(2, "exp_rename_b", 0),
-            HoldoutExposure(11, "holdout_new_name", 1));
-    }
-
-    // The rename also reaches an assignment pinned (by a peek) before the refresh, which stays
-    // valid: exposing it publishes the live name, keeping the arm.
-    [Test]
-    public void SameIterationRenameReachesAnAssignmentPinnedBeforeTheRefresh()
-    {
-        var context = CreateContext(UidNotHeldOut,
-            DataOf(new[] { NewHoldout(11, "holdout_old_name", HoldoutASeedHi, HoldoutASeedLo) },
-                CoveredBy(NewExperiment(1, "exp_rename_pinned"), 11)));
-        context.PeekTreatment("exp_rename_pinned").Should().Be(0);
-
-        Refresh(context, DataOf(new[] { NewHoldout(11, "holdout_new_name", HoldoutBSeedHi, HoldoutBSeedLo) },
-            CoveredBy(NewExperiment(1, "exp_rename_pinned"), 11)));
-        context.GetTreatment("exp_rename_pinned").Should().Be(0);
-
-        AssertPublished(context, UidNotHeldOut, Exposure(1, "exp_rename_pinned", 0),
             HoldoutExposure(11, "holdout_new_name", 1));
     }
 

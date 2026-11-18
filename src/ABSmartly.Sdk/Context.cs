@@ -948,28 +948,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return assignment;
     }
 
-    // A same-iteration rename keeps the cached arms (and their
-    // exposure state) but must publish the live name, as JS, including for assignments already
-    // pinned before the refresh. No cost without holdouts.
-    private void RefreshHoldoutNames(Dictionary<int, Experiment> holdoutsById)
-    {
-        if (holdoutsById == null || _holdoutAssignments.Count == 0) return;
-
-        try
-        {
-            _contextLock.EnterWriteLock();
-            foreach (var entry in _holdoutAssignments)
-            {
-                if (holdoutsById.TryGetValue(entry.Key.Item1, out var live) && live.Iteration == entry.Value.Iteration)
-                    entry.Value.Name = live.Name;
-            }
-        }
-        finally
-        {
-            _contextLock.ExitWriteLock();
-        }
-    }
-
     private Experiment GetHoldoutById(int id)
     {
         try
@@ -2122,9 +2100,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             _dataLock.ExitWriteLock();
         }
-
-        // After the data lock is released: the context lock is always taken before it.
-        RefreshHoldoutNames(holdoutsById);
     }
 
     // The installed holdouts an experiment's HoldoutIds refer to, sorted by id without duplicates.
