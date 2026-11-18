@@ -1739,6 +1739,24 @@ public class ContextHoldoutTests
             HoldoutExposure(11, "holdout_old_name", 1));
     }
 
+    // The pinned holdout's name is published as is, even null (as JS), not a cached name.
+    [Test]
+    public void SameIterationRenameToNullPublishesNull()
+    {
+        var renamed = NewHoldout(11, "holdout_old_name", HoldoutASeedHi, HoldoutASeedLo);
+        var context = CreateContext(UidNotHeldOut,
+            DataOf(new[] { renamed }, CoveredBy(NewExperiment(1, "exp_null_a"), 11),
+                CoveredBy(NewExperiment(2, "exp_null_b"), 11)));
+        context.PeekTreatment("exp_null_b").Should().Be(0);
+
+        var nameless = NewHoldout(11, null!, HoldoutASeedHi, HoldoutASeedLo);
+        Refresh(context, DataOf(new[] { nameless }, CoveredBy(NewExperiment(1, "exp_null_a"), 11),
+            CoveredBy(NewExperiment(2, "exp_null_b"), 11)));
+        context.GetTreatment("exp_null_a").Should().Be(0);
+
+        AssertPublished(context, UidNotHeldOut, Exposure(1, "exp_null_a", 0), HoldoutExposure(11, null!, 1));
+    }
+
     #endregion
 
     #region Assignment rules (javascript-sdk; cross-sdk scenario 305)

@@ -477,12 +477,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return failure;
     }
 
-    private void EnqueueExposure(Assignment assignment, string name = null)
+    private void EnqueueExposure(Assignment assignment) => EnqueueExposure(assignment, assignment.Name);
+
+    private void EnqueueExposure(Assignment assignment, string name)
     {
         var exposure = new Exposure
         {
             Id = assignment.Id,
-            Name = name ?? assignment.Name,
+            Name = name,
             Unit = assignment.UnitType,
             Variant = assignment.Variant,
             ExposedAt = _clock.Millis(),
