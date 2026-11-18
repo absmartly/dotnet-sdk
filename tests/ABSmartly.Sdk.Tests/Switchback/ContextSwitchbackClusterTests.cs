@@ -391,6 +391,20 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
             .Should().Contain("{\"name\":\"plain\",\"value\":3.0,\"setAt\":" + (Anchor + 10) + "}");
     }
 
+    [Test]
+    public void RefreshIntroducingSwitchbacksEnablesTheWireForm()
+    {
+        var context = Create(DataOf(AsUnit(AttributeSwitchback("city"))));
+        context.SetAttribute("plain", 3.0);
+        context.Track("before", null!);
+        Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)))
+            .Should().Contain("\"value\":3,");
+        RefreshTo(context, AttributeSwitchback("city"));
+        context.Track("after", null!);
+        Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)))
+            .Should().Contain("\"value\":3.0,");
+    }
+
     // Only attribute values take the wire form: goal properties, and attributes without a name or a
     // value, publish exactly as without switchbacks.
     [Test]
