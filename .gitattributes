@@ -1,1 +1,3 @@
 *.golden text eol=lf
+# The switchback fixtures are byte-identical copies of the platform files (see SwitchbackFixtures.cs).
+tests/ABSmartly.Sdk.Tests/Resources/switchback/*.json -text
