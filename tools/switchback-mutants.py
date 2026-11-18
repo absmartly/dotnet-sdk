@@ -75,7 +75,6 @@ M = [
  ('value rule: enum keyed by number', S+'Internal/SwitchbackAttributePath.cs', '        options.Converters.Add(new EnumAsNullConverterFactory());\n', ''),
  ('wire: whole floats published as ints', S+'Context.cs', 'SwitchbackWireAttributes = _hasSwitchbacks,', 'SwitchbackWireAttributes = false,'),
  ('wire: wire form also without switchbacks', S+'Context.cs', 'SwitchbackWireAttributes = _hasSwitchbacks,', 'SwitchbackWireAttributes = true,'),
- ('wire: flag kept after refresh', S+'Context.cs', '_hasSwitchbacks = hasSwitchbacks;', '_hasSwitchbacks |= hasSwitchbacks;'),
  ('wire: flag only when all switchback', S+'Context.cs', '                hasSwitchbacks = true;', '                hasSwitchbacks = index.Count == 1;'),
  ('wire: setAt from publish clock', S+'Internal/SwitchbackAttributePath.cs', 'writer.WriteNumber(naming.ConvertName(nameof(Models.Attribute.SetAt)), value.SetAt);', 'writer.WriteNumber(naming.ConvertName(nameof(Models.Attribute.SetAt)), 0);'),
  ('wire: float widened to double text', S+'Internal/SwitchbackAttributePath.cs', '            v => ((float)v).ToString("R", CultureInfo.InvariantCulture)));', '            null));'),
@@ -83,12 +82,18 @@ M = [
  ('wire: published values replaced', S+'Context.cs', 'Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),', 'Attributes = _attributes.Count == 0 ? null : _attributes.Select(a => new Attribute { Name = a.Name, Value = a.Value is double d ? (object)(float)d : a.Value, SetAt = a.SetAt }).ToArray(),'),
  ('stamp: exposing call instant', S+'Context.cs', 'EnqueueExposure(assignment, assignment.Name, assignment.Switchback.ServingReadAt);', 'EnqueueExposure(assignment, assignment.Name, _clock.Millis());'),
  ('enum: dictionary keys rejected', S+'Internal/SwitchbackAttributePath.cs', '        public override void WriteAsPropertyName(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>\n            ((JsonConverter<T>)', '        public void WriteAsPropertyName2(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>\n            ((JsonConverter<T>)'),
+ ('wire: Half text via double', S+'Internal/SwitchbackAttributePath.cs', '                (Func<object, string>)Text);', '                null);'),
+ ('wire: goals take the wire form', S+'Internal/SwitchbackAttributePath.cs', '        var options = new JsonSerializerOptions(JsonOptionsProvider.Default.SerializerOptions);\n        options.Converters.Add(new WireAttributeConverter());', '        var options = new JsonSerializerOptions(WireOptions.Value);\n        options.Converters.Add(new WireAttributeConverter());'),
+ ('wire: null name written', S+'Internal/SwitchbackAttributePath.cs', 'if (value.Name != null) writer.WriteString(', 'writer.WriteString('),
+ ('wire: null value written', S+'Internal/SwitchbackAttributePath.cs', '            if (value.Value != null)\n            {', '            if (true)\n            {'),
+ ('wire: flag cleared by refresh', S+'Context.cs', 'if (hasSwitchbacks) _hasSwitchbacks = true;', '_hasSwitchbacks = hasSwitchbacks;'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {
     # now >= startAt, so the dividend is never negative and truncation equals floorDiv.
     'period: truncating division',
     # NaN/Infinity: both the wire and the default converter reject them; the lookup gives no value.
+    'wire: Half text via double',
 }
 only = sys.argv[1:]
 results = []

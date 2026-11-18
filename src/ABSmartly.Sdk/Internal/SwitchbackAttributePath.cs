@@ -254,8 +254,13 @@ internal sealed class SwitchbackAttributePath
             var naming = options.PropertyNamingPolicy;
             writer.WriteStartObject();
             if (value.Name != null) writer.WriteString(naming.ConvertName(nameof(Models.Attribute.Name)), value.Name);
-            writer.WritePropertyName(naming.ConvertName(nameof(Models.Attribute.Value)));
-            JsonSerializer.Serialize(writer, value.Value, WireOptions.Value);
+            // Null members are left out, as the publish serializer's WhenWritingNull does.
+            if (value.Value != null)
+            {
+                writer.WritePropertyName(naming.ConvertName(nameof(Models.Attribute.Value)));
+                JsonSerializer.Serialize(writer, value.Value, WireOptions.Value);
+            }
+
             writer.WriteNumber(naming.ConvertName(nameof(Models.Attribute.SetAt)), value.SetAt);
             writer.WriteEndObject();
         }

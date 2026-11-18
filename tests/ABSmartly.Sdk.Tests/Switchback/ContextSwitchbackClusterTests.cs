@@ -364,18 +364,22 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         json.Should().Contain("{\"name\":\"ratio\",\"value\":0.1,\"setAt\":" + (Anchor + 10) + "}");
     }
 
-    // The wire form follows the installed data: a refresh that removes every switchback publishes as
-    // before, and a switchback beside unit experiments still turns it on.
+    // The wire form starts with the first data holding a switchback, beside unit experiments too,
+    // and stays after a refresh removes the switchbacks: an exposure they queued can still be pending,
+    // and the Collector must replay its cluster from the same encoding.
     [Test]
-    public void WireFormFollowsTheInstalledSwitchbacks()
+    public void WireFormStartsWithTheFirstSwitchbackAndStays()
     {
-        var context = Create(DataOf(AttributeSwitchback("city")));
+        var experiment = AttributeSwitchback("city");
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "profile/n");
+        var context = Create(new Dictionary<string, string> { [UnitType] = Uid, ["user_id"] = "u1" }, DataOf(experiment));
         Clock.Now = Anchor + 10;
-        context.SetAttribute("plain", 3.0);
+        context.SetAttribute("city", "Faro");
+        context.SetAttribute("profile", new Dictionary<string, object> { ["n"] = 3.0 });
+        context.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
         RefreshTo(context, AsUnit(AttributeSwitchback("city")));
-        context.Track("goal", null!);
-        Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)))
-            .Should().Contain("{\"name\":\"plain\",\"value\":3,");
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+        json.Should().Contain("\"value\":{\"n\":3.0}").And.Contain("\"name\":\"exp_sb\"");
 
         var unit = AsUnit(NewSwitchback(2, "exp_unit", 2, Hour));
         var mixed = Create(DataOf(unit, AttributeSwitchback("city")));
@@ -385,6 +389,22 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         mixed.Track("goal", null!);
         Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(mixed)))
             .Should().Contain("{\"name\":\"plain\",\"value\":3.0,\"setAt\":" + (Anchor + 10) + "}");
+    }
+
+    // Only attribute values take the wire form: goal properties, and attributes without a name or a
+    // value, publish exactly as without switchbacks.
+    [Test]
+    public void OnlyAttributeValuesTakeTheWireForm()
+    {
+        var context = Create(DataOf(AttributeSwitchback("city")));
+        Clock.Now = Anchor + 10;
+        context.SetAttribute("empty", null!);
+        context.SetAttribute(null!, "x");
+        context.Track("goal", new Dictionary<string, object> { ["amount"] = 3.0 });
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+        json.Should().Contain("\"properties\":{\"amount\":3}");
+        json.Should().Contain("{\"name\":\"empty\",\"setAt\":" + (Anchor + 10) + "}");
+        json.Should().Contain("{\"value\":\"x\",\"setAt\":" + (Anchor + 10) + "}");
     }
 
     // A dictionary keyed by doubles keeps its published key names (3, not 3.0), so a path through

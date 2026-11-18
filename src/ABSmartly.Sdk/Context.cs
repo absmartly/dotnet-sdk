@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -115,8 +115,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // by experiment name. Guarded by the context write lock; empty without switchbacks.
     private readonly Dictionary<string, SwitchbackEpoch> _switchbackEpochs = new();
     private long _switchbackGenerationCounter;
-    // Whether the installed data has a switchback; only then are attributes serialized in the wire
-    // form switchback lookups read (PublishEvent.SwitchbackWireAttributes).
+    // Whether data with a switchback was ever installed; from then on attributes are serialized in
+    // the wire form switchback lookups read (PublishEvent.SwitchbackWireAttributes). It stays set
+    // after a refresh removes the switchbacks, since exposures they queued may still be pending,
+    // and the wire form only writes a whole floating-point number as 3.0 instead of 3.
     private volatile bool _hasSwitchbacks;
 
     private volatile int _pendingCount;
@@ -2512,7 +2514,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                     : ++_switchbackGenerationCounter;
             }
 
-            _hasSwitchbacks = hasSwitchbacks;
+            if (hasSwitchbacks) _hasSwitchbacks = true;
             _index = index;
             _holdoutsById = holdoutsById;
             _contextCustomFields = contextCustomFields;
