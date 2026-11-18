@@ -194,7 +194,8 @@ internal sealed class SwitchbackAttributePath
     {
         var options = new JsonSerializerOptions(JsonOptionsProvider.Default.SerializerOptions);
         options.Converters.Add(new FloatingPointConverter<double>(v => (double)v));
-        options.Converters.Add(new FloatingPointConverter<float>(v => (float)v));
+        options.Converters.Add(new FloatingPointConverter<float>(v => (float)v,
+            v => ((float)v).ToString("R", CultureInfo.InvariantCulture)));
         // System.Half, by name: the netstandard2.0 build (used on net6.0 and .NET Framework) does
         // not see the type, and must still treat it as a float.
         options.Converters.Add(new HalfAsFloatConverterFactory());
@@ -233,29 +234,30 @@ internal sealed class SwitchbackAttributePath
             .WriteAsPropertyName(writer, value, options);
     }
 
-    // An attribute value as the context publishes it when switchbacks are installed: the value
-    // itself when the publish serializer writes it as the wire encoding does, otherwise (a value
-    // holding a whole floating-point number) its wire encoding as a JsonElement, which the publish
-    // serializer writes verbatim. A value the wire encoding cannot write is left as is.
-    internal static object ForPublish(object value)
+    // The publish serializer's options with attribute values written in the wire encoding, used by
+    // DefaultContextEventSerializer for a context with switchbacks: everything but the attribute
+    // values serializes as before.
+    internal static readonly Lazy<JsonSerializerOptions> PublishOptions = new(() =>
     {
-        switch (value)
-        {
-            case null or string or bool or char or sbyte or byte or short or ushort or int or uint or long or ulong
-                or decimal or JsonElement or Enum:
-                return value;
-        }
+        var options = new JsonSerializerOptions(JsonOptionsProvider.Default.SerializerOptions);
+        options.Converters.Add(new WireAttributeConverter());
+        return options;
+    });
 
-        try
+    private sealed class WireAttributeConverter : JsonConverter<Models.Attribute>
+    {
+        public override Models.Attribute Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, Models.Attribute value, JsonSerializerOptions options)
         {
-            var wire = JsonSerializer.SerializeToElement(value, WireOptions.Value);
-            var published = JsonSerializer.SerializeToElement(value, JsonOptionsProvider.Default.SerializerOptions);
-            return wire.GetRawText() == published.GetRawText() ? value : wire;
-        }
-        catch (Exception e) when (e is JsonException || e is NotSupportedException || e is InvalidOperationException ||
-                                  e is ArgumentException)
-        {
-            return value;
+            var naming = options.PropertyNamingPolicy;
+            writer.WriteStartObject();
+            if (value.Name != null) writer.WriteString(naming.ConvertName(nameof(Models.Attribute.Name)), value.Name);
+            writer.WritePropertyName(naming.ConvertName(nameof(Models.Attribute.Value)));
+            JsonSerializer.Serialize(writer, value.Value, WireOptions.Value);
+            writer.WriteNumber(naming.ConvertName(nameof(Models.Attribute.SetAt)), value.SetAt);
+            writer.WriteEndObject();
         }
     }
 
@@ -265,17 +267,23 @@ internal sealed class SwitchbackAttributePath
 
         public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
             (JsonConverter)Activator.CreateInstance(typeof(FloatingPointConverter<>).MakeGenericType(typeToConvert),
-                (Func<object, double>)(v => double.Parse(((IFormattable)v).ToString("R", CultureInfo.InvariantCulture),
-                    NumberStyles.Float, CultureInfo.InvariantCulture)));
+                (Func<object, double>)(v => double.Parse(Text(v), NumberStyles.Float, CultureInfo.InvariantCulture)),
+                (Func<object, string>)Text);
+
+        private static string Text(object v) => ((IFormattable)v).ToString("R", CultureInfo.InvariantCulture);
     }
 
     private sealed class FloatingPointConverter<T> : JsonConverter<T>
     {
         private readonly Func<object, double> _toDouble;
+        // The shortest round-trip text of the value in its own type (a float as "0.1", not the
+        // double "0.10000000149011612"), as the publish serializer writes it.
+        private readonly Func<object, string> _toText;
 
-        public FloatingPointConverter(Func<object, double> toDouble)
+        public FloatingPointConverter(Func<object, double> toDouble, Func<object, string> toText = null)
         {
             _toDouble = toDouble;
+            _toText = toText ?? (v => toDouble(v).ToString("R", CultureInfo.InvariantCulture));
         }
 
         public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
@@ -291,7 +299,7 @@ internal sealed class SwitchbackAttributePath
                 return;
             }
 
-            var text = d.ToString("R", CultureInfo.InvariantCulture);
+            var text = _toText(value!);
             if (text.IndexOfAny(FloatMarkers) < 0) text += ".0";
             writer.WriteRawValue(text, skipInputValidation: true);
         }

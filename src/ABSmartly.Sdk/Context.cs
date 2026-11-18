@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -115,8 +115,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // by experiment name. Guarded by the context write lock; empty without switchbacks.
     private readonly Dictionary<string, SwitchbackEpoch> _switchbackEpochs = new();
     private long _switchbackGenerationCounter;
-    // Whether the installed data has a switchback; only then are attributes published in the wire
-    // form switchback lookups read (see PublishedAttributes).
+    // Whether the installed data has a switchback; only then are attributes serialized in the wire
+    // form switchback lookups read (PublishEvent.SwitchbackWireAttributes).
     private volatile bool _hasSwitchbacks;
 
     private volatile int _pendingCount;
@@ -651,7 +651,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                             Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
                         })
                         .ToArray(),
-                    Attributes = _attributes.Count == 0 ? null : PublishedAttributes(),
+                    Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
+                    SwitchbackWireAttributes = _hasSwitchbacks,
                     Exposures = exposures,
                     Goals = achievements
                 };
@@ -687,25 +688,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             lock (_eventLock) _inFlightPublishes.Remove(inFlight.Task);
             inFlight.TrySetResult(true);
         }
-    }
-
-    // The attributes as published. With switchbacks installed, a value holding a whole
-    // floating-point number is published as the JSON the cluster lookup read (3.0, not 3), so the
-    // Collector, which re-resolves the cluster from the published attributes, sees the same float
-    // and keys no cluster on it. Without switchbacks they are published exactly as before.
-    private Attribute[] PublishedAttributes()
-    {
-        var attributes = _attributes.ToArray();
-        if (!_hasSwitchbacks) return attributes;
-
-        for (var i = 0; i < attributes.Length; i++)
-        {
-            var value = SwitchbackAttributePath.ForPublish(attributes[i].Value);
-            if (!ReferenceEquals(value, attributes[i].Value))
-                attributes[i] = new Attribute { Name = attributes[i].Name, Value = value, SetAt = attributes[i].SetAt };
-        }
-
-        return attributes;
     }
 
     private sealed class PublishScope

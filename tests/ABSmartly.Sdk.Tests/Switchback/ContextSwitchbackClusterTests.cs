@@ -340,6 +340,69 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         json.Should().Contain("\"unit\":\"store_id\"");
     }
 
+    // The published event keeps the values the caller set: the wire form is applied only by the
+    // default serializer, so a custom IContextEventSerializer and the Publish event logger see the
+    // original objects, and a float keeps its own shortest text.
+    [Test]
+    public void PublishedAttributeValuesAreTheCallersObjects()
+    {
+        var context = Create(DataOf(AttributeSwitchback("profile/city")));
+        Clock.Now = Anchor + 10;
+        var profile = new Dictionary<string, object> { ["city"] = "Faro", ["score"] = 3.0 };
+        context.SetAttribute("profile", profile);
+        context.SetAttribute("ratio", 0.1f);
+        context.SetAttribute("plain", 3.0);
+        context.GetTreatment("exp_sb");
+        var published = PublishEvent(context);
+
+        published.Attributes.Select(a => a.Value).Should().Equal(profile, 0.1f, 3.0);
+        published.Attributes[2].Value.Should().BeOfType<double>();
+        Newtonsoft.Json.JsonConvert.SerializeObject(published.Attributes[0].Value)
+            .Should().Be("{\"city\":\"Faro\",\"score\":3.0}");
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(published));
+        json.Should().Contain("{\"name\":\"profile\",\"value\":{\"city\":\"Faro\",\"score\":3.0},\"setAt\":" + (Anchor + 10) + "}");
+        json.Should().Contain("{\"name\":\"ratio\",\"value\":0.1,\"setAt\":" + (Anchor + 10) + "}");
+    }
+
+    // The wire form follows the installed data: a refresh that removes every switchback publishes as
+    // before, and a switchback beside unit experiments still turns it on.
+    [Test]
+    public void WireFormFollowsTheInstalledSwitchbacks()
+    {
+        var context = Create(DataOf(AttributeSwitchback("city")));
+        Clock.Now = Anchor + 10;
+        context.SetAttribute("plain", 3.0);
+        RefreshTo(context, AsUnit(AttributeSwitchback("city")));
+        context.Track("goal", null!);
+        Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)))
+            .Should().Contain("{\"name\":\"plain\",\"value\":3,");
+
+        var unit = AsUnit(NewSwitchback(2, "exp_unit", 2, Hour));
+        var mixed = Create(DataOf(unit, AttributeSwitchback("city")));
+        Clock.Now = Anchor + 10;
+        mixed.SetAttribute("plain", 3.0);
+        Clock.Now = Anchor + 500;
+        mixed.Track("goal", null!);
+        Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(mixed)))
+            .Should().Contain("{\"name\":\"plain\",\"value\":3.0,\"setAt\":" + (Anchor + 10) + "}");
+    }
+
+    // A dictionary keyed by doubles keeps its published key names (3, not 3.0), so a path through
+    // it resolves.
+    [Test]
+    public void DoubleKeyedDictionariesResolveByTheirPublishedKeys()
+    {
+        var context = Create(DataOf(AttributeSwitchback("tiers/3")));
+        Clock.Now = Anchor + 10;
+        context.SetAttribute("tiers", new Dictionary<double, string> { [3.0] = "Faro" });
+        context.PeekTreatment("exp_sb").Should().Be(0, "an index segment never reads a map");
+
+        var keyed = Create(DataOf(AttributeSwitchback("tiers/'3'")));
+        Clock.Now = Anchor;
+        keyed.SetAttribute("tiers", new Dictionary<double, string> { [3.0] = "Faro" });
+        PeekSchedule(keyed).Should().Equal(ExpectedSchedule("Faro"));
+    }
+
     // Without switchbacks attributes are published exactly as before (a whole double as 3).
     [Test]
     public void AttributesWithoutSwitchbacksArePublishedAsBefore()

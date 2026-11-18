@@ -555,6 +555,29 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.PendingCount.Should().Be(2, field);
     }
 
+    // A cached unit assignment is never reused once a refresh makes the experiment a switchback:
+    // before the anchor that switchback is a silent control.
+    [Test]
+    public void UnitExperimentBecomingAPreAnchorSwitchbackIsASilentControl()
+    {
+        Context context = null!;
+        foreach (var uid in new[] { Uid, "u1", "u2", "u3", "u4", "u5", "u6", "u7" })
+        {
+            context = CreateContext(new Dictionary<string, string> { [UnitType] = uid }, DataOf(AsUnit(NewSwitchback(3, Hour))));
+            if (context.PeekTreatment("exp_sb") != 0) break;
+        }
+
+        Clock.Now = Anchor + 10;
+        context.GetTreatment("exp_sb").Should().NotBe(0);
+        var pending = context.PendingCount;
+        var preAnchor = NewSwitchback(3, Hour);
+        preAnchor.SwitchbackStartAt = Anchor + Day;
+        RefreshTo(context, preAnchor);
+        context.GetTreatment("exp_sb").Should().Be(0);
+        context.GetVariableValue("sb.arm", -1).Should().Be(0);
+        context.PendingCount.Should().Be(pending);
+    }
+
     // An iteration bump starts a new epoch.
     [Test]
     public void IterationChangeReexposesInTheSamePeriod()
