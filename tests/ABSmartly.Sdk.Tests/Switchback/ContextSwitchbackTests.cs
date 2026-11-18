@@ -514,6 +514,30 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         context.PendingCount.Should().Be(9);
     }
 
+    // Burn-in, burn-out and carryover windows are analysis-only: exposures continue through them,
+    // one per period, with the schedule's variant.
+    [Test]
+    public void ExposuresContinueDuringBurnAndCarryoverWindows()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackBurnInDurationMs = 20 * 60_000L;
+        experiment.SwitchbackBurnOutDurationMs = 10 * 60_000L;
+        experiment.SwitchbackCarryoverDurationMs = 30 * 60_000L;
+        var context = CreateContext(DataOf(experiment));
+        for (var i = 0; i < 3; ++i)
+        {
+            Clock.Now = Anchor + i * Hour + 60_000L;
+            context.GetTreatment("exp_sb").Should().Be(Expected2Arms[i]);
+            Clock.Now = Anchor + (i + 1) * Hour - 60_000L;
+            context.GetTreatment("exp_sb").Should().Be(Expected2Arms[i]);
+        }
+
+        PublishExposures(context).Should().Equal(
+            NewExposure(1, "exp_sb", Expected2Arms[0], Anchor + 60_000L, true, true),
+            NewExposure(1, "exp_sb", Expected2Arms[1], Anchor + Hour + 60_000L, true, true),
+            NewExposure(1, "exp_sb", Expected2Arms[2], Anchor + 2 * Hour + 60_000L, true, true));
+    }
+
     [Test]
     public void RefreshSettingStartAtStartsTheGrid()
     {

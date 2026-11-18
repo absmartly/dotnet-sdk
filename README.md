@@ -338,6 +338,28 @@ A holdout keeps a share of units out of a group of experiments, so their combine
 - `SetOverride()` and a matching assignment rule win over a holdout. The holdout's exposure is still published.
 - The arm is kept until the holdout's iteration changes, even if a refresh changes its seed or split.
 
+### Switchback Experiments
+
+A switchback experiment is randomized over *clusters* and time rather than over units: every unit in the same cluster (for example a store's region) sees the same variant within a period, and the variant changes on a fixed time grid. It follows the cluster-defined contract the Collector serves, as in the Java SDK (`SWITCHBACK.md` in absmartly/java-sdk). Nothing changes in your code: `GetTreatment()`, `PeekTreatment()`, `GetVariableValue()` and `PeekVariableValue()` serve switchbacks, and you set the cluster value as an ordinary attribute.
+
+```csharp
+context.SetUnit("store_id", "store-1234");
+context.SetAttribute("store", new Dictionary<string, object> { ["region"] = "lisbon" });
+
+// The variant of the "lisbon" cluster for the current period.
+var treatment = context.GetTreatment("exp_delivery_fee");
+```
+
+- The experiment's `switchbackClusters` names, in order, the unit types it is linked to and the attribute path of each one's cluster value (`store/region` above; `/` nests, a quoted segment is a literal key, an integer segment indexes a list). The first linked unit, in that order, whose path gives a value serves the experiment; its value is the cluster key, used as is (never hashed).
+- A cluster value is a non-empty string, or a whole number of an integer type (`int`, `long`, ...), used as its base-10 text. Every floating-point number (including `3.0`), `decimal` with a fraction or scale, boolean, object, array, empty string and `null` gives no value. Set integer cluster values with an integer type.
+- With no linked unit set, the experiment does not apply. With no value, disagreeing values, or a value outside `switchbackClusterValues`, the unit gets an ineligible control (variant 0) and nothing is published. Only `SetOverride()` still applies there.
+- Otherwise the usual precedence applies, in this order: override, assignment rule, strict audience, full-on, traffic (on the serving unit), custom assignment, then the schedule draw. Before the grid's start (`switchbackStartAt`), or with a schedule the Collector cannot serve, the draw gives a silent control.
+- Holdouts never apply to a switchback.
+- Each period is exposed once, stamped with the time that chose its period. The cluster value is read once per period: a `SetAttribute()` later in the same period takes effect in the next one.
+- The published exposures and payload have no new fields; attributes are published with their timestamps, as before.
+
+Contexts read the period from their clock, `DateTimeOffset.UtcNow` unless you pass your own `Clock`.
+
 ### Tracking Goals
 
 Goals are created in the A/B Smartly web console.

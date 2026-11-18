@@ -492,6 +492,38 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.PendingCount.Should().Be(4);
     }
 
+    // Each identity field, changed and changed back between two lookups, still starts a new epoch:
+    // the restored definition must not resurrect the exposed slot of the first one.
+    [TestCase("allowList")]
+    [TestCase("startAt")]
+    [TestCase("periodMs")]
+    [TestCase("iteration")]
+    [TestCase("clusters")]
+    [TestCase("designType")]
+    public void IdentityChangeAndBackWithoutALookupReresolves(string field)
+    {
+        var context = CreateContext(DataOf(NewSwitchback(2, Hour)));
+        Clock.Now = Anchor + 10;
+        context.GetTreatment("exp_sb");
+        context.PendingCount.Should().Be(1);
+
+        var changed = NewSwitchback(2, Hour);
+        switch (field)
+        {
+            case "allowList": changed.SwitchbackClusterValues = new[] { ClusterKey }; break;
+            case "startAt": changed.SwitchbackStartAt = Anchor - Hour; break;
+            case "periodMs": changed.SwitchbackPeriodMs = 2 * Hour; break;
+            case "iteration": changed.Iteration = 2; break;
+            case "clusters": changed.SwitchbackClusters = Clusters(UnitType, "'store_key'"); break;
+            case "designType": changed.SwitchbackDesignType = "other"; break;
+        }
+
+        RefreshTo(context, changed);
+        RefreshTo(context, NewSwitchback(2, Hour));
+        context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
+        context.PendingCount.Should().Be(2, field);
+    }
+
     // An iteration bump starts a new epoch.
     [Test]
     public void IterationChangeReexposesInTheSamePeriod()
