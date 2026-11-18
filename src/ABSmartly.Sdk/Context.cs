@@ -1573,6 +1573,23 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         assignment.Variant = SwitchbackAssigner.Assign(serving.ClusterKey, period, SwitchbackSeed(data), data.Split.Length);
     }
 
+    // Test seam: the assignment cached for the experiment's slot at the clock's current reading, as
+    // java-sdk switchbackResolutionForTest; null when nothing is cached for that slot.
+    internal Assignment CachedAssignmentForTest(string experimentName)
+    {
+        _contextLock.EnterReadLock();
+        try
+        {
+            var key = AssignmentCacheKey(experimentName,
+                CurrentSwitchbackPeriod(GetExperiment(experimentName), _clock.Millis()));
+            return _assignmentCache.TryGetValue(key, out var assignment) ? assignment : null;
+        }
+        finally
+        {
+            _contextLock.ExitReadLock();
+        }
+    }
+
     #endregion
 
     private Assignment GetVariableAssignment(string key, bool doExposure, long now)
