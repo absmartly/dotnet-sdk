@@ -1702,8 +1702,7 @@ public class ContextHoldoutTests
     }
 
     // As JS, a same-iteration rename keeps the unit's arm, and an experiment resolved after the
-    // refresh publishes the holdout's live name. (An assignment pinned before the refresh keeps
-    // the name it was resolved with, as JS publishes its pinned holdout snapshot.)
+    // refresh publishes the holdout's live name.
     [Test]
     public void SameIterationRenamePublishesTheLiveHoldoutName()
     {
@@ -1718,6 +1717,26 @@ public class ContextHoldoutTests
 
         AssertPublished(context, UidNotHeldOut, Exposure(2, "exp_rename_b", 0),
             HoldoutExposure(11, "holdout_new_name", 1));
+    }
+
+    // As JS, an assignment publishes the name of the holdout snapshot it pinned: one resolved
+    // before a same-iteration rename keeps the old name, even after another experiment's read
+    // (here a peek) resolves the renamed holdout.
+    [Test]
+    public void AssignmentPinnedBeforeARenamePublishesItsPinnedHoldoutName()
+    {
+        var context = CreateContext(UidNotHeldOut,
+            DataOf(new[] { NewHoldout(11, "holdout_old_name", HoldoutASeedHi, HoldoutASeedLo) },
+                CoveredBy(NewExperiment(1, "exp_pinned_a"), 11), CoveredBy(NewExperiment(2, "exp_pinned_b"), 11)));
+        context.PeekTreatment("exp_pinned_a").Should().Be(0);
+
+        Refresh(context, DataOf(new[] { NewHoldout(11, "holdout_new_name", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_pinned_a"), 11), CoveredBy(NewExperiment(2, "exp_pinned_b"), 11)));
+        context.PeekTreatment("exp_pinned_b").Should().Be(0);
+        context.GetTreatment("exp_pinned_a").Should().Be(0);
+
+        AssertPublished(context, UidNotHeldOut, Exposure(1, "exp_pinned_a", 0),
+            HoldoutExposure(11, "holdout_old_name", 1));
     }
 
     #endregion

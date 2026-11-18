@@ -455,15 +455,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var holdoutAssignments = assignment.HoldoutAssignments;
         if (holdoutAssignments == null) return null;
 
+        // Named from the holdout definition this assignment pinned, as JS (`holdouts[i].data.name`).
+        var holdouts = assignment.Holdouts;
         ExceptionDispatchInfo failure = null;
-        foreach (var holdoutAssignment in holdoutAssignments)
+        for (var i = 0; i < holdoutAssignments.Length; i++)
         {
+            var holdoutAssignment = holdoutAssignments[i];
             if (holdoutAssignment == null ||
                 Interlocked.CompareExchange(ref holdoutAssignment.Exposed, 1, 0) != 0) continue;
 
             try
             {
-                EnqueueExposure(holdoutAssignment);
+                EnqueueExposure(holdoutAssignment, holdouts[i].Name);
             }
             catch (Exception e)
             {
@@ -474,12 +477,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return failure;
     }
 
-    private void EnqueueExposure(Assignment assignment)
+    private void EnqueueExposure(Assignment assignment, string name = null)
     {
         var exposure = new Exposure
         {
             Id = assignment.Id,
-            Name = assignment.Name,
+            Name = name ?? assignment.Name,
             Unit = assignment.UnitType,
             Variant = assignment.Variant,
             ExposedAt = _clock.Millis(),
@@ -926,11 +929,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var live = GetHoldoutById(holdout.Id) ?? holdout;
         var key = (live.Id, unitType);
         if (_holdoutAssignments.TryGetValue(key, out var cached) && cached.Iteration == live.Iteration)
-        {
-            // A same-iteration rename keeps the arm but publishes the live name, as JS.
-            cached.Name = live.Name;
             return cached;
-        }
 
         var assigner = GetVariantAssigner(unitType, GetUnitHash(unitType, uid));
         var assignment = new Assignment
