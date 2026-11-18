@@ -28,7 +28,7 @@ public class Experiment
     // The experiment's ordered assignment rules, a JSON string such as
     // {"rules":[{"type":"assign","variant":1,"conditions":{...},"environments":[]}]}. A value
     // that is not a string is read as null, so it does not fail the whole context.
-    [JsonConverter(typeof(AssignmentRulesConverter))]
+    [JsonConverter(typeof(LenientStringConverter))]
     public string AssignmentRules { get; set; }
     // The ids of the holdouts (ContextData.Holdouts) covering this experiment. Null or empty means
     // it is not covered. Entries that are not integers are skipped, so they do not fail the context.

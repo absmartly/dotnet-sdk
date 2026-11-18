@@ -213,6 +213,7 @@ public class HoldoutPayloadTests
             sb.Append(Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(published[^1]))).Append('\n');
         }
 
-        sb.ToString().Should().Be(Resource("publish_without_holdouts.golden"));
+        // Records are LF-separated; a CRLF checkout of the fixture must not fail the comparison.
+        sb.ToString().Should().Be(Resource("publish_without_holdouts.golden").Replace("\r\n", "\n"));
     }
 }

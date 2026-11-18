@@ -35,7 +35,6 @@ internal sealed class HoldoutsConverter : JsonConverter<Experiment[]>
             }
             catch (JsonException)
             {
-                // Skipped: see above.
             }
         }
 

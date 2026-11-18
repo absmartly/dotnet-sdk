@@ -911,10 +911,11 @@ public class ContextHoldoutTests
     }
 
     // Java bounds its settle loop at three attempts; dotnet re-resolves until the assignment it
-    // holds is not retired. A retirement happens only on the first SetUnit of the unit type, so
-    // two consecutive ones (two unit types) still settle on the third resolution, exposing once.
+    // holds is not retired. Only the SetUnit of the experiment's own unit type retires it: a later
+    // SetUnit of another type leaves the replacement in place, so the read settles on its second
+    // resolution and exposes once.
     [Test]
-    public void TreatmentExposureSettlesAfterTwoConsecutiveRetirements()
+    public void TreatmentExposureSettlesAfterOneRetirementDespiteALaterUnrelatedSetUnit()
     {
         var context = CreateContextWithoutUnits(DataOf(
             new[] { NewHoldout(11, "holdout_settle", "user_id", HoldoutBSeedHi, HoldoutBSeedLo, "full") },
@@ -946,8 +947,9 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(2);
     }
 
+    // Without a retirement, the read resolves the assignment exactly once.
     [Test]
-    public void ExposureSettlementStopsAfterTheBoundedNumberOfRetirements()
+    public void TreatmentWithoutRetirementResolvesOnce()
     {
         var context = CreateContext(DataOf(NewExperiment(1, "exp_bounded_retry", 1)));
         var resolutions = 0;
@@ -1347,6 +1349,30 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(1);
     }
 
+    // Two losing candidates with distinct holdouts: the first holdout's logger throws, and the
+    // second candidate's holdout is still queued before the first exception propagates.
+    [Test]
+    public void ThrowingLoggerDoesNotSkipLaterVariableCandidatesHoldouts()
+    {
+        ThrowOnExposure(e => e.Id == 11);
+        var first = CoveredBy(NewExperiment(1, "exp_var_loser_a"), 11);
+        first.Variants[1].Config = "{\"loser_key\":\"a\"}";
+        var second = CoveredBy(NewExperiment(2, "exp_var_loser_b"), 12);
+        second.Variants[1].Config = "{\"loser_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutASeedHi, HoldoutASeedLo)
+        }, first, second));
+
+        var act = () => context.GetVariableValue("loser_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.PendingCount.Should().Be(2);
+        _eventLogger.Reset();
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 0));
+    }
+
     // The held-out experiment has no exposure of its own, so only the holdout's exposure can
     // schedule the flush, even when the logger throws on it.
     [Test]
@@ -1663,6 +1689,24 @@ public class ContextHoldoutTests
         context.GetTreatment("exp_rename_b").Should().Be(0);
 
         AssertPublished(context, UidNotHeldOut, Exposure(2, "exp_rename_b", 0),
+            HoldoutExposure(11, "holdout_new_name", 1));
+    }
+
+    // The rename also reaches an assignment pinned (by a peek) before the refresh, which stays
+    // valid: exposing it publishes the live name, keeping the arm.
+    [Test]
+    public void SameIterationRenameReachesAnAssignmentPinnedBeforeTheRefresh()
+    {
+        var context = CreateContext(UidNotHeldOut,
+            DataOf(new[] { NewHoldout(11, "holdout_old_name", HoldoutASeedHi, HoldoutASeedLo) },
+                CoveredBy(NewExperiment(1, "exp_rename_pinned"), 11)));
+        context.PeekTreatment("exp_rename_pinned").Should().Be(0);
+
+        Refresh(context, DataOf(new[] { NewHoldout(11, "holdout_new_name", HoldoutBSeedHi, HoldoutBSeedLo) },
+            CoveredBy(NewExperiment(1, "exp_rename_pinned"), 11)));
+        context.GetTreatment("exp_rename_pinned").Should().Be(0);
+
+        AssertPublished(context, UidNotHeldOut, Exposure(1, "exp_rename_pinned", 0),
             HoldoutExposure(11, "holdout_new_name", 1));
     }
 
