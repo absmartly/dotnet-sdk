@@ -242,7 +242,6 @@ public class ContextSwitchbackClusterRuleTests
     [Test]
     public void TrafficUsesTheServingUidNotTheExperimentUid()
     {
-        // percentageOfTraffic = 40.
         _experiment.TrafficSplit = new[] { 0.6, 0.4 };
         var ordinary = UnitExperiment("ordinary", 901, User);
         var split = new[] { 0.6, 0.4 };
@@ -471,7 +470,6 @@ public class ContextSwitchbackClusterRuleTests
             return FloorDiv(nowMs - anchor, periodMs);
         }
 
-        // (variant, eligible)
         public static (int, bool) Evaluate(Experiment experiment, string uid, string? clusterKey, long nowMs)
         {
             var periodIndex = PeriodIndex(experiment, nowMs);

@@ -115,6 +115,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // by experiment name. Guarded by the context write lock; empty without switchbacks.
     private readonly Dictionary<string, SwitchbackEpoch> _switchbackEpochs = new();
     private long _switchbackGenerationCounter;
+    // Whether the installed data has a switchback; only then are attributes published in the wire
+    // form switchback lookups read (see PublishedAttributes).
+    private volatile bool _hasSwitchbacks;
 
     private volatile int _pendingCount;
     private int _refreshing;
@@ -427,19 +430,21 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // logger), since this assignment is already marked exposed and would never fire them again;
     // the first failure is rethrown once every holdout has fired.
     //
-    // A switchback exposure is stamped with resolvedAt, the clock reading that selected its period:
-    // analysis derives the period from exposedAt, so a later reading could attribute the variant to
-    // the next period. A switchback resolution the Collector records nothing for (no linked unit, an
-    // ineligible cluster, a pre-anchor or unservable draw) is marked exposed without an exposure.
-    // Unit experiments read the clock at enqueue time, as before.
-    private void QueueExposure(Assignment assignment, long resolvedAt)
+    // A switchback exposure is stamped with the instant its slot read the cluster (SwitchbackState.
+    // ServingReadAt). The Collector re-resolves the cluster from the published attributes at
+    // exposedAt and analysis derives the period from it, so that instant reproduces exactly the
+    // cluster and period that served the variant, even when a cluster attribute changed in the
+    // same period after a peek or an earlier call read it. A switchback resolution the Collector
+    // records nothing for (no linked unit, an ineligible cluster, a pre-anchor or unservable draw)
+    // is marked exposed without an exposure.
+    private void QueueExposure(Assignment assignment)
     {
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
             if (assignment.Switchback != null)
             {
                 if (!assignment.Switchback.Silent)
-                    EnqueueExposure(assignment, assignment.Name, resolvedAt != ClockNotRead ? resolvedAt : _clock.Millis());
+                    EnqueueExposure(assignment, assignment.Name, assignment.Switchback.ServingReadAt);
                 return;
             }
 
@@ -646,7 +651,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                             Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
                         })
                         .ToArray(),
-                    Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
+                    Attributes = _attributes.Count == 0 ? null : PublishedAttributes(),
                     Exposures = exposures,
                     Goals = achievements
                 };
@@ -682,6 +687,25 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             lock (_eventLock) _inFlightPublishes.Remove(inFlight.Task);
             inFlight.TrySetResult(true);
         }
+    }
+
+    // The attributes as published. With switchbacks installed, a value holding a whole
+    // floating-point number is published as the JSON the cluster lookup read (3.0, not 3), so the
+    // Collector, which re-resolves the cluster from the published attributes, sees the same float
+    // and keys no cluster on it. Without switchbacks they are published exactly as before.
+    private Attribute[] PublishedAttributes()
+    {
+        var attributes = _attributes.ToArray();
+        if (!_hasSwitchbacks) return attributes;
+
+        for (var i = 0; i < attributes.Length; i++)
+        {
+            var value = SwitchbackAttributePath.ForPublish(attributes[i].Value);
+            if (!ReferenceEquals(value, attributes[i].Value))
+                attributes[i] = new Attribute { Name = attributes[i].Name, Value = value, SetAt = attributes[i].SetAt };
+        }
+
+        return attributes;
     }
 
     private sealed class PublishScope
@@ -909,9 +933,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return previous;
     }
 
-    // A switchback serves under the unit its clusters select, so its unit identity is the cluster
-    // map compared by SwitchbackConfigMatches; on the legacy path a unitType change starts a new
-    // generation (SameSwitchbackIdentity), which drops the slot before it gets here.
+    // A switchback serves under the unit its clusters select, so its unit identity (the cluster map,
+    // or unitType on the legacy path) is part of its generation (SameSwitchbackIdentity).
     private static bool ExperimentMatches(Experiment experiment, Assignment assignment)
     {
         return experiment.Id == assignment.Id &&
@@ -1322,25 +1345,16 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private static string SwitchbackCacheKey(string experimentName, long periodIndex) =>
         experimentName + SwitchbackKeySeparator + periodIndex.ToString(CultureInfo.InvariantCulture);
 
-    // Grid identity: a change to any of these re-maps periods or clusters to variants. Carryover and
-    // burn windows are analysis-only and deliberately excluded, as are seed and split, which do not
-    // invalidate unit assignments either.
-    private static bool SwitchbackConfigMatches(Experiment experiment, Assignment assignment)
-    {
-        var state = assignment.Switchback;
-        if (IsSwitchback(experiment) != (state != null)) return false;
-        return state == null ||
-               ArrayEquality.Equals(experiment.SwitchbackClusters, state.Clusters) &&
-               ArrayEquality.Equals(experiment.SwitchbackClusterValues, state.ClusterValues) &&
-               experiment.SwitchbackStartAt == state.StartAt &&
-               experiment.SwitchbackPeriodMs == state.PeriodMs &&
-               string.Equals(experiment.SwitchbackDesignType, state.DesignType, StringComparison.Ordinal);
-    }
+    // A cached assignment is a switchback slot exactly when the experiment is a switchback. Its grid
+    // identity is the generation: definitions change only through a refresh, which gives a changed
+    // grid a new generation, and a stale epoch is dropped before any of its slots is validated.
+    private static bool SwitchbackConfigMatches(Experiment experiment, Assignment assignment) =>
+        IsSwitchback(experiment) == (assignment.Switchback != null);
 
     // A switchback consults its rules and audience only for an eligible cluster (the Collector
     // evaluates them only for a cluster key); a unit experiment always does.
     private static bool SwitchbackConsultedRules(Assignment assignment) =>
-        assignment.Switchback == null || assignment.Overridden ||
+        assignment.Switchback == null ||
         assignment.Switchback.Serving.Status == SwitchbackServing.ServingStatus.Eligible;
 
     // Switchback identity: id, iteration, the ordered cluster map, the allow-list, startAt, periodMs
@@ -1372,7 +1386,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return experiment == null || !IsSwitchback(experiment.Data) || epoch.Generation != experiment.SwitchbackGeneration;
     }
 
-    // Drops every slot of the epoch, the bare-name slot included. Called with the write lock held.
+    // Called with the write lock held.
     private void DropSwitchbackEpoch(string experimentName)
     {
         if (!_switchbackEpochs.TryGetValue(experimentName, out var epoch)) return;
@@ -1421,14 +1435,15 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             });
     }
 
-    // The slot's serving resolution: reused when this slot already read it (unless no linked unit was
-    // set then), otherwise read now.
-    private SwitchbackServing SwitchbackServingFor(ExperimentVariables experiment, Assignment previous, long now)
+    // The slot's serving resolution and the instant it was read: reused when this slot already read
+    // it (unless no linked unit was set then), otherwise read now.
+    private (SwitchbackServing Serving, long ReadAt) SwitchbackServingFor(ExperimentVariables experiment,
+        Assignment previous, long now)
     {
-        var cached = previous?.Switchback?.Serving;
-        return cached != null && cached.Status != SwitchbackServing.ServingStatus.Absent
-            ? cached
-            : ResolveSwitchbackServing(experiment, now);
+        var cached = previous?.Switchback;
+        return cached != null && cached.Serving.Status != SwitchbackServing.ServingStatus.Absent
+            ? (cached.Serving, cached.ServingReadAt)
+            : (ResolveSwitchbackServing(experiment, now), now);
     }
 
     // The attribute the Collector records with an exposure at `now` (ContextAPI.extractAttributes):
@@ -1464,14 +1479,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         var data = experiment.Data;
         var custom = _customAssignments.TryGetValue(data.Name, out var c) ? c : null;
+        var (serving, servingReadAt) = SwitchbackServingFor(experiment, previous, now);
         var state = new SwitchbackState
         {
-            Clusters = data.SwitchbackClusters,
-            ClusterValues = data.SwitchbackClusterValues,
-            StartAt = data.SwitchbackStartAt,
-            PeriodMs = data.SwitchbackPeriodMs,
-            DesignType = data.SwitchbackDesignType,
-            Serving = SwitchbackServingFor(experiment, previous, now),
+            Serving = serving,
+            ServingReadAt = servingReadAt,
             CustomAssignment = custom
         };
         assignment.Switchback = state;
@@ -1512,7 +1524,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         assignment.Variant = 0;
         if (serving.Status == SwitchbackServing.ServingStatus.Absent)
         {
-            // No linked unit: the experiment does not apply, like an unset unit type.
             assignment.Eligible = false;
             state.Silent = true;
             return;
@@ -1559,7 +1570,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         if (periodIndex is not { } period)
         {
-            // Pre-start or an unservable schedule: no draw, so control and no exposure.
             assignment.Eligible = false;
             state.Silent = true;
             return;
@@ -1938,7 +1948,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             assignment = GetAssignment(experimentName, ref now);
             if (AfterAssignmentLookup != null) Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
             if (doExposure && assignment.Exposed == 0)
-                QueueExposure(assignment, now);
+                QueueExposure(assignment);
         } while (Volatile.Read(ref assignment.Exposed) == 2);
 
         return assignment.Variant;
@@ -2104,7 +2114,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (AfterAssignmentLookup != null) Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
             if (assignment?.Variables is null) return defaultValue;
 
-            if (doExposure && assignment.Exposed == 0) QueueExposure(assignment, now);
+            if (doExposure && assignment.Exposed == 0) QueueExposure(assignment);
         } while (Volatile.Read(ref assignment.Exposed) == 2);
 
         return assignment.Variables.TryGetValue(key, out var variable) ? variable : defaultValue;
@@ -2383,7 +2393,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             };
             if (IsSwitchback(experiment))
             {
-                // Holdouts never apply to a switchback.
                 experimentVariables.Holdouts = null;
                 experimentVariables.SwitchbackSources = SwitchbackServing.Sources(experiment.SwitchbackClusters);
             }
@@ -2510,15 +2519,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // A switchback keeps its generation while its identity is unchanged; any other transition
             // (a new grid, a unit definition, removal) gets a fresh one, so its next resolution drops
             // every slot of the old epoch.
+            var hasSwitchbacks = false;
             foreach (var installed in index.Values)
             {
                 if (!IsSwitchback(installed.Data)) continue;
+                hasSwitchbacks = true;
                 var previous = _index != null && _index.TryGetValue(installed.Data.Name, out var p) ? p : null;
                 installed.SwitchbackGeneration = SameSwitchbackIdentity(previous, installed)
                     ? previous.SwitchbackGeneration
                     : ++_switchbackGenerationCounter;
             }
 
+            _hasSwitchbacks = hasSwitchbacks;
             _index = index;
             _holdoutsById = holdoutsById;
             _contextCustomFields = contextCustomFields;
@@ -2966,25 +2978,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // For a holdout's own assignment: the split length its arm was drawn from.
         internal int HoldoutArmCount => Holdout?.ArmCount ?? 0;
 
-        // Switchback state, allocated only for a switchback experiment's assignment.
         internal SwitchbackState Switchback;
     }
 
-    // The switchback grid an assignment was resolved under (compared by SwitchbackConfigMatches), the
-    // serving resolution it read, and whether the Collector records it.
+    // A switchback slot's serving resolution and whether the Collector records it.
     internal sealed class SwitchbackState
     {
-        public KeyValuePair<string, string>[] Clusters;
-        public string[] ClusterValues;
-        public long? StartAt;
-        public long? PeriodMs;
-        public string DesignType;
         // The serving unit and cluster key, read once per slot (reused by a slot rebuilt in the same
         // epoch, unless no linked unit was set then).
         public SwitchbackServing Serving;
-        // No exposure: no linked unit, an ineligible cluster, or a pre-anchor or unservable draw.
+        // The clock reading Serving was read at; the slot's exposure is stamped with it.
+        public long ServingReadAt;
         public bool Silent;
-        // The custom assignment this was resolved with; a different one makes it stale.
         public int? CustomAssignment;
     }
 

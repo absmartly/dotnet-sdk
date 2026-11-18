@@ -1,5 +1,7 @@
+using System.Text;
 using ABSmartly.Internal;
 using ABSmartly.Models;
+using ABSmartly.Services;
 
 namespace ABSmartly.Sdk.Tests.Switchback;
 
@@ -163,7 +165,6 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
             context.SetAttribute("city", value!);
             Clock.Now = Anchor + 10;
             context.GetTreatment("exp_sb").Should().Be(0, "{0}", value);
-            // Variant 0's own config, like any ineligible assignment.
             context.GetVariableValue("sb.arm", -1).Should().Be(0, "{0}", value);
             context.PendingCount.Should().Be(0, "{0}", value);
         }
@@ -318,6 +319,62 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         ExpectedSchedule("Lisboa").Should().NotEqual(ExpectedSchedule("Porto"));
     }
 
+    // Review regression: a whole floating-point value is published as a float (3.0), so the
+    // Collector, which re-resolves clusters from the published attributes, does not see an integer
+    // key 3 there that would disagree with the served cluster and drop the exposure.
+    [Test]
+    public void WholeFloatAttributesArePublishedAsFloats()
+    {
+        var experiment = AttributeSwitchback("city");
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "profile/n");
+        var context = Create(new Dictionary<string, string> { [UnitType] = Uid, ["user_id"] = "u1" }, DataOf(experiment));
+        Clock.Now = Anchor + 10;
+        context.SetAttribute("city", "Faro");
+        context.SetAttribute("profile", new Dictionary<string, object> { ["n"] = 3.0, ["m"] = 2.5f, ["k"] = 4 });
+        context.SetAttribute("plain", 3.0);
+        context.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
+
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+        json.Should().Contain("{\"name\":\"profile\",\"value\":{\"n\":3.0,\"m\":2.5,\"k\":4},\"setAt\":" + (Anchor + 10) + "}");
+        json.Should().Contain("{\"name\":\"plain\",\"value\":3.0,");
+        json.Should().Contain("\"unit\":\"store_id\"");
+    }
+
+    // Without switchbacks attributes are published exactly as before (a whole double as 3).
+    [Test]
+    public void AttributesWithoutSwitchbacksArePublishedAsBefore()
+    {
+        var context = Create(DataOf(AsUnit(AttributeSwitchback("city"))));
+        context.SetAttribute("profile", new Dictionary<string, object> { ["n"] = 3.0 });
+        context.GetTreatment("exp_sb");
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+        json.Should().Contain("\"value\":{\"n\":3}");
+    }
+
+    // Review regression: a dictionary keyed by an enum beside the cluster field neither hides the
+    // field nor changes how the attribute is published.
+    [Test]
+    public void EnumKeyedSiblingsDoNotHideTheClusterValue()
+    {
+        var context = Create(DataOf(AttributeSwitchback("profile/city")));
+        Clock.Now = Anchor + 10;
+        context.SetAttribute("profile", new Dictionary<string, object>
+        {
+            ["city"] = "Faro",
+            ["hours"] = new Dictionary<DayOfWeek, int> { [DayOfWeek.Monday] = 9 },
+            ["day"] = DayOfWeek.Friday
+        });
+        context.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+        json.Should().Contain("\"value\":{\"city\":\"Faro\",\"hours\":{\"monday\":9},\"day\":5}");
+
+        // The enum value itself is still no key.
+        var enumValue = Create(DataOf(AttributeSwitchback("profile/day")));
+        enumValue.SetAttribute("profile", new Dictionary<string, object> { ["day"] = DayOfWeek.Friday });
+        enumValue.GetTreatment("exp_sb").Should().Be(0);
+        enumValue.PendingCount.Should().Be(0);
+    }
+
     // Within a period the cluster key is fixed at first resolution; the next period reads the
     // attribute again.
     [Test]
@@ -390,7 +447,7 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
     }
 
     // A traffic miss of an eligible cluster is recorded under the serving unit, and traffic restored
-    // later in the period serves the key read at first resolution.
+    // later in the period serves the key read at first resolution, stamped with that read's instant.
     [Test]
     public void TrafficRestoredWithinThePeriodKeepsTheKey()
     {
@@ -407,10 +464,11 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         Expected("Faro", 0).Should().Be(1);
         context.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
         PublishExposures(context).Should().Equal(ClusterExposure(0, Anchor + 10, false, false),
-            ClusterExposure(Expected("Faro", 0), Anchor + 20, true, false));
+            ClusterExposure(Expected("Faro", 0), Anchor + 10, true, false));
     }
 
-    // An audience change re-resolves the period slot (new exposure state) but keeps its key.
+    // An audience change re-resolves the period slot (new exposure state) but keeps its key and the
+    // instant it was read, which stamps both exposures.
     [Test]
     public void AudienceRevalidationAfterSetAttributeKeepsThePeriodsBucket()
     {
@@ -428,7 +486,7 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         context.GetTreatment("exp_sb").Should().Be(Expected("Lisboa", 0));
 
         PublishExposures(context).Should().Equal(ClusterExposure(Expected("Lisboa", 0), Anchor + 10, true, false),
-            ClusterExposure(Expected("Lisboa", 0), Anchor + 20, true, true));
+            ClusterExposure(Expected("Lisboa", 0), Anchor + 10, true, true));
     }
 
     // A slot first resolved without a key carries that missing key into its replacement.

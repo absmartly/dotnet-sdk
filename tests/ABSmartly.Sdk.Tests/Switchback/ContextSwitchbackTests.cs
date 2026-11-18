@@ -401,7 +401,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         context.PendingCount.Should().Be(1);
     }
 
-    // A clock that counts its reads.
     private sealed class CountingClock : ABSmartly.Time.Clock
     {
         public int Reads;
@@ -434,7 +433,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
 
         clock.Reads.Should().Be(reads);
 
-        // A switchback lookup reads it once per call.
         var mixed = Context.CreateWithData(new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) }.SetUnit(UnitType, Uid),
             DataOf(NewSwitchback(2, Hour)), clock, DataProvider.Object, Publisher, null, new DefaultVariableParser(),
             new AudienceMatcher(new DefaultAudienceDeserializer()), null);

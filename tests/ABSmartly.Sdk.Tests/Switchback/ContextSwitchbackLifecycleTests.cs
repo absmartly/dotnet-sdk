@@ -272,17 +272,47 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", Expected2Arms[0], Anchor + Hour - 1, true, true));
     }
 
-    // A peek caches the period's assignment without exposing; the later GetTreatment exposes at its
-    // own resolution instant, not the peek's.
+    // A peek caches the period's assignment without exposing; the later GetTreatment exposes it
+    // stamped with the instant the slot read its cluster (the peek's), so the Collector, which
+    // re-resolves the cluster from the published attributes at exposedAt, sees what served.
     [Test]
-    public void ExposureAfterPeekUsesTheExposingCallsInstant()
+    public void ExposureAfterPeekIsStampedWhenTheClusterWasRead()
     {
         var context = CreateContext(DataOf(NewSwitchback(2, Hour)));
         Clock.Now = Anchor + 10;
         context.PeekTreatment("exp_sb").Should().Be(Expected2Arms[0]);
         Clock.Now = Anchor + 20 * 60_000L;
         context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
-        PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", Expected2Arms[0], Anchor + 20 * 60_000L, true, true));
+        PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", Expected2Arms[0], Anchor + 10, true, true));
+    }
+
+    // Review regression (Peek -> SetAttribute -> GetTreatment -> Publish, same period): the exposure
+    // and the published attributes must let the Collector replay the cluster that served. At
+    // exposedAt, the latest published value of the cluster attribute is the one the slot read.
+    [Test]
+    public void SamePeriodClusterChangeAfterAPeekReplaysTheServedCluster()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city");
+        experiment.SwitchbackClusterValues = new[] { "Faro" };
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        var served = context.PeekTreatment("exp_sb");
+        served.Should().Be(SwitchbackAssigner.Assign("Faro", 1, Seed, 2));
+        Clock.Now = Anchor + Hour + 2;
+        context.SetAttribute("city", "Porto");
+        context.GetTreatment("exp_sb").Should().Be(served);
+
+        var published = PublishEvent(context);
+        var exposure = published.Exposures.Should().ContainSingle().Subject;
+        exposure.Should().Be(NewExposure(1, "exp_sb", served, Anchor + Hour + 1, true, true));
+        // The Collector's replay: the latest "city" set at or before exposedAt, through the
+        // published JSON, gives the allowed key Faro in the same period.
+        var replayed = published.Attributes.Where(a => a.Name == "city" && a.SetAt <= exposure.ExposedAt)
+            .OrderBy(a => a.SetAt).Last();
+        replayed.Value.Should().Be("Faro");
+        ((exposure.ExposedAt - Anchor) / Hour).Should().Be(1);
     }
 
     // Unit experiments keep stamping at enqueue time: their lookup does not read the clock, so the
@@ -382,7 +412,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.GetVariableValue("sb.arm", -1).Should().Be(2);
         context.PendingCount.Should().Be(1);
 
-        // Same index 0 under the new period length; variant 2 now carries a different value.
         var regridded = NewSwitchback(3, 2 * Hour);
         regridded.HoldoutIds = new[] { 11 };
         regridded.Variants[2] = new ExperimentVariant { Name = "C", Config = "{\"sb.arm\":22}" };

@@ -49,7 +49,6 @@ public abstract class SwitchbackTestBase
     protected const int SeedLo = -7;
     protected static readonly long Seed = ((long)SeedHi << 32) | (SeedLo & 0xffffffffL);
 
-    // The store unit's cluster value: attribute ClusterPath, set on every default context.
     protected const string ClusterPath = "store_key";
     protected const string ClusterKey = "store-42";
     // Periods 0..11 of the raw cluster key "store-42" under seed (SeedHi, SeedLo), from java-sdk
@@ -131,7 +130,6 @@ public abstract class SwitchbackTestBase
 
     protected static Experiment NewSwitchback(int armCount, long periodMs) => NewSwitchback(1, "exp_sb", armCount, periodMs);
 
-    // The same experiment as a unit experiment: no randomization type and no grid.
     protected static Experiment AsUnit(Experiment experiment)
     {
         experiment.RandomizationType = null;

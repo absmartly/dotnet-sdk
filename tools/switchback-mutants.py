@@ -12,7 +12,7 @@ M = [
  ('cluster order: walk sources in reverse', S+'Internal/SwitchbackServing.cs', 'foreach (var source in sources)', 'foreach (var source in System.Linq.Enumerable.Reverse(sources))'),
  ('cluster order: sort sources by unit type', S+'Internal/SwitchbackServing.cs', 'foreach (var source in sources)', 'foreach (var source in System.Linq.Enumerable.OrderBy(sources, s => s.Key, StringComparer.Ordinal))'),
  ('cluster order: decoder sorts keys', S+'Services/Json/SwitchbackConverters.cs', 'return clusters.ToArray();', 'clusters.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key)); return clusters.ToArray();'),
- ('cluster order: decoder via Dictionary(ordinal hash)', S+'Services/Json/SwitchbackConverters.cs', 'return clusters.ToArray();', 'return new Dictionary<string, string>(clusters).ToArray();'),
+ ('cluster order: decoder via Dictionary(ordinal hash)', S+'Services/Json/SwitchbackConverters.cs', 'return clusters.ToArray();', 'return System.Linq.Enumerable.ToArray(System.Linq.Enumerable.OrderBy(clusters, c => c.Key.GetHashCode()));'),
  ('raw key: hash cluster key with MD5', S+'Context.cs', 'SwitchbackAssigner.Assign(serving.ClusterKey, period,', 'SwitchbackAssigner.Assign(ABSmartly.Internal.Hashing.Md5.Hash(serving.ClusterKey), period,'),
  ('raw key: draw over unit uid', S+'Context.cs', 'SwitchbackAssigner.Assign(serving.ClusterKey, period,', 'SwitchbackAssigner.Assign(_units[unitType], period,'),
  ('raw key: draw over hashed uid', S+'Context.cs', 'SwitchbackAssigner.Assign(serving.ClusterKey, period,', 'SwitchbackAssigner.Assign(Md5.Hash(_units[unitType]), period,'),
@@ -25,15 +25,13 @@ M = [
  ('value rule: current culture', S+'Internal/SwitchbackClusterKeys.cs', 'System.Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture)', 'System.Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.CurrentCulture)'),
  ('value rule: object text is key', S+'Internal/SwitchbackClusterKeys.cs', '            case JsonElement element:\n                return Normalize(element);\n            default:\n                return null;', '            case JsonElement element:\n                return Normalize(element);\n            default:\n                return value?.ToString();'),
  ('value rule: JSON object raw text is key', S+'Internal/SwitchbackClusterKeys.cs', '                    .ToString(CultureInfo.InvariantCulture);\n            default:\n                return null;', '                    .ToString(CultureInfo.InvariantCulture);\n            default:\n                return element.GetRawText();'),
+ ('epoch: slot type not checked', S+'Context.cs', 'IsSwitchback(experiment) == (assignment.Switchback != null);', 'true;'),
  ('epoch(gen): design type not identity', S+'Context.cs', 'string.Equals(a.SwitchbackDesignType, b.SwitchbackDesignType, StringComparison.Ordinal) &&', ''),
  ('epoch(gen): cluster map not identity', S+'Context.cs', 'ArrayEquality.Equals(a.SwitchbackClusters, b.SwitchbackClusters) &&', ''),
  ('epoch(gen): allow-list not identity', S+'Context.cs', 'ArrayEquality.Equals(a.SwitchbackClusterValues, b.SwitchbackClusterValues) &&', ''),
  ('epoch(gen): start not identity', S+'Context.cs', 'a.SwitchbackStartAt == b.SwitchbackStartAt &&', ''),
  ('epoch(gen): period not identity', S+'Context.cs', 'a.SwitchbackPeriodMs == b.SwitchbackPeriodMs &&', ''),
  ('epoch(gen): iteration not identity', S+'Context.cs', 'return a.Id == b.Id && a.Iteration == b.Iteration &&', 'return a.Id == b.Id &&'),
- ('epoch(both): design type not identity', S+'Context.cs', 'string.Equals(experiment.SwitchbackDesignType, state.DesignType, StringComparison.Ordinal);', 'true;', 'string.Equals(a.SwitchbackDesignType, b.SwitchbackDesignType, StringComparison.Ordinal) &&', ''),
- ('epoch(both): cluster map not identity', S+'Context.cs', 'ArrayEquality.Equals(experiment.SwitchbackClusters, state.Clusters) &&', '', 'ArrayEquality.Equals(a.SwitchbackClusters, b.SwitchbackClusters) &&', ''),
- ('epoch(both): allow-list not identity', S+'Context.cs', 'ArrayEquality.Equals(experiment.SwitchbackClusterValues, state.ClusterValues) &&', '', 'ArrayEquality.Equals(a.SwitchbackClusterValues, b.SwitchbackClusterValues) &&', ''),
  ('period: truncating division', S+'Context.cs', 'return SwitchbackAssigner.FloorDiv(now - startAt, experiment.Data.SwitchbackPeriodMs!.Value);', 'return (now - startAt) / experiment.Data.SwitchbackPeriodMs!.Value;'),
  ('period: off by one', S+'Context.cs', 'return SwitchbackAssigner.FloorDiv(now - startAt, experiment.Data.SwitchbackPeriodMs!.Value);', 'return SwitchbackAssigner.FloorDiv(now - startAt, experiment.Data.SwitchbackPeriodMs!.Value) + 1;'),
  ('period: floordiv truncates', S+'Internal/SwitchbackAssigner.cs', 'return dividend % divisor != 0 && (dividend ^ divisor) < 0 ? q - 1 : q;', 'return q;'),
@@ -47,7 +45,7 @@ M = [
  ('seed: sign-extended seedLo', S+'Context.cs', '((long)experiment.SeedHi << 32) | (experiment.SeedLo & 0xffffffffL);', '((long)experiment.SeedHi << 32) | (long)experiment.SeedLo;'),
  ('seed: halves swapped', S+'Internal/SwitchbackAssigner.cs', 'PutUInt32(buffer, 0, unchecked((int)seed));\n        PutUInt32(buffer, 4, unchecked((int)(seed >> 32)));', 'PutUInt32(buffer, 4, unchecked((int)seed));\n        PutUInt32(buffer, 0, unchecked((int)(seed >> 32)));'),
  ('utf8: Encoding.UTF8', S+'Internal/SwitchbackAssigner.cs', 'var keyLength = EncodeUtf8(keyBytes, key);', 'var keyLength = System.Text.Encoding.UTF8.GetBytes(key, 0, key.Length, keyBytes, 0);'),
- ('carryover: switchback exposure stamped at enqueue', S+'Context.cs', 'EnqueueExposure(assignment, assignment.Name, resolvedAt != ClockNotRead ? resolvedAt : _clock.Millis());', 'EnqueueExposure(assignment);'),
+ ('carryover: switchback exposure stamped at enqueue', S+'Context.cs', 'EnqueueExposure(assignment, assignment.Name, assignment.Switchback.ServingReadAt);', 'EnqueueExposure(assignment);'),
  ('carryover: retain 3 periods', S+'Context.cs', 'private const int SwitchbackRetainedPeriods = 2;', 'private const int SwitchbackRetainedPeriods = 3;'),
  ('carryover: evict just-installed period', S+'Context.cs', 'if (evicted == index) evicted = epoch.Periods.GetViewBetween(index + 1, long.MaxValue).Min;', ''),
  ('carryover: single slot per experiment', S+'Context.cs', 'periodIndex == null ? experimentName : SwitchbackCacheKey(experimentName, periodIndex.Value);', 'experimentName;'),
@@ -55,9 +53,6 @@ M = [
  ('burn-in/out: burn fields become identity', S+'Context.cs', 'experiment.SwitchbackPeriodMs == state.PeriodMs &&', 'experiment.SwitchbackPeriodMs == state.PeriodMs && experiment.SwitchbackBurnInDurationMs == 0 && experiment.SwitchbackBurnOutDurationMs == 0 &&'),
  ('burn-in/out: burn window suppresses exposure', S+'Context.cs', 'if (periodIndex is not { } period)\n        {', 'if (periodIndex is not { } period || data.SwitchbackBurnInDurationMs > 0 || data.SwitchbackCarryoverDurationMs > 0)\n        {'),
  ('epoch: generation always kept', S+'Context.cs', 'installed.SwitchbackGeneration = SameSwitchbackIdentity(previous, installed)', 'installed.SwitchbackGeneration = previous != null'),
- ('epoch: design type not identity', S+'Context.cs', 'string.Equals(experiment.SwitchbackDesignType, state.DesignType, StringComparison.Ordinal);', 'true;'),
- ('epoch: cluster map not identity', S+'Context.cs', 'ArrayEquality.Equals(experiment.SwitchbackClusters, state.Clusters) &&', ''),
- ('epoch: allow-list not identity', S+'Context.cs', 'ArrayEquality.Equals(experiment.SwitchbackClusterValues, state.ClusterValues) &&', ''),
  ('holdouts: apply to switchbacks', S+'Context.cs', '                experimentVariables.Holdouts = null;\n', ''),
  ('precedence: rules before ineligible', S+'Context.cs', '        assignment.Assigned = true;\n        if (serving.Status == SwitchbackServing.ServingStatus.Ineligible)', '        assignment.Assigned = true;\n        if (serving.Status == SwitchbackServing.ServingStatus.Ineligible && experiment.AssignmentRules == null)'),
  ('precedence: split rule over experiment unit', S+'Context.cs', 'var rule = ResolveRule(experiment, serving.UnitType, false, true);', 'var rule = ResolveRule(experiment, data.UnitType, false, true);'),
@@ -78,14 +73,15 @@ M = [
  ('staleness: rules re-run for ineligible slot', S+'Context.cs', '        if (!SwitchbackConsultedRules(assignment)) return true;\n', ''),
  ('value rule: Half written as int', S+'Internal/SwitchbackAttributePath.cs', '        options.Converters.Add(new HalfAsFloatConverterFactory());\n', ''),
  ('value rule: enum keyed by number', S+'Internal/SwitchbackAttributePath.cs', '        options.Converters.Add(new EnumAsNullConverterFactory());\n', ''),
+ ('wire: whole floats published as ints', S+'Context.cs', 'if (!_hasSwitchbacks) return attributes;', 'return attributes;'),
+ ('wire: wire form also without switchbacks', S+'Context.cs', 'if (!_hasSwitchbacks) return attributes;', ''),
+ ('stamp: exposing call instant', S+'Context.cs', 'EnqueueExposure(assignment, assignment.Name, assignment.Switchback.ServingReadAt);', 'EnqueueExposure(assignment, assignment.Name, _clock.Millis());'),
+ ('enum: dictionary keys rejected', S+'Internal/SwitchbackAttributePath.cs', '        public override void WriteAsPropertyName(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>\n            ((JsonConverter<T>)', '        public void WriteAsPropertyName2(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>\n            ((JsonConverter<T>)'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {
     # now >= startAt, so the dividend is never negative and truncation equals floorDiv.
     'period: truncating division',
-    # The generation check (SameSwitchbackIdentity) already drops the slot on these changes; the
-    # SwitchbackConfigMatches comparison is defence in depth.
-    'epoch: design type not identity', 'epoch: cluster map not identity', 'epoch: allow-list not identity',
 }
 only = sys.argv[1:]
 results = []

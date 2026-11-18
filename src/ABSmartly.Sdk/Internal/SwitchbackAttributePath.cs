@@ -16,7 +16,6 @@ namespace ABSmartly.Internal;
 internal sealed class SwitchbackAttributePath
 {
     private readonly string[] _keys;
-    // Parallel to _keys; null where the segment is an object key.
     private readonly int?[] _indices;
 
     private SwitchbackAttributePath(string[] keys, int?[] indices)
@@ -25,7 +24,6 @@ internal sealed class SwitchbackAttributePath
         _indices = indices;
     }
 
-    // The attribute name the path starts at; a supported path always starts at a key segment.
     public string RootKey => _keys[0];
 
     // Null for an unsupported path: malformed (see above), empty, or an array index that is
@@ -51,12 +49,11 @@ internal sealed class SwitchbackAttributePath
     }
 
     // The value at the path below RootKey in an SDK attribute value, read as the Collector reads
-    // the published attribute: through its JSON encoding, with the publish serializer's naming
-    // policies (so a dictionary key is read under the name it is published with). A string,
-    // boolean, integer or floating-point root value is returned as is (a char as a string); anything
-    // else is encoded and the result is a JsonElement. A double or float is encoded with a fraction
-    // even when it is whole (3.0, where the serializer writes 3), so it stays a float wherever it
-    // sits and never keys a cluster. Null when the path finds nothing, or the value has no JSON
+    // the published attribute: through its wire encoding (WireOptions, the JSON the context
+    // publishes), so a dictionary key is read under the name it is published with and a whole double
+    // stays a float; an enum value gives no value (see LookupOptions). A string, boolean, integer or
+    // floating-point root value is returned as is (a char as a string); anything else is encoded and
+    // the result is a JsonElement. Null when the path finds nothing, or the value has no JSON
     // encoding (a cycle, nesting deeper than the serializer's MaxDepth, or a type it rejects).
     public object ResolveAttribute(object rootValue)
     {
@@ -68,7 +65,7 @@ internal sealed class SwitchbackAttributePath
         JsonElement element;
         try
         {
-            element = JsonSerializer.SerializeToElement(rootValue, EncodingOptions.Value);
+            element = JsonSerializer.SerializeToElement(rootValue, LookupOptions.Value);
         }
         catch (Exception e) when (e is JsonException || e is NotSupportedException || e is InvalidOperationException ||
                                   e is ArgumentException)
@@ -114,7 +111,6 @@ internal sealed class SwitchbackAttributePath
 
         if (current.ValueKind != JsonValueKind.Object) return false;
 
-        // The last of duplicate keys wins, as a decoded JSON map.
         var found = false;
         foreach (var property in current.EnumerateObject())
         {
@@ -189,8 +185,12 @@ internal sealed class SwitchbackAttributePath
         return value > int.MaxValue ? null : (int)value;
     }
 
-    // The publish serializer's options, plus converters that keep a whole double or float a float.
-    private static readonly Lazy<JsonSerializerOptions> EncodingOptions = new(() =>
+    // The JSON the context publishes a switchback context's attributes as, and so the JSON the
+    // Collector re-resolves the cluster from: the publish serializer's options, except that a
+    // floating-point number (double, float, Half) is written with a fraction even when it is whole
+    // (3.0, where the serializer writes 3), so it stays a float on the wire as in the lookup.
+    // Dictionary keys are written exactly as the publish serializer writes them.
+    internal static readonly Lazy<JsonSerializerOptions> WireOptions = new(() =>
     {
         var options = new JsonSerializerOptions(JsonOptionsProvider.Default.SerializerOptions);
         options.Converters.Add(new FloatingPointConverter<double>(v => (double)v));
@@ -198,22 +198,19 @@ internal sealed class SwitchbackAttributePath
         // System.Half, by name: the netstandard2.0 build (used on net6.0 and .NET Framework) does
         // not see the type, and must still treat it as a float.
         options.Converters.Add(new HalfAsFloatConverterFactory());
+        return options;
+    });
+
+    // The lookup encoding: the wire encoding, except that an enum value (never a dictionary key) is
+    // read as null, so it has no cluster value. The publish serializer writes its number and
+    // java-sdk its name, so neither is a key the Collector and this SDK would agree on.
+    private static readonly Lazy<JsonSerializerOptions> LookupOptions = new(() =>
+    {
+        var options = new JsonSerializerOptions(WireOptions.Value);
         options.Converters.Add(new EnumAsNullConverterFactory());
         return options;
     });
 
-    private sealed class HalfAsFloatConverterFactory : JsonConverterFactory
-    {
-        public override bool CanConvert(Type typeToConvert) => typeToConvert.FullName == "System.Half";
-
-        public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
-            (JsonConverter)Activator.CreateInstance(typeof(FloatingPointConverter<>).MakeGenericType(typeToConvert),
-                (Func<object, double>)(v => double.Parse(((IFormattable)v).ToString("R", CultureInfo.InvariantCulture),
-                    NumberStyles.Float, CultureInfo.InvariantCulture)));
-    }
-
-    // An enum has no cluster value, at the root or nested: the serializer writes its number and
-    // java-sdk its name, so neither is a key the Collector and this SDK would agree on.
     private sealed class EnumAsNullConverterFactory : JsonConverterFactory
     {
         public override bool CanConvert(Type typeToConvert) => typeToConvert.IsEnum;
@@ -229,6 +226,47 @@ internal sealed class SwitchbackAttributePath
 
         public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
             writer.WriteNullValue();
+
+        // A dictionary keyed by an enum keeps its published key names, so sibling values resolve.
+        public override void WriteAsPropertyName(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
+            ((JsonConverter<T>)JsonOptionsProvider.Default.SerializerOptions.GetConverter(typeof(T)))
+            .WriteAsPropertyName(writer, value, options);
+    }
+
+    // An attribute value as the context publishes it when switchbacks are installed: the value
+    // itself when the publish serializer writes it as the wire encoding does, otherwise (a value
+    // holding a whole floating-point number) its wire encoding as a JsonElement, which the publish
+    // serializer writes verbatim. A value the wire encoding cannot write is left as is.
+    internal static object ForPublish(object value)
+    {
+        switch (value)
+        {
+            case null or string or bool or char or sbyte or byte or short or ushort or int or uint or long or ulong
+                or decimal or JsonElement or Enum:
+                return value;
+        }
+
+        try
+        {
+            var wire = JsonSerializer.SerializeToElement(value, WireOptions.Value);
+            var published = JsonSerializer.SerializeToElement(value, JsonOptionsProvider.Default.SerializerOptions);
+            return wire.GetRawText() == published.GetRawText() ? value : wire;
+        }
+        catch (Exception e) when (e is JsonException || e is NotSupportedException || e is InvalidOperationException ||
+                                  e is ArgumentException)
+        {
+            return value;
+        }
+    }
+
+    private sealed class HalfAsFloatConverterFactory : JsonConverterFactory
+    {
+        public override bool CanConvert(Type typeToConvert) => typeToConvert.FullName == "System.Half";
+
+        public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
+            (JsonConverter)Activator.CreateInstance(typeof(FloatingPointConverter<>).MakeGenericType(typeToConvert),
+                (Func<object, double>)(v => double.Parse(((IFormattable)v).ToString("R", CultureInfo.InvariantCulture),
+                    NumberStyles.Float, CultureInfo.InvariantCulture)));
     }
 
     private sealed class FloatingPointConverter<T> : JsonConverter<T>
@@ -248,7 +286,8 @@ internal sealed class SwitchbackAttributePath
             var d = _toDouble(value!);
             if (double.IsNaN(d) || double.IsInfinity(d))
             {
-                writer.WriteNullValue();
+                // As the publish serializer: it rejects them (the lookup then finds no value).
+                Default(options).Write(writer, value, options);
                 return;
             }
 
@@ -256,6 +295,13 @@ internal sealed class SwitchbackAttributePath
             if (text.IndexOfAny(FloatMarkers) < 0) text += ".0";
             writer.WriteRawValue(text, skipInputValidation: true);
         }
+
+        public override void WriteAsPropertyName(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
+            Default(options).WriteAsPropertyName(writer, value, options);
+
+        // The converter the publish serializer uses for T.
+        private static JsonConverter<T> Default(JsonSerializerOptions options) =>
+            (JsonConverter<T>)JsonOptionsProvider.Default.SerializerOptions.GetConverter(typeof(T));
 
         private static readonly char[] FloatMarkers = { '.', 'e', 'E' };
     }

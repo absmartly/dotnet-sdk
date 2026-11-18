@@ -28,9 +28,7 @@ internal sealed class SwitchbackServing
     private static readonly SwitchbackServing AbsentServing = new(ServingStatus.Absent, null, null);
 
     public ServingStatus Status { get; }
-    // The serving unit's type when Eligible, the first linked unit's when Ineligible, null when Absent.
     public string UnitType { get; }
-    // The raw normalised cluster key when Eligible; never hashed.
     public string ClusterKey { get; }
 
     private SwitchbackServing(ServingStatus status, string unitType, string clusterKey)

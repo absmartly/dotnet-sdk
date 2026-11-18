@@ -162,7 +162,6 @@ public class Experiment
                 foreach (var id in HoldoutIds) hashCode = (hashCode * 397) ^ id;
             }
             if (HoldoutType != null) hashCode = (hashCode * 397) ^ HoldoutType.GetHashCode();
-            // Likewise for the switchback fields; the cluster map is hashed in its declared order.
             if (RandomizationType != null) hashCode = (hashCode * 397) ^ RandomizationType.GetHashCode();
             if (SwitchbackClusters != null)
             {
