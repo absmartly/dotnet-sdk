@@ -283,15 +283,39 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
     [Test]
     public void TiesGoToTheLastSetAndSystemAttributesAreNotRead()
     {
-        var context = Create(DataOf(AttributeSwitchback("city")));
-        Clock.Now = Anchor + 10;
-        context.SetAttribute("city", "Porto");
-        context.SetAttribute(" city ", "Lisboa");
-        context.PeekTreatment("exp_sb").Should().Be(Expected("Lisboa", 0));
+        // Two keys whose schedules differ, so serving the wrong one fails.
+        var first = "Porto";
+        var last = new[] { "Lisboa", "Faro", "Braga", "Coimbra", "Aveiro" }
+            .First(k => !ExpectedSchedule(k).SequenceEqual(ExpectedSchedule(first)));
+
+        var tie = Create(DataOf(AttributeSwitchback("city")));
+        Clock.Now = Anchor;
+        tie.SetAttribute("city", first);
+        tie.SetAttribute("city", last);
+        PeekSchedule(tie).Should().Equal(ExpectedSchedule(last));
+
+        // Names are matched trimmed, as the Collector does.
+        var trimmed = Create(DataOf(AttributeSwitchback("city")));
+        Clock.Now = Anchor;
+        trimmed.SetAttribute("city", first);
+        trimmed.SetAttribute(" city ", last);
+        PeekSchedule(trimmed).Should().Equal(ExpectedSchedule(last));
 
         var system = Create(DataOf(AttributeSwitchback("environment")));
         system.GetTreatment("exp_sb").Should().Be(0);
         system.PendingCount.Should().Be(0);
+    }
+
+    // Two dictionary keys that publish under the same (camelCase) name: the path reads the one
+    // published last, as the Collector reads the published JSON.
+    [Test]
+    public void KeysCollidingUnderTheNamingPolicyReadTheLastOne()
+    {
+        var context = Create(DataOf(AttributeSwitchback("geo/region")));
+        Clock.Now = Anchor;
+        context.SetAttribute("geo", new Dictionary<string, object> { ["Region"] = "Porto", ["region"] = "Lisboa" });
+        PeekSchedule(context).Should().Equal(ExpectedSchedule("Lisboa"));
+        ExpectedSchedule("Lisboa").Should().NotEqual(ExpectedSchedule("Porto"));
     }
 
     // Within a period the cluster key is fixed at first resolution; the next period reads the

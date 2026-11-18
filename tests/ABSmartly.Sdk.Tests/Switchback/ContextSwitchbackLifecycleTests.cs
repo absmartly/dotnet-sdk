@@ -285,7 +285,8 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", Expected2Arms[0], Anchor + 20 * 60_000L, true, true));
     }
 
-    // Unit experiments keep stamping at enqueue time.
+    // Unit experiments keep stamping at enqueue time: their lookup does not read the clock, so the
+    // exposure carries the single (enqueue) reading.
     [Test]
     public void UnitExposureTimingIsUnchanged()
     {
@@ -293,10 +294,11 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         unit.RandomizationType = "unit";
         var context = CreateContext(DataOf(unit));
         Clock.Now = Anchor + Hour;
+        context.PeekTreatment("exp_sb");
         Clock.NextRead = Anchor + Hour - 1;
 
         var variant = context.GetTreatment("exp_sb");
-        PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", variant, Anchor + Hour, true, true));
+        PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", variant, Anchor + Hour - 1, true, true));
     }
 
     // A grid change that lowers the current index below the retained ones must not evict the entry

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Usage: python3 tools/switchback-mutants.py [name-filter ...]. Restores every file after each mutant.
 # DOTNET_ROOT defaults to ~/.dotnet when set up as in CI; otherwise uses the dotnet on PATH.
-# Mutation probes for the switchback port: each mutant must make the switchback tests fail.
+# Mutation probes for the switchback port: each mutant must make the full test suite fail, except
+# those in EQUIVALENT, which cannot change behaviour (reported as such, not as gaps).
 import subprocess, sys, os, pathlib
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 env = dict(os.environ, DOTNET_ROOT=os.path.expanduser('~/.dotnet'),
@@ -75,6 +76,13 @@ M = [
  ('custom: change not staleness', S+'Context.cs', 'if (assignment.Switchback != null) return Nullable.Equals(hasCustom ? custom : null, assignment.Switchback.CustomAssignment);', 'if (assignment.Switchback != null) return true;'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
+EQUIVALENT = {
+    # now >= startAt, so the dividend is never negative and truncation equals floorDiv.
+    'period: truncating division',
+    # The generation check (SameSwitchbackIdentity) already drops the slot on these changes; the
+    # SwitchbackConfigMatches comparison is defence in depth.
+    'epoch: design type not identity', 'epoch: cluster map not identity', 'epoch: allow-list not identity',
+}
 only = sys.argv[1:]
 results = []
 for name, path, old, new, *more in M:
@@ -89,7 +97,7 @@ for name, path, old, new, *more in M:
         mutated = mutated.replace(more[0], more[1])
     p.write_text(mutated)
     try:
-        r = subprocess.run(['dotnet', 'test', 'tests/ABSmartly.Sdk.Tests', '-f', 'net9.0', '--filter', 'FullyQualifiedName~Switchback|FullyQualifiedName~Holdout|FullyQualifiedName~ContextTests'],
+        r = subprocess.run(['dotnet', 'test', 'tests/ABSmartly.Sdk.Tests', '-f', 'net9.0'],
                            env=env, capture_output=True, text=True, timeout=900)
         out = r.stdout + r.stderr
         if 'error CS' in out: status = 'killed (compile error)'
@@ -101,4 +109,7 @@ for name, path, old, new, *more in M:
         p.write_text(src)
     results.append((name, status)); print(name, '->', status, flush=True)
 print()
-for n, s in results: print(('OK  ' if s.startswith('killed') else '!!  ') + n + ': ' + s)
+for n, s in results:
+    tag = 'OK  ' if s.startswith('killed') else ('EQ  ' if n in EQUIVALENT and s == 'SURVIVED' else '!!  ')
+    print(tag + n + ': ' + s)
+sys.exit(1 if any(not s.startswith('killed') and n not in EQUIVALENT for n, s in results) else 0)

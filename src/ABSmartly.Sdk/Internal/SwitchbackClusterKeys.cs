@@ -21,6 +21,9 @@ internal static class SwitchbackClusterKeys
                 return System.Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
             case ulong u:
                 return u.ToString(CultureInfo.InvariantCulture);
+            // As java-sdk; reached only by a caller-built value: an attribute is read through its JSON
+            // encoding, which writes a BigInteger as an object (no key) and a big integer token as
+            // a JsonElement (keyed below).
             case BigInteger b:
                 return b.ToString(CultureInfo.InvariantCulture);
             case JsonElement element:

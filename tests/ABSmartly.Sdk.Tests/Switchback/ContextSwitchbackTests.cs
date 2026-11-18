@@ -361,6 +361,90 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         context.PendingCount.Should().Be(2);
     }
 
+    // A switchback whose variant differs from its custom assignment (a traffic miss, full-on) stays
+    // current while the custom assignment is unchanged: repeated reads do not re-resolve or
+    // re-expose it.
+    [Test]
+    public void UnchangedCustomAssignmentKeepsTheSlot()
+    {
+        var miss = NewSwitchback(1, "exp_miss", 3, Hour);
+        miss.TrafficSplit = new[] { 1.0, 0.0 };
+        var fullOn = NewSwitchback(2, "exp_full_on", 3, Hour);
+        fullOn.FullOnVariant = 1;
+        var context = CreateContext(DataOf(miss, fullOn));
+        context.SetCustomAssignment("exp_miss", 2);
+        context.SetCustomAssignment("exp_full_on", 2);
+        Clock.Now = Anchor + 2 * Hour;
+        for (var i = 0; i < 3; ++i)
+        {
+            context.GetTreatment("exp_miss").Should().Be(0);
+            context.GetTreatment("exp_full_on").Should().Be(1);
+            context.GetVariableValue("sb.arm", -1);
+        }
+
+        context.PendingCount.Should().Be(2);
+    }
+
+    // An override on a switchback with no linked unit is exposed once; setting a linked unit later
+    // does not expose the same override again.
+    [Test]
+    public void ExposedOverrideWithoutALinkedUnitIsNotReexposedAfterSetUnit()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters("user_id", ClusterPath);
+        var context = CreateContext(new Dictionary<string, string> { [UnitType] = Uid }, DataOf(experiment));
+        context.SetOverride("exp_sb", 1);
+        Clock.Now = Anchor + 10;
+        context.GetTreatment("exp_sb").Should().Be(1);
+        context.SetUnit("user_id", "u1");
+        context.GetTreatment("exp_sb").Should().Be(1);
+        context.PendingCount.Should().Be(1);
+    }
+
+    // A clock that counts its reads.
+    private sealed class CountingClock : ABSmartly.Time.Clock
+    {
+        public int Reads;
+        public override long Millis()
+        {
+            Interlocked.Increment(ref Reads);
+            return Anchor;
+        }
+    }
+
+    // No cost without switchbacks: lookups of unit experiments never read the clock, cached or not.
+    [Test]
+    public void LookupsWithoutSwitchbacksDoNotReadTheClock()
+    {
+        var unit = AsUnit(NewSwitchback(1, "exp_unit", 2, Hour));
+        var clock = new CountingClock();
+        var context = Context.CreateWithData(new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) }.SetUnit(UnitType, Uid),
+            DataOf(unit), clock, DataProvider.Object, Publisher, null, new DefaultVariableParser(),
+            new AudienceMatcher(new DefaultAudienceDeserializer()), null);
+        context.GetTreatment("exp_unit");
+        var reads = clock.Reads;
+        for (var i = 0; i < 5; ++i)
+        {
+            context.GetTreatment("exp_unit");
+            context.PeekTreatment("exp_unit");
+            context.GetVariableValue("sb.arm", -1);
+            context.PeekVariableValue("sb.arm", -1);
+            context.PeekTreatment("missing");
+        }
+
+        clock.Reads.Should().Be(reads);
+
+        // A switchback lookup reads it once per call.
+        var mixed = Context.CreateWithData(new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) }.SetUnit(UnitType, Uid),
+            DataOf(NewSwitchback(2, Hour)), clock, DataProvider.Object, Publisher, null, new DefaultVariableParser(),
+            new AudienceMatcher(new DefaultAudienceDeserializer()), null);
+        mixed.GetTreatment("exp_sb");
+        reads = clock.Reads;
+        mixed.PeekTreatment("exp_sb");
+        mixed.PeekVariableValue("sb.arm", -1);
+        clock.Reads.Should().Be(reads + 2);
+    }
+
     // Traffic eligibility uses the existing per-unit traffic hash, so it matches a unit-randomized
     // twin with the same traffic seed and stays fixed across periods.
     [Test]

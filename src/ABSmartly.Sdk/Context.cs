@@ -438,7 +438,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             if (assignment.Switchback != null)
             {
-                if (!assignment.Switchback.Silent) EnqueueExposure(assignment, assignment.Name, resolvedAt);
+                if (!assignment.Switchback.Silent)
+                    EnqueueExposure(assignment, assignment.Name, resolvedAt != ClockNotRead ? resolvedAt : _clock.Millis());
                 return;
             }
 
@@ -1078,7 +1079,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // now is the caller's single clock reading for this resolution, so the cache slot, the drawn
     // period and a switchback exposure's exposedAt all agree.
-    private Assignment GetAssignment(string experimentName, long now)
+    private Assignment GetAssignment(string experimentName, ref long now)
     {
         try
         {
@@ -1087,8 +1088,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var experiment = GetExperiment(experimentName);
             if (!IsSwitchbackEpochStale(experimentName, experiment))
             {
-                var current = TryGetUpToDateAssignment(
-                    AssignmentCacheKey(experimentName, CurrentSwitchbackPeriod(experiment, now)), experimentName,
+                var period = experiment != null && IsSwitchback(experiment.Data)
+                    ? CurrentSwitchbackPeriod(experiment, ReadClockOnce(ref now))
+                    : null;
+                var current = TryGetUpToDateAssignment(AssignmentCacheKey(experimentName, period), experimentName,
                     experiment, false);
                 if (current != null) return current;
             }
@@ -1106,7 +1109,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             _contextLock.EnterWriteLock();
 
             var experiment = GetExperiment(experimentName);
-            var periodIndex = CurrentSwitchbackPeriod(experiment, now);
+            var isSwitchback = experiment != null && IsSwitchback(experiment.Data);
+            var periodIndex = isSwitchback ? CurrentSwitchbackPeriod(experiment, ReadClockOnce(ref now)) : null;
             var cacheKey = AssignmentCacheKey(experimentName, periodIndex);
             if (IsSwitchbackEpochStale(experimentName, experiment)) DropSwitchbackEpoch(experimentName);
 
@@ -1124,7 +1128,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 Eligible = true
             };
 
-            if (experiment != null && IsSwitchback(experiment.Data))
+            if (isSwitchback)
                 return InstallSwitchbackAssignment(assignment, experiment, previous, cacheKey, periodIndex, now,
                     attrsSeqAtBuild);
 
@@ -1269,6 +1273,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // The Collector's switchback anchor bounds (Registry): hour aligned and in [0, 10000-01-01).
     private const long SwitchbackAnchorAlignmentMs = 3_600_000L;
     private const long SwitchbackMaxAnchorMs = 253_402_300_800_000L;
+
+    // A lookup's clock reading, taken the first time the lookup meets a switchback (unit experiments
+    // never need it, so lookups without switchbacks do not read the clock) and reused for the rest
+    // of the lookup and its exposure, so the slot, the drawn period and exposedAt agree.
+    private const long ClockNotRead = long.MinValue;
+
+    private long ReadClockOnce(ref long now) => now != ClockNotRead ? now : now = _clock.Millis();
 
     private static bool IsSwitchback(Experiment experiment) =>
         string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);
@@ -1592,7 +1603,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     #endregion
 
-    private Assignment GetVariableAssignment(string key, bool doExposure, long now)
+    private Assignment GetVariableAssignment(string key, bool doExposure, ref long now)
     {
         var experiments = GetVariableExperiments(key);
         if (experiments == null) return null;
@@ -1600,7 +1611,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         ExceptionDispatchInfo failure = null;
         foreach (var experiment in experiments)
         {
-            var assignment = GetAssignment(experiment.Data.Name, now);
+            var assignment = GetAssignment(experiment.Data.Name, ref now);
             // As the Java SDK: the first assigned (or overridden) experiment by id wins, even
             // if its selected variant does not define the key (the caller then returns the
             // default). It is the experiment exposed, so units in its control arm are
@@ -1631,7 +1642,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         if (experiments.Count == 0) return null;
         // A switchback that is not assigned (no linked unit, or a strict audience mismatch) gives the
         // default value and records nothing, as java-sdk, rather than falling back to its control.
-        var first = GetAssignment(experiments[0].Data.Name, now);
+        var first = GetAssignment(experiments[0].Data.Name, ref now);
         return first.Switchback != null ? null : first;
     }
 
@@ -1923,8 +1934,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         Assignment assignment;
         do
         {
-            var now = _clock.Millis();
-            assignment = GetAssignment(experimentName, now);
+            var now = ClockNotRead;
+            assignment = GetAssignment(experimentName, ref now);
             if (AfterAssignmentLookup != null) Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
             if (doExposure && assignment.Exposed == 0)
                 QueueExposure(assignment, now);
@@ -2088,8 +2099,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         Assignment assignment;
         do
         {
-            var now = _clock.Millis();
-            assignment = GetVariableAssignment(key, doExposure, now);
+            var now = ClockNotRead;
+            assignment = GetVariableAssignment(key, doExposure, ref now);
             if (AfterAssignmentLookup != null) Interlocked.Exchange(ref AfterAssignmentLookup, null)?.Invoke();
             if (assignment?.Variables is null) return defaultValue;
 
