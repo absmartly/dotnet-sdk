@@ -32,8 +32,7 @@ M = [
  ('epoch(gen): start not identity', S+'Context.cs', 'a.SwitchbackStartAt == b.SwitchbackStartAt &&', ''),
  ('epoch(gen): period not identity', S+'Context.cs', 'a.SwitchbackPeriodMs == b.SwitchbackPeriodMs &&', ''),
  ('epoch(gen): iteration not identity', S+'Context.cs', 'return a.Id == b.Id && a.Iteration == b.Iteration &&', 'return a.Id == b.Id &&'),
- ('period: truncating division', S+'Context.cs', 'return SwitchbackAssigner.FloorDiv(now - startAt, experiment.Data.SwitchbackPeriodMs!.Value);', 'return (now - startAt) / experiment.Data.SwitchbackPeriodMs!.Value;'),
- ('period: off by one', S+'Context.cs', 'return SwitchbackAssigner.FloorDiv(now - startAt, experiment.Data.SwitchbackPeriodMs!.Value);', 'return SwitchbackAssigner.FloorDiv(now - startAt, experiment.Data.SwitchbackPeriodMs!.Value) + 1;'),
+ ('period: off by one', S+'Context.cs', 'return (now - startAt) / experiment.Data.SwitchbackPeriodMs!.Value;', 'return (now - startAt) / experiment.Data.SwitchbackPeriodMs!.Value + 1;'),
  ('period: floordiv truncates', S+'Internal/SwitchbackAssigner.cs', 'return dividend % divisor != 0 && (dividend ^ divisor) < 0 ? q - 1 : q;', 'return q;'),
  ('period: slot uses truncating mod', S+'Internal/SwitchbackAssigner.cs', 'var cycleSlot = (int)unchecked(periodIndex - cycleIndex * armCount);', 'var cycleSlot = (int)System.Math.Abs(periodIndex % armCount);'),
  ('period: pre-anchor draws', S+'Context.cs', 'if (now < startAt) return null;', ''),
@@ -53,7 +52,7 @@ M = [
  ('burn-in/out: burn fields become identity', S+'Context.cs', 'a.SwitchbackPeriodMs == b.SwitchbackPeriodMs &&', 'a.SwitchbackPeriodMs == b.SwitchbackPeriodMs && a.SwitchbackBurnInDurationMs == b.SwitchbackBurnInDurationMs && a.SwitchbackCarryoverDurationMs == b.SwitchbackCarryoverDurationMs && a.SwitchbackEstimand == b.SwitchbackEstimand &&'),
  ('burn-in/out: burn window suppresses exposure', S+'Context.cs', 'if (periodIndex is not { } period)\n        {', 'if (periodIndex is not { } period || data.SwitchbackBurnInDurationMs > 0 || data.SwitchbackCarryoverDurationMs > 0)\n        {'),
  ('epoch: generation always kept', S+'Context.cs', 'installed.SwitchbackGeneration = SameSwitchbackIdentity(previous, installed)', 'installed.SwitchbackGeneration = previous != null'),
- ('holdouts: apply to switchbacks', S+'Context.cs', '                experimentVariables.Holdouts = null;\n', ''),
+ ('holdouts: apply to switchbacks', S+'Context.cs', 'Holdouts = IsSwitchback(experiment) ? null : ResolveHoldouts(experiment.HoldoutIds, holdoutsById)', 'Holdouts = ResolveHoldouts(experiment.HoldoutIds, holdoutsById)'),
  ('precedence: rules before ineligible', S+'Context.cs', '        assignment.Assigned = true;\n        if (serving.Status == SwitchbackServing.ServingStatus.Ineligible)', '        assignment.Assigned = true;\n        if (serving.Status == SwitchbackServing.ServingStatus.Ineligible && experiment.AssignmentRules == null)'),
  ('precedence: split rule over experiment unit', S+'Context.cs', 'var rule = ResolveRule(experiment, serving.UnitType, false, true);', 'var rule = ResolveRule(experiment, data.UnitType, false, true);'),
  ('precedence: pre-anchor after traffic', S+'Context.cs', '        if (periodIndex is not { } period)\n        {\n            assignment.Eligible = false;\n            state.Silent = true;\n            return;\n        }\n', '', '        if (custom != null)\n        {\n            assignment.Variant = custom.Value;', '        if (periodIndex is not { } period) { assignment.Eligible = false; state.Silent = true; return; }\n        if (custom != null)\n        {\n            assignment.Variant = custom.Value;'),
@@ -100,11 +99,17 @@ M = [
  ('publish: no clamp for multi-exposure batches', S+'Context.cs', 'if (exposures == null || !_hasSwitchbacks) return publishedAt;', 'if (exposures == null || !_hasSwitchbacks || exposures.Length > 1) return publishedAt;'),
  ('variable: control fallback restored', S+'Context.cs', '        failure?.Throw();\n        return suppressedFallback;\n    }', '        failure?.Throw();\n        if (suppressedFallback != null) return suppressedFallback;\n        return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name, ref now) : null;\n    }'),
  ('variable: unassigned non-strict control fallback', S+'Context.cs', '        failure?.Throw();\n        return suppressedFallback;\n    }', '        failure?.Throw();\n        if (suppressedFallback != null) return suppressedFallback;\n        if (experiments.Count == 0) return null;\n        var first = GetAssignment(experiments[0].Data.Name, ref now);\n        return first.Switchback != null || first.AudienceMismatch ? null : first;\n    }'),
+ ('replay: rewound write keeps clock reading', S+'Context.cs', 'if (latestRead != long.MinValue && setAt < latestRead) setAt = latestRead + 1;', ''),
+ ('replay: rewound write dated at the read', S+'Context.cs', 'if (latestRead != long.MinValue && setAt < latestRead) setAt = latestRead + 1;', 'if (latestRead != long.MinValue && setAt < latestRead) setAt = latestRead;'),
+ ('replay: same-ms write bumped too', S+'Context.cs', 'if (latestRead != long.MinValue && setAt < latestRead) setAt = latestRead + 1;', 'if (latestRead != long.MinValue && setAt <= latestRead) setAt = latestRead + 1;'),
+ ('replay: latest read not tracked', S+'Context.cs', '        if (servingReadAt > Interlocked.Read(ref _latestServingReadAt))\n            Interlocked.Exchange(ref _latestServingReadAt, servingReadAt);\n', ''),
+ ('units: no split for late units', S+'Context.cs', 'if (exposures == null || !exposures.Any(e => e.ServingUnitCount > 0 && e.ServingUnitCount < unitCount))', 'if (true)'),
+ ('units: serving count not recorded', S+'Context.cs', '            : (ResolveSwitchbackServing(experiment, now), now, _unitOrder.Count);', '            : (ResolveSwitchbackServing(experiment, now), now, 0);'),
+ ('units: split request sends every unit', S+'Context.cs', '                            : _unitOrder.Take(request.UnitCount)', '                            : _unitOrder'),
+ ('units: failure restores delivered requests', S+'Context.cs', 'var restoredExposures = requests.Skip(delivered.Count)', 'var restoredExposures = requests'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {
-    # now >= startAt, so the dividend is never negative and truncation equals floorDiv.
-    'period: truncating division',
     'wire: Half text via double',
 }
 only = sys.argv[1:]

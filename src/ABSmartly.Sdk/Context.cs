@@ -50,6 +50,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private readonly object _refreshTimerLock = new();
     private readonly object _timeoutLock = new();
     private readonly Dictionary<string, string> _units;
+    // Unit types in the order they were set (units are never removed or replaced).
+    private readonly List<string> _unitOrder = new();
     private readonly IVariableParser _variableParser;
 
     // application/environment from the service config, seen by audiences and rules but never
@@ -120,6 +122,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // after a refresh removes the switchbacks, since exposures they queued may still be pending,
     // and the wire form only writes a whole floating-point number as 3.0 instead of 3.
     private volatile bool _hasSwitchbacks;
+    // The latest instant a switchback slot read its cluster (and so the latest exposedAt it can
+    // publish); long.MinValue until one is read. See SetAttribute.
+    private long _latestServingReadAt = long.MinValue;
 
     private volatile int _pendingCount;
     private int _refreshing;
@@ -449,7 +454,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (assignment.Switchback != null)
             {
                 if (!assignment.Switchback.Silent)
-                    EnqueueExposure(assignment, assignment.Name, assignment.Switchback.ServingReadAt);
+                    EnqueueExposure(assignment, assignment.Name, assignment.Switchback.ServingReadAt,
+                        assignment.Switchback.ServingUnitCount);
                 return;
             }
 
@@ -509,7 +515,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private void EnqueueExposure(Assignment assignment, string name) =>
         EnqueueExposure(assignment, name, _clock.Millis());
 
-    private void EnqueueExposure(Assignment assignment, string name, long exposedAt)
+    private void EnqueueExposure(Assignment assignment, string name, long exposedAt, int servingUnitCount = 0)
     {
         var exposure = new Exposure
         {
@@ -524,7 +530,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             FullOn = assignment.FullOn,
             Custom = assignment.Custom,
             AudienceMismatch = assignment.AudienceMismatch,
-            RuleOverride = assignment.RuleOverride
+            RuleOverride = assignment.RuleOverride,
+            ServingUnitCount = servingUnitCount
         };
 
         try
@@ -558,14 +565,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     private readonly struct FlushOutcome
     {
-        public FlushOutcome(PublishEvent published, Exception error)
+        public FlushOutcome(PublishEvent published, Exception error, PublishEvent[] earlier = null)
         {
             Published = published;
             Error = error;
+            Earlier = earlier;
         }
 
+        // The last request delivered, and any delivered before it in the same flush (see
+        // SplitByServingUnits); the logger sees them in order.
         public PublishEvent Published { get; }
         public Exception Error { get; }
+        public PublishEvent[] Earlier { get; }
     }
 
     // Publishes the pending events without notifying the event logger, so a caller
@@ -643,47 +654,69 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         try
         {
+            var requests = SplitByServingUnits(exposures, achievements);
+            var delivered = new List<PublishEvent>(requests.Count);
             try
             {
-                var publishEvent = new PublishEvent
+                foreach (var request in requests)
                 {
-                    Hashed = true,
-                    PublishedAt = PublishedAt(exposures),
-                    Units = _units
-                        .Select(kv => new Unit
-                        {
-                            Type = kv.Key,
-                            Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
-                        })
-                        .ToArray(),
-                    Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
-                    SwitchbackWireAttributes = _hasSwitchbacks,
-                    Exposures = exposures,
-                    Goals = achievements
-                };
+                    var publishEvent = new PublishEvent
+                    {
+                        Hashed = true,
+                        PublishedAt = PublishedAt(request.Exposures),
+                        Units = request.UnitCount < 0
+                            ? _units
+                                .Select(kv => new Unit
+                                {
+                                    Type = kv.Key,
+                                    Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
+                                })
+                                .ToArray()
+                            : _unitOrder.Take(request.UnitCount)
+                                .Select(type => new Unit
+                                {
+                                    Type = type,
+                                    Uid = Encoding.ASCII.GetString(GetUnitHash(type, _units[type]))
+                                })
+                                .ToArray(),
+                        Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
+                        SwitchbackWireAttributes = _hasSwitchbacks,
+                        Exposures = request.Exposures,
+                        Goals = request.Goals
+                    };
 
-                _publishScope.Value = new PublishScope(inFlight.Task, _publishScope.Value);
-                var publishTask = _eventHandler.PublishAsync(this, publishEvent) ??
-                                  throw new InvalidOperationException("Context publisher returned no task.");
-                await publishTask.ConfigureUnboundContinuation();
-                return new FlushOutcome(publishEvent, null);
+                    _publishScope.Value = new PublishScope(inFlight.Task, _publishScope.Value);
+                    var publishTask = _eventHandler.PublishAsync(this, publishEvent) ??
+                                      throw new InvalidOperationException("Context publisher returned no task.");
+                    await publishTask.ConfigureUnboundContinuation();
+                    delivered.Add(publishEvent);
+                }
+
+                return new FlushOutcome(delivered[delivered.Count - 1], null,
+                    delivered.Count > 1 ? delivered.Take(delivered.Count - 1).ToArray() : null);
             }
             catch (Exception e)
             {
+                // Requests already delivered are not resent; the failed one and those after it are
+                // put back at the front of the queue.
+                var restoredExposures = requests.Skip(delivered.Count)
+                    .SelectMany(r => r.Exposures ?? Array.Empty<Exposure>()).ToArray();
+                var restoredGoals = requests.Skip(delivered.Count)
+                    .SelectMany(r => r.Goals ?? Array.Empty<GoalAchievement>()).ToArray();
                 try
                 {
                     Monitor.Enter(_eventLock);
 
-                    if (exposures != null) _exposures.InsertRange(0, exposures);
-                    if (achievements != null) _achievements.InsertRange(0, achievements);
-                    Interlocked.Add(ref _pendingCount, eventCount);
+                    if (restoredExposures.Length > 0) _exposures.InsertRange(0, restoredExposures);
+                    if (restoredGoals.Length > 0) _achievements.InsertRange(0, restoredGoals);
+                    Interlocked.Add(ref _pendingCount, restoredExposures.Length + restoredGoals.Length);
                 }
                 finally
                 {
                     Monitor.Exit(_eventLock);
                 }
 
-                return new FlushOutcome(null, e);
+                return new FlushOutcome(null, e, delivered.Count > 0 ? delivered.ToArray() : null);
             }
         }
         finally
@@ -706,6 +739,42 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         foreach (var exposure in exposures)
             if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;
         return publishedAt;
+    }
+
+    private readonly struct PublishRequest
+    {
+        public PublishRequest(int unitCount, Exposure[] exposures, GoalAchievement[] goals)
+        {
+            UnitCount = unitCount;
+            Exposures = exposures;
+            Goals = goals;
+        }
+
+        // -1: every context unit, as before; otherwise the first UnitCount units in the order set.
+        public int UnitCount { get; }
+        public Exposure[] Exposures { get; }
+        public GoalAchievement[] Goals { get; }
+    }
+
+    // The Collector replays a switchback exposure's cluster from the request's units. A switchback
+    // exposure served before more units were set is therefore sent in its own request carrying only
+    // the units present when its cluster was read (they were set in that order), so a unit linked
+    // later cannot add a disagreeing cluster value. Everything else, and every batch without such an
+    // exposure, goes in one request with every unit, exactly as before.
+    private List<PublishRequest> SplitByServingUnits(Exposure[] exposures, GoalAchievement[] goals)
+    {
+        var unitCount = _unitOrder.Count;
+        if (exposures == null || !exposures.Any(e => e.ServingUnitCount > 0 && e.ServingUnitCount < unitCount))
+            return new List<PublishRequest> { new(-1, exposures, goals) };
+
+        var requests = new List<PublishRequest>();
+        foreach (var group in exposures.Where(e => e.ServingUnitCount > 0 && e.ServingUnitCount < unitCount)
+                     .GroupBy(e => e.ServingUnitCount).OrderBy(g => g.Key))
+            requests.Add(new PublishRequest(group.Key, group.ToArray(), null));
+
+        var rest = exposures.Where(e => e.ServingUnitCount == 0 || e.ServingUnitCount >= unitCount).ToArray();
+        if (rest.Length > 0 || goals != null) requests.Add(new PublishRequest(-1, rest.Length > 0 ? rest : null, goals));
+        return requests;
     }
 
     private sealed class PublishScope
@@ -775,6 +844,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // publish error), as the Java SDK.
     private void ReportFlush(FlushOutcome outcome)
     {
+        LogEarlierPublishes(outcome);
         if (outcome.Error != null)
         {
             _logger?.LogError(outcome.Error, "{Publish}", EventType.Publish);
@@ -783,6 +853,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
 
         if (outcome.Published != null) LogEventSafely(EventType.Publish, outcome.Published);
+    }
+
+    private void LogEarlierPublishes(FlushOutcome outcome)
+    {
+        if (outcome.Earlier == null) return;
+        foreach (var published in outcome.Earlier) LogEventSafely(EventType.Publish, published);
     }
 
     private byte[] GetUnitHash(string unitType, string unitUid)
@@ -1102,8 +1178,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return !hasCustom || custom == assignment.Variant;
     }
 
-    // now is the caller's single clock reading for this resolution, so the cache slot, the drawn
-    // period and a switchback exposure's exposedAt all agree.
+    // now is the lookup's clock reading (ReadClockOnce), which selects a switchback's period slot.
     private Assignment GetAssignment(string experimentName, ref long now)
     {
         try
@@ -1299,9 +1374,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private const long SwitchbackAnchorAlignmentMs = 3_600_000L;
     private const long SwitchbackMaxAnchorMs = 253_402_300_800_000L;
 
-    // A lookup's clock reading, taken the first time the lookup meets a switchback (unit experiments
-    // never need it, so lookups without switchbacks do not read the clock) and reused for the rest
-    // of the lookup and its exposure, so the slot, the drawn period and exposedAt agree.
+    // Read only when a lookup meets a switchback, so lookups without switchbacks never read the clock.
     private const long ClockNotRead = long.MinValue;
 
     private long ReadClockOnce(ref long now) => now != ClockNotRead ? now : now = _clock.Millis();
@@ -1337,8 +1410,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         var startAt = experiment.Data.SwitchbackStartAt!.Value;
         if (now < startAt) return null;
-        // now >= startAt >= 0, so the difference cannot overflow.
-        return SwitchbackAssigner.FloorDiv(now - startAt, experiment.Data.SwitchbackPeriodMs!.Value);
+        // now >= startAt >= 0 and the period is positive: the difference cannot overflow and is not
+        // negative, so division is floorDiv.
+        return (now - startAt) / experiment.Data.SwitchbackPeriodMs!.Value;
     }
 
     private static string AssignmentCacheKey(string experimentName, long? periodIndex) =>
@@ -1439,13 +1513,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // The slot's serving resolution and the instant it was read: reused when this slot already read
     // it (unless no linked unit was set then), otherwise read now.
-    private (SwitchbackServing Serving, long ReadAt) SwitchbackServingFor(ExperimentVariables experiment,
-        Assignment previous, long now)
+    private (SwitchbackServing Serving, long ReadAt, int UnitCount) SwitchbackServingFor(
+        ExperimentVariables experiment, Assignment previous, long now)
     {
         var cached = previous?.Switchback;
         return cached != null && cached.Serving.Status != SwitchbackServing.ServingStatus.Absent
-            ? (cached.Serving, cached.ServingReadAt)
-            : (ResolveSwitchbackServing(experiment, now), now);
+            ? (cached.Serving, cached.ServingReadAt, cached.ServingUnitCount)
+            : (ResolveSwitchbackServing(experiment, now), now, _unitOrder.Count);
     }
 
     // The attribute the Collector records with an exposure at `now` (ContextAPI.extractAttributes):
@@ -1481,11 +1555,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         var data = experiment.Data;
         var custom = _customAssignments.TryGetValue(data.Name, out var c) ? c : null;
-        var (serving, servingReadAt) = SwitchbackServingFor(experiment, previous, now);
+        var (serving, servingReadAt, servingUnitCount) = SwitchbackServingFor(experiment, previous, now);
+        if (servingReadAt > Interlocked.Read(ref _latestServingReadAt))
+            Interlocked.Exchange(ref _latestServingReadAt, servingReadAt);
         var state = new SwitchbackState
         {
             Serving = serving,
             ServingReadAt = servingReadAt,
+            ServingUnitCount = servingUnitCount,
             CustomAssignment = custom
         };
         assignment.Switchback = state;
@@ -1822,7 +1899,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         CheckNotClosed();
 
-        var attribute = new Attribute { Name = name, Value = value, SetAt = _clock.Millis() };
+        // A value set after a switchback slot read its cluster is dated after that read when the
+        // clock says otherwise (it went back), so the Collector, which replays the cluster from the
+        // latest attribute set at or before exposedAt, still sees the value that served. On a clock
+        // that does not go back this is the clock reading, as before.
+        var setAt = _clock.Millis();
+        var latestRead = Interlocked.Read(ref _latestServingReadAt);
+        if (latestRead != long.MinValue && setAt < latestRead) setAt = latestRead + 1;
+        var attribute = new Attribute { Name = name, Value = value, SetAt = setAt };
         _attributes.ConcurrentAdd(attribute);
         Interlocked.Increment(ref _attrsSeq);
     }
@@ -1940,7 +2024,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         // A concurrent SetUnit may retire the assignment (Exposed 2) after it is read; it is then
         // re-resolved rather than returned without its exposure.
-        // Each attempt resolves at its own clock reading and exposes at it.
         Assignment assignment;
         do
         {
@@ -1979,6 +2062,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
 
             _units.Add(unitType, uidTrimmed);
+            _unitOrder.Add(unitType);
             InvalidateAssignmentsWithMissingUnit(unitType);
         }
         finally
@@ -2389,13 +2473,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             {
                 Data = experiment,
                 Variables = new List<Dictionary<string, object>>(experiment.Variants.Length),
-                Holdouts = ResolveHoldouts(experiment.HoldoutIds, holdoutsById)
+                // Holdouts never apply to a switchback.
+                Holdouts = IsSwitchback(experiment) ? null : ResolveHoldouts(experiment.HoldoutIds, holdoutsById)
             };
             if (IsSwitchback(experiment))
-            {
-                experimentVariables.Holdouts = null;
                 experimentVariables.SwitchbackSources = SwitchbackServing.Sources(experiment.SwitchbackClusters);
-            }
 
             foreach (var variant in experiment.Variants)
                 if (variant.Config != null && !string.IsNullOrWhiteSpace(variant.Config))
@@ -2805,6 +2887,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         t_notifyingClose = this;
         try
         {
+            LogEarlierPublishes(earlier);
             if (earlier.Published != null) LogEventSafely(EventType.Publish, earlier.Published);
             ReportFlush(outcome);
             if (logClose) LogEvent(EventType.Close, null);
@@ -2988,6 +3071,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // set then. The exposure is stamped with ServingReadAt.
         public SwitchbackServing Serving;
         public long ServingReadAt;
+        // The number of context units when Serving was read; its exposure is published with them.
+        public int ServingUnitCount;
         public bool Silent;
         public int? CustomAssignment;
     }

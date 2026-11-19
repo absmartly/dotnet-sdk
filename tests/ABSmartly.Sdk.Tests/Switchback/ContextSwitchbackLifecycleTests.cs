@@ -376,6 +376,145 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         published.PublishedAt.Should().Be(Anchor + Hour + 20);
     }
 
+    // Review regression (round 3): the Collector replays the cluster at exposedAt from the published
+    // attributes, latest setAt at or before it. After a clock rewind, a later cluster change must not
+    // be dated before the exposure it follows, or the replay would see it instead of the served value.
+    [Test]
+    public void AttributeWrittenAfterAClockRewindKeepsTheServedClusterOnReplay()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city");
+        experiment.SwitchbackClusterValues = new[] { "Faro" };
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        Clock.Now = Anchor + Hour + 20;
+        var served = context.PeekTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 15;
+        context.GetTreatment("exp_sb").Should().Be(served);
+        Clock.Now = Anchor + Hour + 17;
+        context.SetAttribute("city", "Porto");
+        Clock.Now = Anchor + Hour + 19;
+        var published = PublishEvent(context);
+
+        var exposure = published.Exposures.Single();
+        exposure.ExposedAt.Should().Be(Anchor + Hour + 20);
+        published.PublishedAt.Should().BeGreaterThanOrEqualTo(exposure.ExposedAt);
+        Replay(published, "city", exposure.ExposedAt).Should().Be("Faro");
+        // The later write is still published, dated just after the read it follows, not before it.
+        published.Attributes.Last().SetAt.Should().Be(Anchor + Hour + 21);
+    }
+
+    // Without a rewind, attributes keep the clock reading, as before.
+    [Test]
+    public void AttributeSetAtIsTheClockReadingWithoutARewind()
+    {
+        var context = CreateContext(DataOf(NewSwitchback(2, Hour)));
+        Clock.Now = Anchor + Hour + 20;
+        context.PeekTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 30;
+        context.SetAttribute("later", 1);
+        context.Attributes.Should().ContainKey("later");
+        context.Track("g", null!);
+        PublishEvent(context).Attributes.Last().SetAt.Should().Be(Anchor + Hour + 30);
+    }
+
+    // Review regression (round 3): a switchback exposure queued before another linked unit is set
+    // (a login) is published with the units present when its cluster was served, in a request of its
+    // own, so the Collector replays the cluster that served instead of a disagreement. Other events in
+    // the batch are published with every unit, as before.
+    [Test]
+    public void ExposureQueuedBeforeALinkedUnitIsAddedReplaysItsServingUnits()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "user_city");
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.SetAttribute("user_city", "Porto");
+        var served = context.GetTreatment("exp_sb");
+        served.Should().Be(SwitchbackAssigner.Assign("Faro", 1, Seed, 2));
+        context.SetUnit("user_id", "u1");
+        context.Track("purchase", null!);
+        context.Publish();
+
+        var requests = Published.Select(p => p.Event).ToList();
+        requests.Should().HaveCount(2);
+        requests[0].Units.Select(u => u.Type).Should().Equal(UnitType);
+        requests[0].Exposures.Should().ContainSingle().Which.Variant.Should().Be(served);
+        requests[0].Goals.Should().BeNull();
+        requests[1].Units.Select(u => u.Type).Should().Equal(UnitType, "user_id");
+        requests[1].Exposures.Should().BeNull();
+        requests[1].Goals.Should().ContainSingle().Which.Name.Should().Be("purchase");
+        context.PendingCount.Should().Be(0);
+    }
+
+    // A batch whose switchback exposures were all served with every current unit is one request, as
+    // before.
+    [Test]
+    public void ExposureServedWithEveryUnitIsPublishedInOneRequest()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "user_city");
+        var context = CreateContext(new Dictionary<string, string> { [UnitType] = Uid, ["user_id"] = "u1" },
+            DataOf(experiment));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.SetAttribute("user_city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.Track("purchase", null!);
+        context.Publish();
+        Published.Should().ContainSingle();
+        Published[0].Event.Units.Should().HaveCount(2);
+        Published[0].Event.Exposures.Should().ContainSingle();
+        Published[0].Event.Goals.Should().ContainSingle();
+    }
+
+    // A failure on the second request restores only what was not delivered, and a retry sends it.
+    [Test]
+    public void SplitPublishRetriesOnlyTheUndeliveredRequest()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "user_city");
+        var calls = 0;
+        var sent = new List<PublishEvent>();
+        var publisher = new Mock<IContextPublisher>();
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>((_, e) =>
+            {
+                if (++calls == 2) throw new InvalidOperationException("down");
+                sent.Add(e);
+                return Task.CompletedTask;
+            });
+        Publisher = publisher.Object;
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("user_id", "u1");
+        context.Track("purchase", null!);
+
+        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
+        sent.Should().ContainSingle().Which.Exposures.Should().ContainSingle();
+        context.PendingCount.Should().Be(1);
+
+        context.Publish();
+        sent.Should().HaveCount(2);
+        sent[1].Goals.Should().ContainSingle();
+        sent[1].Exposures.Should().BeNull();
+        context.PendingCount.Should().Be(0);
+    }
+
+    // The Collector's attribute replay: the latest setAt at or before `at`, the last set on a tie.
+    private static object? Replay(PublishEvent published, string name, long at)
+    {
+        ABSmartly.Models.Attribute? selected = null;
+        foreach (var attribute in published.Attributes)
+            if (attribute.Name == name && attribute.SetAt <= at && (selected == null || attribute.SetAt >= selected.SetAt))
+                selected = attribute;
+        return selected?.Value;
+    }
+
     // A context that never had switchback data publishes the clock reading as publishedAt, even
     // after a rollback, exactly as before switchbacks existed.
     [Test]

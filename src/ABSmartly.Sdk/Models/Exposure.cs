@@ -20,6 +20,11 @@ public sealed class Exposure
     // excludes this exposure from normal experiment analysis, as it does for overrides.
     public bool RuleOverride { get; set; }
 
+    // For a switchback exposure, the number of context units (in the order they were set) present
+    // when its cluster was served; 0 otherwise. Not serialized and not part of equality: the context
+    // publishes such an exposure with that unit set, so the Collector replays the same cluster.
+    internal int ServingUnitCount { get; set; }
+
     private string DebugView =>
         $"Exposure{{id={Id}, name={Name}, unit={Unit}, variant={Variant}, exposedAt={ExposedAt}, assigned={Assigned}, eligible={Eligible}, overridden={Overridden}, fullOn={FullOn}, custom={Custom}, audienceMismatch={AudienceMismatch}, ruleOverride={RuleOverride}}}";
 

@@ -728,8 +728,7 @@ public class ContextTests
         context.PendingCount.Should().Be(0);
     }
 
-    // A variable read before the experiment's unit is set gives the default and exposes nothing (1.3.0
-    // returned the control value and exposed it).
+    // A variable read before the experiment's unit is set gives the default and exposes nothing.
     [Test]
     public void TestVariableBeforeTheUnitIsSetReturnsTheDefault()
     {
