@@ -2,8 +2,13 @@
 
 ## 1.4.1
 
+1.4.0 was tagged but never published to NuGet, so this is the first release after 1.3.0; the 1.4.0 notes below are part of it.
+
+### Changed
+- `GetVariableValue`/`PeekVariableValue` no longer return the value of an experiment the unit is not assigned to. If none of the experiments defining the key is assigned to the unit, or overridden, or won by an assignment rule (for example the unit fails a strict audience, or the context has no unit of the experiment's unit type), they now return the default value, and `GetVariableValue` queues no exposure. In 1.3.0 they returned that experiment's control value and `GetVariableValue` queued an `assigned: false` exposure. **Who is affected:** units failing a strict audience, or missing the experiment's unit type, now get your default instead of the control value. Those experiments also record fewer `assigned: false` exposures from variable reads; `GetTreatment` still exposes them. A unit outside the traffic split is still assigned and still gets the control value. This matches the Java SDK. The JavaScript SDK returns the same value but still exposes the experiments it visits.
+
 ### Fixed
-- A shared variable key no longer returns the control value of an experiment the unit is not assigned to. When several experiments define the same key and none of them is assigned (or overridden, or won by an assignment rule) for the unit, for example on a strict audience mismatch or with no unit for the experiment's unit type, `GetVariableValue`/`PeekVariableValue` now return the default value and `GetVariableValue` exposes nothing for the key. 1.4.0 fell back to the first of those experiments, returning its control value and queuing its exposure. This now matches the Java and JavaScript SDKs. A unit outside the traffic split is still assigned, so its experiment still serves control.
+- The 1.4.0 code (never published) fell back to the first experiment defining the key when none was assigned, returning its control value and exposing it; that fallback is removed (see Changed).
 
 ## 1.4.0 (unreleased)
 
