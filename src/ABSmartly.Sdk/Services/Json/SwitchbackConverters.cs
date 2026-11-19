@@ -1,5 +1,7 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -60,7 +62,9 @@ internal sealed class SwitchbackClustersConverter : JsonConverter<KeyValuePair<s
 }
 
 // Reads Experiment.SwitchbackClusterValues: an array of strings. A value that is not an array is
-// read as null (no allow-list), and an element that is not a string is skipped.
+// read as null (no allow-list). As Jackson reads a String[], a number or boolean element is its JSON
+// text ([7, 8] allows "7" and "8") and a null element is null. An object or array element, which
+// Jackson rejects, is kept as a null entry: a non-empty list never becomes the empty, allow-all one.
 internal sealed class LenientStringArrayConverter : JsonConverter<string[]>
 {
     public override string[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -74,10 +78,30 @@ internal sealed class LenientStringArrayConverter : JsonConverter<string[]>
         var values = new List<string>();
         while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
         {
-            if (reader.TokenType == JsonTokenType.String)
-                values.Add(reader.GetString());
-            else
-                reader.Skip();
+            switch (reader.TokenType)
+            {
+                case JsonTokenType.String:
+                    values.Add(reader.GetString());
+                    break;
+                case JsonTokenType.Number:
+                    values.Add(Encoding.UTF8.GetString(reader.HasValueSequence
+                        ? reader.ValueSequence.ToArray()
+                        : reader.ValueSpan.ToArray()));
+                    break;
+                case JsonTokenType.True:
+                    values.Add("true");
+                    break;
+                case JsonTokenType.False:
+                    values.Add("false");
+                    break;
+                case JsonTokenType.Null:
+                    values.Add(null);
+                    break;
+                default:
+                    reader.Skip();
+                    values.Add(null);
+                    break;
+            }
         }
 
         return values.ToArray();

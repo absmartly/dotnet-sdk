@@ -1025,7 +1025,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (_overrides.TryGetValue(experimentName, out var @override))
             {
                 // An override still resolves the experiment's holdouts (they fire their exposures),
-                // so a refresh changing the coverage rebuilds it, as does a switchback grid change.
+                // so a refresh changing the coverage rebuilds it. A switchback slot of a removed
+                // experiment is normally dropped with its stale epoch first; the Switchback check
+                // keeps such a slot from being reused regardless.
                 if (assignment.Overridden && assignment.Variant == @override &&
                     (experiment == null
                         ? assignment.Switchback == null

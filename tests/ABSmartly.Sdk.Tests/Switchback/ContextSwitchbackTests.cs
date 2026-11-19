@@ -746,6 +746,26 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         ones.Should().BeInRange(1, 31);
     }
 
+    // A split rule's revalidation after a SetAttribute uses the serving unit too, not the payload's
+    // unitType: with only the serving unit set, the slot stays current instead of being rebuilt.
+    [Test]
+    public void SplitRuleRevalidatesOverTheServingUnit()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters("device_id", ClusterPath);
+        experiment.AssignmentRules = "{\"rules\":[{\"type\":\"split\",\"environments\":[],\"percentages\":\"50/50\"}]}";
+        var context = CreateContext(new Dictionary<string, string> { ["device_id"] = "d-1" }, DataOf(experiment));
+        Clock.Now = Anchor + 10;
+        var variant = context.PeekTreatment("exp_sb");
+        var cached = context.CachedAssignmentForTest("exp_sb");
+        cached!.RuleOverride.Should().BeTrue();
+        cached.UnitType.Should().Be("device_id");
+
+        context.SetAttribute("unrelated", 1);
+        context.PeekTreatment("exp_sb").Should().Be(variant);
+        context.CachedAssignmentForTest("exp_sb").Should().BeSameAs(cached);
+    }
+
     [Test]
     public void AudienceStrictMismatchIsRecordedAsControl()
     {

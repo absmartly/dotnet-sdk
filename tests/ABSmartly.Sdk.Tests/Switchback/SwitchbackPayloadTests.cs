@@ -104,7 +104,8 @@ public class SwitchbackPayloadTests
             "\"switchbackClusterValues\":[\"a\",1,null,\"b\"],\"switchbackStartAt\":3.6e6,\"switchbackPeriodMs\":-1");
         mixed.SwitchbackClusters.Should().Equal(new KeyValuePair<string, string>("store_id", "store"),
             new KeyValuePair<string, string>("user_id", null!));
-        mixed.SwitchbackClusterValues.Should().Equal("a", "b");
+        // As Jackson reads a String[]: scalars as their JSON text, null as null.
+        mixed.SwitchbackClusterValues.Should().Equal("a", "1", null, "b");
         mixed.SwitchbackStartAt.Should().Be(3_600_000L);
         mixed.SwitchbackPeriodMs.Should().Be(-1);
 
@@ -113,6 +114,39 @@ public class SwitchbackPayloadTests
         DeserializeExperiment(",\"switchbackStartAt\":-9223372036854775808").SwitchbackStartAt.Should().Be(long.MinValue);
         DeserializeExperiment(",\"switchbackStartAt\":9223372036854775808").SwitchbackStartAt.Should().BeNull();
         DeserializeExperiment(",\"switchbackStartAt\":9.3e18").SwitchbackStartAt.Should().BeNull();
+    }
+
+    // A non-string allow-list still filters: integers are their decimal text, and an element Jackson
+    // would reject keeps the list non-empty (it is never the allow-all empty list).
+    [TestCase("[7,8]", new[] { "7", "8" })]
+    [TestCase("[1.5,true,false]", new[] { "1.5", "true", "false" })]
+    [TestCase("[{\"a\":1}]", new string?[] { null })]
+    [TestCase("[[\"x\"]]", new string?[] { null })]
+    public void NonStringAllowListElementsAreReadAsJacksonReadsThem(string json, string?[] expected)
+    {
+        DeserializeExperiment(",\"switchbackClusterValues\":" + json).SwitchbackClusterValues.Should().Equal(expected);
+    }
+
+    // A numeric allow-list filters cluster keys by their decimal text.
+    [Test]
+    public void NumericAllowListFiltersIntegerClusterKeys()
+    {
+        var data = Deserialize(
+            "{\"experiments\":[{\"id\":1,\"name\":\"exp_sb\",\"unitType\":\"store_id\",\"iteration\":1," +
+            "\"seedHi\":-5,\"seedLo\":-7,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2," +
+            "\"trafficSplit\":[0,1],\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}]," +
+            "\"randomizationType\":\"switchback\",\"switchbackClusters\":{\"store_id\":\"store_number\"}," +
+            "\"switchbackClusterValues\":[7,8],\"switchbackStartAt\":1767225600000,\"switchbackPeriodMs\":3600000}]}");
+        foreach (var (value, exposures) in new[] { (42, 0), (7, 1) })
+        {
+            var context = Context.CreateWithData(
+                new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) }.SetUnit("store_id", "u1")
+                    .SetAttribute("store_number", value),
+                data, Clock.Fixed(1_767_225_600_000L + 10), Mock.Of<IContextDataProvider>(), Mock.Of<IContextPublisher>(),
+                null, new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), null);
+            context.GetTreatment("exp_sb");
+            context.PendingCount.Should().Be(exposures, "store_number {0}", value);
+        }
     }
 
     // Forward compatibility: unknown scalar, object and array keys inside a switchback experiment

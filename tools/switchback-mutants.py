@@ -87,6 +87,9 @@ M = [
  ('wire: null name written', S+'Internal/SwitchbackAttributePath.cs', 'if (value.Name != null) writer.WriteString(', 'writer.WriteString('),
  ('wire: null value written', S+'Internal/SwitchbackAttributePath.cs', '            if (value.Value != null)\n            {', '            if (true)\n            {'),
  ('wire: flag cleared by refresh', S+'Context.cs', 'if (hasSwitchbacks) _hasSwitchbacks = true;', '_hasSwitchbacks = hasSwitchbacks;'),
+ ('rules: revalidate over payload unitType', S+'Context.cs', 'assignment.Switchback != null ? assignment.UnitType : experiment.Data.UnitType', 'experiment.Data.UnitType'),
+ ('allow-list: numbers skipped', S+'Services/Json/SwitchbackConverters.cs', '                case JsonTokenType.Number:\n', '                case JsonTokenType.Comment:\n'),
+ ('allow-list: rejected elements dropped', S+'Services/Json/SwitchbackConverters.cs', '                    reader.Skip();\n                    values.Add(null);', '                    reader.Skip();'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {
