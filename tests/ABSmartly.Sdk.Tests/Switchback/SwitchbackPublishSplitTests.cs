@@ -216,6 +216,69 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         logged.Should().ContainSingle(p => p.Goals != null && p.Goals.Any(g => g.Name == "purchase") && p.Units.Length == 2);
     }
 
+    [Test]
+    public void SplitBatchKeepsTheNonLateExposure()
+    {
+        var late = Linked();
+        var current = NewSwitchback(2, "exp_current", 2, Hour);
+        var context = CreateContext(DataOf(late, current));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("user_id", "u1");
+        context.GetTreatment("exp_current");
+        context.Publish();
+        Published.SelectMany(p => p.Event.Exposures ?? Array.Empty<Exposure>())
+            .Select(e => e.Name).Should().Equal("exp_sb", "exp_current");
+        Published.Should().HaveCount(2);
+    }
+
+    [TestCase(" city ", true)]
+    [TestCase("City", false)]
+    public void ClusterRootNamesAreTrimmedButCaseSensitive(string name, bool clamped)
+    {
+        var experiment = Linked();
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + Hour + 20;
+        context.PeekTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute(name, "Faro");
+        context.Track("g", null!);
+        PublishEvent(context).Attributes.Last().SetAt.Should().Be(Anchor + Hour + (clamped ? 21 : 10));
+    }
+
+    [Test]
+    public void EverySourceAndExperimentRegistersItsRoot()
+    {
+        var a = Linked();
+        var b = NewSwitchback(2, "exp_b", 2, Hour);
+        b.SwitchbackClusters = Clusters(UnitType, "other/value");
+        var context = CreateContext(DataOf(a, b));
+        Clock.Now = Anchor + Hour + 20;
+        context.PeekTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute("user_city", "Porto");
+        context.SetAttribute("other", new Dictionary<string, object> { ["value"] = "Faro" });
+        context.Track("g", null!);
+        PublishEvent(context).Attributes.TakeLast(2).Select(a => a.SetAt)
+            .Should().Equal(Anchor + Hour + 21, Anchor + Hour + 21);
+    }
+
+    [Test]
+    public void RefreshRetainsRootsWhoseExposuresCanStillBePending()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 20;
+        context.PeekTreatment("exp_sb");
+        var replacement = NewSwitchback(2, "replacement", 2, Hour);
+        replacement.SwitchbackClusters = Clusters(UnitType, "other");
+        RefreshTo(context, replacement);
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute("city", "Porto");
+        context.Track("g", null!);
+        PublishEvent(context).Attributes.Last().SetAt.Should().Be(Anchor + Hour + 21);
+    }
+
     // A single-threaded SynchronizationContext, like a UI thread.
     private sealed class UiThread : SynchronizationContext, IDisposable
     {
