@@ -279,6 +279,87 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         PublishEvent(context).Attributes.Last().SetAt.Should().Be(Anchor + Hour + 21);
     }
 
+    // A unit set from inside a publisher callback (between split requests) never reaches a later
+    // request of the same flush: every request uses the units snapshotted when the flush started.
+    [Test]
+    public void UnitSetDuringASplitFlushDoesNotReachLaterRequests()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "device_id", "device_city", "user_id", "user_city");
+        Context context = null!;
+        var sent = new List<PublishEvent>();
+        var publisher = new Mock<IContextPublisher>();
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>((_, e) =>
+            {
+                sent.Add(e);
+                if (sent.Count == 1) context.SetUnit("user_id", "u1");
+                return Task.CompletedTask;
+            });
+        Publisher = publisher.Object;
+        context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("device_id", "d1");
+        context.Track("purchase", null!);
+        context.Publish();
+
+        sent.Should().HaveCount(2);
+        sent[0].Units.Select(u => u.Type).Should().Equal(UnitType);
+        sent[1].Units.Select(u => u.Type).Should().Equal(UnitType, "device_id");
+    }
+
+    // Refresh (which registers cluster roots) running against concurrent lookups and setters never
+    // deadlocks: roots are registered outside the data lock, so no lock-order cycle exists.
+    [Test]
+    [Timeout(20000)]
+    public void RefreshConcurrentWithLookupsDoesNotDeadlock()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        DataProvider.Setup(x => x.GetContextDataAsync()).ReturnsAsync(() => DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var workers = new[]
+        {
+            Task.Run(() => { while (!stop.IsCancellationRequested) context.Refresh(); }),
+            Task.Run(() => { var i = 0; while (!stop.IsCancellationRequested) context.SetCustomAssignment("exp_sb", ++i % 2); }),
+            Task.Run(() => { while (!stop.IsCancellationRequested) context.GetTreatment("exp_sb"); }),
+            Task.Run(() => { while (!stop.IsCancellationRequested) context.PeekTreatment("exp_sb"); }),
+            Task.Run(() => { while (!stop.IsCancellationRequested) context.SetAttribute("city", "Faro"); })
+        };
+        Task.WaitAll(workers, TimeSpan.FromSeconds(15)).Should().BeTrue("no lock-order deadlock");
+    }
+
+    // The rewind decision and the attribute append are one write-locked step: a serving read that
+    // tries to run between them waits, so the appended value is never dated before a read it missed.
+    [Test]
+    [Timeout(10000)]
+    public void ServingReadCannotSlipBetweenTheRewindDecisionAndTheAppend()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 20;
+        context.SetAttribute("city", "Faro");
+        Clock.Now = Anchor + Hour + 10;
+        Task? lookup = null;
+        var lookupStarted = new ManualResetEventSlim();
+        context.InsideAttributeAppend = () =>
+        {
+            Clock.Now = Anchor + Hour + 30;
+            lookup = Task.Run(() =>
+            {
+                lookupStarted.Set();
+                context.PeekTreatment("exp_sb");
+            });
+            lookupStarted.Wait();
+            // The lookup needs the context lock this setter holds: it cannot complete in between.
+            lookup.Wait(300).Should().BeFalse("a serving read must not run inside the append");
+        };
+        context.SetAttribute("city", "Porto");
+        lookup!.Wait(5000).Should().BeTrue();
+    }
+
     // A single-threaded SynchronizationContext, like a UI thread.
     private sealed class UiThread : SynchronizationContext, IDisposable
     {

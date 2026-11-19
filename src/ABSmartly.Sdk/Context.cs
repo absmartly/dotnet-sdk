@@ -72,6 +72,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // Test seam: runs once between a cache miss and the write lock, to force a concurrent rebuild.
     internal Action BeforeAssignmentRebuild;
 
+    // Test seam: runs once inside SetAttribute's write lock, between the rewind decision and the
+    // append, so a test can check that no serving read gets in between.
+    internal Action InsideAttributeAppend;
+
     private volatile bool _closed;
     private int _closing;
     private readonly object _closeLock = new();
@@ -682,6 +686,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                         Hashed = true,
                         PublishedAt = PublishedAt(request.Exposures),
                         Units = request.UnitCount < 0 ? units : units.Take(request.UnitCount).ToArray(),
+                        // Attributes are read per request: the Collector replays them by setAt, so a
+                        // later attribute cannot change an earlier exposure's replay (units can).
                         Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
                         SwitchbackWireAttributes = _hasSwitchbacks,
                         Exposures = request.Exposures,
@@ -1922,6 +1928,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var latestRead = Interlocked.Read(ref _latestServingReadAt);
             if (latestRead != long.MinValue && setAt < latestRead && name != null &&
                 _clusterRootNames.Contains(name.Trim())) setAt = latestRead + 1;
+            if (InsideAttributeAppend != null) Interlocked.Exchange(ref InsideAttributeAppend, null)?.Invoke();
             _attributes.Add(new Attribute { Name = name, Value = value, SetAt = setAt });
             Interlocked.Increment(ref _attrsSeq);
         }
