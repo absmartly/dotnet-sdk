@@ -1,5 +1,5 @@
-using System.Text;
-﻿using ABSmartly.Models;
+﻿using System.Text;
+using ABSmartly.Models;
 using ABSmartly.Services;
 using ABSmartly.Time;
 using Microsoft.Extensions.Logging;
@@ -725,6 +725,24 @@ public class ContextTests
         var context = CreateContext(_audienceStrictData);
 
         context.GetVariableValue("banner.size", "small").Should().Be("small");
+        context.PendingCount.Should().Be(0);
+    }
+
+    // A variable read before the experiment's unit is set gives the default and exposes nothing (1.3.0
+    // returned the control value and exposed it).
+    [Test]
+    public void TestVariableBeforeTheUnitIsSetReturnsTheDefault()
+    {
+        var data = new DefaultContextDataDeserializer().Deserialize(new MemoryStream(Encoding.UTF8.GetBytes(
+            "{\"experiments\":[{\"id\":1,\"name\":\"exp_absent\",\"unitType\":\"absent_unit\",\"iteration\":1," +
+            "\"seedHi\":1,\"seedLo\":2,\"split\":[0.5,0.5],\"trafficSeedHi\":3,\"trafficSeedLo\":4," +
+            "\"trafficSplit\":[0,1],\"fullOnVariant\":0,\"applications\":[{\"name\":\"website\"}]," +
+            "\"variants\":[{\"name\":\"A\",\"config\":\"{\\\"k\\\":\\\"control\\\"}\"}," +
+            "{\"name\":\"B\",\"config\":\"{\\\"k\\\":\\\"treatment\\\"}\"}]}]}")));
+        var context = CreateContext(data);
+
+        context.PeekVariableValue("k", "default").Should().Be("default");
+        context.GetVariableValue("k", "default").Should().Be("default");
         context.PendingCount.Should().Be(0);
     }
 

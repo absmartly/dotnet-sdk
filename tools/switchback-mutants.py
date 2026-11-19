@@ -99,6 +99,7 @@ M = [
  ('publish: clamp to the first exposure only', S+'Context.cs', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;', 'if (exposure == exposures[0] && exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;'),
  ('publish: no clamp for multi-exposure batches', S+'Context.cs', 'if (exposures == null || !_hasSwitchbacks) return publishedAt;', 'if (exposures == null || !_hasSwitchbacks || exposures.Length > 1) return publishedAt;'),
  ('variable: control fallback restored', S+'Context.cs', '        failure?.Throw();\n        return suppressedFallback;\n    }', '        failure?.Throw();\n        if (suppressedFallback != null) return suppressedFallback;\n        return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name, ref now) : null;\n    }'),
+ ('variable: unassigned non-strict control fallback', S+'Context.cs', '        failure?.Throw();\n        return suppressedFallback;\n    }', '        failure?.Throw();\n        if (suppressedFallback != null) return suppressedFallback;\n        if (experiments.Count == 0) return null;\n        var first = GetAssignment(experiments[0].Data.Name, ref now);\n        return first.Switchback != null || first.AudienceMismatch ? null : first;\n    }'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {
