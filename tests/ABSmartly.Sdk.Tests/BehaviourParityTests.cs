@@ -403,7 +403,6 @@ public class BehaviourParityTests
         context.GetVariableValue(SharedKey, "default").Should().Be("default");
         context.PendingCount.Should().Be(0, "no experiment won the key, so nothing is exposed for it");
 
-        // The experiment itself is still a strict mismatch, exposed by GetTreatment.
         context.GetTreatment("exp_strict").Should().Be(0);
         var exposure = published().Should().ContainSingle().Subject;
         exposure.Name.Should().Be("exp_strict");

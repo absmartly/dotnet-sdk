@@ -2,15 +2,7 @@
 
 ## 1.4.1
 
-1.4.0 was tagged but never published to NuGet, so this is the first release after 1.3.0; the 1.4.0 notes below are part of it.
-
-### Changed
-- `GetVariableValue`/`PeekVariableValue` no longer return the value of an experiment the unit is not assigned to. If none of the experiments defining the key is assigned to the unit, or overridden, or won by an assignment rule (for example the unit fails a strict audience, or the context has no unit of the experiment's unit type), they now return the default value, and `GetVariableValue` queues no exposure. In 1.3.0 they returned that experiment's control value and `GetVariableValue` queued an `assigned: false` exposure. **Who is affected:** units failing a strict audience, or missing the experiment's unit type, now get your default instead of the control value. Those experiments also record fewer `assigned: false` exposures from variable reads; `GetTreatment` still exposes them. A unit outside the traffic split is still assigned and still gets the control value. This matches the Java SDK. The JavaScript SDK returns the same value but still exposes the experiments it visits.
-
-### Fixed
-- The 1.4.0 code (never published) fell back to the first experiment defining the key when none was assigned, returning its control value and exposing it; that fallback is removed (see Changed).
-
-## 1.4.0 (unreleased)
+The first release after 1.3.0: 1.4.0 was tagged but never published to NuGet, so its changes ship in 1.4.1.
 
 There are no source or binary API breaks against 1.3.0; this is enforced at build time by package validation against the published 1.3.0 package. Public signatures that were reshaped during development are kept as `[Obsolete]` forwarders (`ABSdk`, `ABSdkConfig`, `ABSdkHttpClientFactory`, `IABSdkHttpClientFactory`, the `ABSmartlyService` and `Context` constructors taking the legacy types, `IContextEventHandler`).
 
@@ -39,6 +31,7 @@ There are no source or binary API breaks against 1.3.0; this is enforced at buil
 - A failed close leaves the context open, without re-arming the refresh timer.
 - `http://` endpoints are still accepted, as in 1.3.0 and the Java SDK, but now log a plaintext warning. Endpoints with any other scheme now throw `ArgumentException` (1.3.0 did not check the scheme). Audience `match` regexes keep 1.3.0/Java behaviour, with no match timeout. Both are deliberate owner decisions; see "Security considerations" in the README.
 - When several experiments define the same variable key, `GetVariableValue`/`PeekVariableValue` use the first of them by experiment id that the unit is assigned to (or overridden into), as the Java SDK; 1.3.0 always used the last one in the context data. If that experiment's selected variant does not define the key, the default value is returned, and `GetVariableValue` still exposes that experiment.
+- `GetVariableValue`/`PeekVariableValue` no longer return the value of an experiment the unit is not assigned to. When no experiment defining the key wins (none is assigned to the unit, overridden or won by an assignment rule; for example the unit fails a strict audience, or the context has no unit of the experiment's unit type), they return the default value and `GetVariableValue` queues no exposure. In 1.3.0 they returned the control value of such an experiment (if its control variant defined the key) and `GetVariableValue` queued an `assigned: false` exposure for it. **Who is affected:** when no candidate wins, units failing a strict audience or missing the experiment's unit type now get your default instead of the control value, and those experiments record fewer `assigned: false` exposures from variable reads; `GetTreatment` still exposes them. A unit outside the traffic split, or in a full-on experiment, is still assigned, so its experiment can still win. This matches the Java SDK; the JavaScript SDK returns the same value but still exposes the experiments it visits.
 - Non-integer `number` custom fields parse as `double` (integers still parse as `long`).
 - `System.Text.Json` `JsonElement` attributes now work in audience expressions.
 - `SetUnit` with the UID already set is a no-op; a different UID throws `ArgumentException` with the message `Unit '<type>' UID already set.`, as the Java SDK.
