@@ -25,6 +25,10 @@ public sealed class Exposure
     // publishes such an exposure with that unit set, so the Collector replays the same cluster.
     internal int ServingUnitCount { get; set; }
 
+    // For such an exposure, its experiment's linked unit types (the switchbackClusters keys): only a
+    // linked unit set after serving can change the Collector's replay.
+    internal string[] LinkedUnitTypes { get; set; }
+
     private string DebugView =>
         $"Exposure{{id={Id}, name={Name}, unit={Unit}, variant={Variant}, exposedAt={ExposedAt}, assigned={Assigned}, eligible={Eligible}, overridden={Overridden}, fullOn={FullOn}, custom={Custom}, audienceMismatch={AudienceMismatch}, ruleOverride={RuleOverride}}}";
 

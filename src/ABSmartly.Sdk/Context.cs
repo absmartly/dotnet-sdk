@@ -125,6 +125,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // The latest instant a switchback slot read its cluster (and so the latest exposedAt it can
     // publish); long.MinValue until one is read. See SetAttribute.
     private long _latestServingReadAt = long.MinValue;
+    // The attribute names switchback cluster paths start at, in any data installed so far (cluster
+    // reads of an earlier definition can still be pending). Guarded by the context write lock.
+    private readonly HashSet<string> _clusterRootNames = new(StringComparer.Ordinal);
 
     private volatile int _pendingCount;
     private int _refreshing;
@@ -455,7 +458,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             {
                 if (!assignment.Switchback.Silent)
                     EnqueueExposure(assignment, assignment.Name, assignment.Switchback.ServingReadAt,
-                        assignment.Switchback.ServingUnitCount);
+                        assignment.Switchback.ServingUnitCount, assignment.Switchback.LinkedUnitTypes);
                 return;
             }
 
@@ -515,7 +518,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private void EnqueueExposure(Assignment assignment, string name) =>
         EnqueueExposure(assignment, name, _clock.Millis());
 
-    private void EnqueueExposure(Assignment assignment, string name, long exposedAt, int servingUnitCount = 0)
+    private void EnqueueExposure(Assignment assignment, string name, long exposedAt, int servingUnitCount = 0,
+        string[] linkedUnitTypes = null)
     {
         var exposure = new Exposure
         {
@@ -531,7 +535,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             Custom = assignment.Custom,
             AudienceMismatch = assignment.AudienceMismatch,
             RuleOverride = assignment.RuleOverride,
-            ServingUnitCount = servingUnitCount
+            ServingUnitCount = servingUnitCount,
+            LinkedUnitTypes = linkedUnitTypes
         };
 
         try
@@ -763,18 +768,25 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // exposure, goes in one request with every unit, exactly as before.
     private List<PublishRequest> SplitByServingUnits(Exposure[] exposures, GoalAchievement[] goals)
     {
-        var unitCount = _unitOrder.Count;
-        if (exposures == null || !exposures.Any(e => e.ServingUnitCount > 0 && e.ServingUnitCount < unitCount))
+        if (exposures == null || !exposures.Any(HasLateLinkedUnit))
             return new List<PublishRequest> { new(-1, exposures, goals) };
 
         var requests = new List<PublishRequest>();
-        foreach (var group in exposures.Where(e => e.ServingUnitCount > 0 && e.ServingUnitCount < unitCount)
-                     .GroupBy(e => e.ServingUnitCount).OrderBy(g => g.Key))
+        foreach (var group in exposures.Where(HasLateLinkedUnit).GroupBy(e => e.ServingUnitCount).OrderBy(g => g.Key))
             requests.Add(new PublishRequest(group.Key, group.ToArray(), null));
 
-        var rest = exposures.Where(e => e.ServingUnitCount == 0 || e.ServingUnitCount >= unitCount).ToArray();
+        var rest = exposures.Where(e => !HasLateLinkedUnit(e)).ToArray();
         if (rest.Length > 0 || goals != null) requests.Add(new PublishRequest(-1, rest.Length > 0 ? rest : null, goals));
         return requests;
+    }
+
+    // Whether a unit of one of the exposure's linked types was set after its cluster was served.
+    private bool HasLateLinkedUnit(Exposure exposure)
+    {
+        if (exposure.ServingUnitCount <= 0 || exposure.LinkedUnitTypes == null) return false;
+        for (var i = exposure.ServingUnitCount; i < _unitOrder.Count; i++)
+            if (Array.IndexOf(exposure.LinkedUnitTypes, _unitOrder[i]) >= 0) return true;
+        return false;
     }
 
     private sealed class PublishScope
@@ -1379,6 +1391,20 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     private long ReadClockOnce(ref long now) => now != ClockNotRead ? now : now = _clock.Millis();
 
+    private bool IsClusterRootName(string name)
+    {
+        if (name == null) return false;
+        _contextLock.EnterReadLock();
+        try
+        {
+            return _clusterRootNames.Contains(name.Trim());
+        }
+        finally
+        {
+            _contextLock.ExitReadLock();
+        }
+    }
+
     private static bool IsSwitchback(Experiment experiment) =>
         string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);
 
@@ -1556,6 +1582,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var data = experiment.Data;
         var custom = _customAssignments.TryGetValue(data.Name, out var c) ? c : null;
         var (serving, servingReadAt, servingUnitCount) = SwitchbackServingFor(experiment, previous, now);
+        // Written under the context write lock (as every install is); read lock-free in SetAttribute.
         if (servingReadAt > Interlocked.Read(ref _latestServingReadAt))
             Interlocked.Exchange(ref _latestServingReadAt, servingReadAt);
         var state = new SwitchbackState
@@ -1563,6 +1590,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             Serving = serving,
             ServingReadAt = servingReadAt,
             ServingUnitCount = servingUnitCount,
+            LinkedUnitTypes = experiment.SwitchbackSources?.Select(source => source.Key).ToArray(),
             CustomAssignment = custom
         };
         assignment.Switchback = state;
@@ -1899,13 +1927,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         CheckNotClosed();
 
-        // A value set after a switchback slot read its cluster is dated after that read when the
-        // clock says otherwise (it went back), so the Collector, which replays the cluster from the
-        // latest attribute set at or before exposedAt, still sees the value that served. On a clock
-        // that does not go back this is the clock reading, as before.
+        // A cluster attribute set after a switchback slot read its cluster is dated after that read
+        // when the clock says otherwise (it went back), so the Collector, which replays the cluster
+        // from the latest attribute set at or before exposedAt, still sees the value that served.
+        // Every other attribute, and any attribute on a clock that does not go back, keeps the clock
+        // reading, as before.
         var setAt = _clock.Millis();
         var latestRead = Interlocked.Read(ref _latestServingReadAt);
-        if (latestRead != long.MinValue && setAt < latestRead) setAt = latestRead + 1;
+        if (latestRead != long.MinValue && setAt < latestRead && IsClusterRootName(name)) setAt = latestRead + 1;
         var attribute = new Attribute { Name = name, Value = value, SetAt = setAt };
         _attributes.ConcurrentAdd(attribute);
         Interlocked.Increment(ref _attrsSeq);
@@ -2457,6 +2486,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var index = new Dictionary<string, ExperimentVariables>();
         var indexVariables = new Dictionary<string, List<ExperimentVariables>>();
         var contextCustomFields = new Dictionary<string, Dictionary<string, ContextCustomFieldValue>>();
+        List<string> clusterRoots = null;
 
         Dictionary<int, Experiment> holdoutsById = null;
         if (data.Holdouts != null)
@@ -2477,7 +2507,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 Holdouts = IsSwitchback(experiment) ? null : ResolveHoldouts(experiment.HoldoutIds, holdoutsById)
             };
             if (IsSwitchback(experiment))
+            {
                 experimentVariables.SwitchbackSources = SwitchbackServing.Sources(experiment.SwitchbackClusters);
+                if (experimentVariables.SwitchbackSources != null)
+                    (clusterRoots ??= new List<string>()).AddRange(
+                        experimentVariables.SwitchbackSources.Select(source => source.Value.RootKey));
+            }
 
             foreach (var variant in experiment.Variants)
                 if (variant.Config != null && !string.IsNullOrWhiteSpace(variant.Config))
@@ -2613,6 +2648,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
 
             if (hasSwitchbacks) _hasSwitchbacks = true;
+            if (clusterRoots != null)
+            {
+                _contextLock.EnterWriteLock();
+                try
+                {
+                    _clusterRootNames.UnionWith(clusterRoots);
+                }
+                finally
+                {
+                    _contextLock.ExitWriteLock();
+                }
+            }
             _index = index;
             _holdoutsById = holdoutsById;
             _contextCustomFields = contextCustomFields;
@@ -3071,8 +3118,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // set then. The exposure is stamped with ServingReadAt.
         public SwitchbackServing Serving;
         public long ServingReadAt;
-        // The number of context units when Serving was read; its exposure is published with them.
+        // The number of context units when Serving was read; its exposure is published with them
+        // when a linked unit (LinkedUnitTypes) is set later.
         public int ServingUnitCount;
+        public string[] LinkedUnitTypes;
         public bool Silent;
         public int? CustomAssignment;
     }
