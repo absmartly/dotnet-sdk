@@ -436,7 +436,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // ServingReadAt). The Collector re-resolves the cluster from the published attributes at
     // exposedAt and analysis derives the period from it, so that instant reproduces exactly the
     // cluster and period that served the variant, even when a cluster attribute changed in the
-    // same period after a peek or an earlier call read it. A switchback resolution the Collector
+    // same period after a peek or an earlier call read it. (java-sdk stamps the exposing call's own
+    // clock reading instead; the difference is deliberate, as that reading can replay another
+    // cluster. A change in the very millisecond of the read is the one remaining limit, see the
+    // README.) A switchback resolution the Collector
     // records nothing for (no linked unit, an ineligible cluster, a pre-anchor or unservable draw)
     // is marked exposed without an exposure.
     private void QueueExposure(Assignment assignment)

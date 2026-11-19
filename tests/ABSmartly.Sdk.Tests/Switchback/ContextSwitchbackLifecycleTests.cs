@@ -315,6 +315,28 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         ((exposure.ExposedAt - Anchor) / Hour).Should().Be(1);
     }
 
+    // Documented limit, deliberately kept: a cluster attribute changed in the same millisecond as the
+    // read that served it publishes with the same setAt, and the Collector (last set wins on a tie)
+    // replays the new value. Shifting such an update by 1 ms (tried in 63fa716, reverted in 3560924)
+    // moved unrelated attributes past their goals and exposures and broke last-write-wins for other
+    // switchbacks, so this pins the limit as documented in the README.
+    [Test]
+    public void SameMillisecondUpdateAfterAReadKeepsItsTimestamp()
+    {
+        var experiment = NewSwitchback(3, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city");
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        var served = context.PeekTreatment("exp_sb");
+        context.SetAttribute("city", "Porto");
+        context.GetTreatment("exp_sb").Should().Be(served);
+        var published = PublishEvent(context);
+        published.Exposures.Single().ExposedAt.Should().Be(Anchor + Hour + 1);
+        published.Attributes.Where(a => a.Name == "city").Select(a => a.SetAt)
+            .Should().Equal(Anchor + Hour + 1, Anchor + Hour + 1);
+    }
+
     // Unit experiments keep stamping at enqueue time: their lookup does not read the clock, so the
     // exposure carries the single (enqueue) reading.
     [Test]
