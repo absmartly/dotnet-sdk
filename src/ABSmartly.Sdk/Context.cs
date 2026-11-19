@@ -1649,13 +1649,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (assignment.Suppressed) suppressedFallback ??= assignment;
         }
 
+        // As java-sdk: with no assigned, overridden or rule-won candidate and no held-out one, the key
+        // gives the default value and nothing is exposed (a strict audience mismatch, for example,
+        // must not leak its control value).
         failure?.Throw();
-        if (suppressedFallback != null) return suppressedFallback;
-        if (experiments.Count == 0) return null;
-        // A switchback that is not assigned (no linked unit, or a strict audience mismatch) gives the
-        // default value and records nothing, as java-sdk, rather than falling back to its control.
-        var first = GetAssignment(experiments[0].Data.Name, ref now);
-        return first.Switchback != null ? null : first;
+        return suppressedFallback;
     }
 
     private ExperimentVariables GetExperiment(string experimentName)

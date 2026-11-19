@@ -66,7 +66,6 @@ M = [
  ('legacy: unit type fallback draws', S+'Context.cs', 'if (experiment.SwitchbackSources == null) return SwitchbackServing.Legacy(experiment.Data.UnitType, _units);', 'if (experiment.SwitchbackSources == null) experiment.SwitchbackSources = new[] { new KeyValuePair<string, SwitchbackAttributePath>(experiment.Data.UnitType, SwitchbackAttributePath.ParseSupported("store_key")) };'),
  ('path: dot allowed', S+'Internal/SwitchbackAttributePath.cs', "if (path.IndexOf('.') >= 0) return null;", ''),
  ('path: latest attribute ignores setAt', S+'Context.cs', 'if (attribute.SetAt <= now && attribute.Name != null &&', 'if (attribute.Name != null &&'),
- ('variable: strict-mismatched switchback falls back to control', S+'Context.cs', 'return first.Switchback != null ? null : first;', 'return first;'),
  ('setUnit: absent slot not evicted', S+'Context.cs', 'if (Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0 || !assignment.Overridden)\n                    (evicted ??= new List<string>()).Add(entry.Key);', 'if (false) (evicted ??= new List<string>()).Add(entry.Key);'),
  ('custom: change not staleness', S+'Context.cs', 'if (assignment.Switchback != null) return Nullable.Equals(hasCustom ? custom : null, assignment.Switchback.CustomAssignment);', 'if (assignment.Switchback != null) return true;'),
  ('staleness: audience re-run for ineligible slot', S+'Context.cs', 'if (assignment.RuleOverride || assignment.Suppressed || !SwitchbackConsultedRules(assignment)) return true;', 'if (assignment.RuleOverride || assignment.Suppressed) return true;'),
@@ -99,6 +98,7 @@ M = [
  ('publish: clamp past the exposure', S+'Context.cs', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt + 1;'),
  ('publish: clamp to the first exposure only', S+'Context.cs', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;', 'if (exposure == exposures[0] && exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;'),
  ('publish: no clamp for multi-exposure batches', S+'Context.cs', 'if (exposures == null || !_hasSwitchbacks) return publishedAt;', 'if (exposures == null || !_hasSwitchbacks || exposures.Length > 1) return publishedAt;'),
+ ('variable: control fallback restored', S+'Context.cs', '        failure?.Throw();\n        return suppressedFallback;\n    }', '        failure?.Throw();\n        if (suppressedFallback != null) return suppressedFallback;\n        return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name, ref now) : null;\n    }'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {
