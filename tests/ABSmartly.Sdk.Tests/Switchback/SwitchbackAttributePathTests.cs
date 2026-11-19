@@ -159,19 +159,23 @@ public class SwitchbackAttributePathTests
             .Should().BeNull();
     }
 
-    // Half is a floating-point number and an enum has no agreed key (the serializer writes its
-    // number, java-sdk its name): neither keys a cluster, at the root or nested.
+    // Half is a floating-point number, so it never keys a cluster. An enum is read as its name, as
+    // java-sdk's Jackson encodes it and as the context publishes it with switchbacks installed.
     [Test]
-    public void HalfAndEnumValuesHaveNoKey()
+    public void HalfHasNoKeyAndAnEnumIsItsName()
     {
         var root = SwitchbackAttributePath.ParseSupported("city")!;
         var nested = SwitchbackAttributePath.ParseSupported("geo/city")!;
-        foreach (var value in new object[] { (Half)3, (Half)2.5, DayOfWeek.Monday })
+        foreach (var value in new object[] { (Half)3, (Half)2.5 })
         {
             SwitchbackClusterKeys.Normalize(root.ResolveAttribute(value)).Should().BeNull(value.ToString());
             SwitchbackClusterKeys.Normalize(nested.ResolveAttribute(new Dictionary<string, object> { ["city"] = value }))
                 .Should().BeNull(value.ToString());
         }
+
+        SwitchbackClusterKeys.Normalize(root.ResolveAttribute(DayOfWeek.Monday)).Should().Be("Monday");
+        SwitchbackClusterKeys.Normalize(nested.ResolveAttribute(new Dictionary<string, object> { ["city"] = DayOfWeek.Monday }))
+            .Should().Be("Monday");
     }
 
     // A value with no JSON encoding has no cluster key: a cycle, nesting deeper than the

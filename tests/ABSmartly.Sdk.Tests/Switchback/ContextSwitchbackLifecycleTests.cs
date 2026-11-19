@@ -337,6 +337,29 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
             .Should().Equal(Anchor + Hour + 1, Anchor + Hour + 1);
     }
 
+    // Review regression: a clock moved back after the cluster was read must not put the exposure after
+    // publishedAt, which the Collector rejects along with the whole request (goals included).
+    [Test]
+    public void ClockRollbackKeepsTheRequestValid()
+    {
+        var context = CreateContext(DataOf(NewSwitchback(2, Hour)));
+        Clock.Now = Anchor + Hour + 20;
+        var served = context.PeekTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 15;
+        context.GetTreatment("exp_sb").Should().Be(served);
+        context.Track("goal", null!);
+        var published = PublishEvent(context);
+        published.Exposures.Single().ExposedAt.Should().Be(Anchor + Hour + 20);
+        published.Goals.Single().AchievedAt.Should().Be(Anchor + Hour + 15);
+        published.PublishedAt.Should().BeGreaterThanOrEqualTo(published.Exposures.Single().ExposedAt);
+        published.PublishedAt.Should().BeGreaterThanOrEqualTo(published.Goals.Single().AchievedAt);
+
+        // Without a rollback publishedAt is the clock reading, as before.
+        Clock.Now = Anchor + Hour + 40;
+        context.Track("later", null!);
+        PublishEvent(context).PublishedAt.Should().Be(Anchor + Hour + 40);
+    }
+
     // Unit experiments keep stamping at enqueue time: their lookup does not read the clock, so the
     // exposure carries the single (enqueue) reading.
     [Test]

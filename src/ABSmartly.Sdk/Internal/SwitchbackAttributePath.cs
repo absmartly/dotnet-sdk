@@ -50,8 +50,8 @@ internal sealed class SwitchbackAttributePath
 
     // The value at the path below RootKey in an SDK attribute value, read as the Collector reads
     // the published attribute: through its wire encoding (WireOptions, the JSON the context
-    // publishes), so a dictionary key is read under the name it is published with and a whole double
-    // stays a float; an enum value gives no value (see LookupOptions). A string, boolean, integer or
+    // publishes), so a dictionary key is read under the name it is published with, a whole double
+    // stays a float and an enum value is its name. A string, boolean, integer or
     // floating-point root value is returned as is (a char as a string); anything else is encoded and
     // the result is a JsonElement. Null when the path finds nothing, or the value has no JSON
     // encoding (a cycle, nesting deeper than the serializer's MaxDepth, or a type it rejects).
@@ -65,7 +65,7 @@ internal sealed class SwitchbackAttributePath
         JsonElement element;
         try
         {
-            element = JsonSerializer.SerializeToElement(rootValue, LookupOptions.Value);
+            element = JsonSerializer.SerializeToElement(rootValue, WireOptions.Value);
         }
         catch (Exception e) when (e is JsonException || e is NotSupportedException || e is InvalidOperationException ||
                                   e is ArgumentException)
@@ -185,11 +185,12 @@ internal sealed class SwitchbackAttributePath
         return value > int.MaxValue ? null : (int)value;
     }
 
-    // The JSON the context publishes a switchback context's attributes as, and so the JSON the
-    // Collector re-resolves the cluster from: the publish serializer's options, except that a
-    // floating-point number (double, float, Half) is written with a fraction even when it is whole
-    // (3.0, where the serializer writes 3), so it stays a float on the wire as in the lookup.
-    // Dictionary keys are written exactly as the publish serializer writes them.
+    // The JSON a switchback context publishes its attributes as, and so the JSON both the cluster
+    // lookup and the Collector read the cluster from: the publish serializer's options, except that
+    // a floating-point number (double, float, Half) is written with a fraction even when it is whole
+    // (3.0, where the serializer writes 3) and as null when it is NaN or infinite, so it never keys a
+    // cluster and never fails the batch; and an enum value is written as its name, as java-sdk's
+    // Jackson writes it. Dictionary keys are written exactly as the publish serializer writes them.
     internal static readonly Lazy<JsonSerializerOptions> WireOptions = new(() =>
     {
         var options = new JsonSerializerOptions(JsonOptionsProvider.Default.SerializerOptions);
@@ -199,36 +200,26 @@ internal sealed class SwitchbackAttributePath
         // System.Half, by name: the netstandard2.0 build (used on net6.0 and .NET Framework) does
         // not see the type, and must still treat it as a float.
         options.Converters.Add(new HalfAsFloatConverterFactory());
+        options.Converters.Add(new EnumAsNameConverterFactory());
         return options;
     });
 
-    // The lookup encoding: the wire encoding, except that an enum value (never a dictionary key) is
-    // read as null, so it has no cluster value. The publish serializer writes its number and
-    // java-sdk its name, so neither is a key the Collector and this SDK would agree on.
-    private static readonly Lazy<JsonSerializerOptions> LookupOptions = new(() =>
-    {
-        var options = new JsonSerializerOptions(WireOptions.Value);
-        options.Converters.Add(new EnumAsNullConverterFactory());
-        return options;
-    });
-
-    private sealed class EnumAsNullConverterFactory : JsonConverterFactory
+    private sealed class EnumAsNameConverterFactory : JsonConverterFactory
     {
         public override bool CanConvert(Type typeToConvert) => typeToConvert.IsEnum;
 
         public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
-            (JsonConverter)Activator.CreateInstance(typeof(EnumAsNullConverter<>).MakeGenericType(typeToConvert));
+            (JsonConverter)Activator.CreateInstance(typeof(EnumAsNameConverter<>).MakeGenericType(typeToConvert));
     }
 
-    private sealed class EnumAsNullConverter<T> : JsonConverter<T>
+    private sealed class EnumAsNameConverter<T> : JsonConverter<T>
     {
         public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             throw new NotSupportedException();
 
         public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
-            writer.WriteNullValue();
+            writer.WriteStringValue(value!.ToString());
 
-        // A dictionary keyed by an enum keeps its published key names, so sibling values resolve.
         public override void WriteAsPropertyName(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
             ((JsonConverter<T>)JsonOptionsProvider.Default.SerializerOptions.GetConverter(typeof(T)))
             .WriteAsPropertyName(writer, value, options);
@@ -254,7 +245,6 @@ internal sealed class SwitchbackAttributePath
             var naming = options.PropertyNamingPolicy;
             writer.WriteStartObject();
             if (value.Name != null) writer.WriteString(naming.ConvertName(nameof(Models.Attribute.Name)), value.Name);
-            // Null members are left out, as the publish serializer's WhenWritingNull does.
             if (value.Value != null)
             {
                 writer.WritePropertyName(naming.ConvertName(nameof(Models.Attribute.Value)));
@@ -299,8 +289,7 @@ internal sealed class SwitchbackAttributePath
             var d = _toDouble(value!);
             if (double.IsNaN(d) || double.IsInfinity(d))
             {
-                // As the publish serializer: it rejects them (the lookup then finds no value).
-                Default(options).Write(writer, value, options);
+                writer.WriteNullValue();
                 return;
             }
 
@@ -312,7 +301,6 @@ internal sealed class SwitchbackAttributePath
         public override void WriteAsPropertyName(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
             Default(options).WriteAsPropertyName(writer, value, options);
 
-        // The converter the publish serializer uses for T.
         private static JsonConverter<T> Default(JsonSerializerOptions options) =>
             (JsonConverter<T>)JsonOptionsProvider.Default.SerializerOptions.GetConverter(typeof(T));
 

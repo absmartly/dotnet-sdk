@@ -648,7 +648,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 var publishEvent = new PublishEvent
                 {
                     Hashed = true,
-                    PublishedAt = _clock.Millis(),
+                    PublishedAt = PublishedAt(exposures),
                     Units = _units
                         .Select(kv => new Unit
                         {
@@ -693,6 +693,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             lock (_eventLock) _inFlightPublishes.Remove(inFlight.Task);
             inFlight.TrySetResult(true);
         }
+    }
+
+    // The Collector rejects a request with an exposure later than publishedAt. A switchback exposure
+    // keeps the instant its cluster was read, which a clock moved back since can put after the
+    // current reading, so publishedAt is never earlier than the batch's latest exposure.
+    private long PublishedAt(Exposure[] exposures)
+    {
+        var publishedAt = _clock.Millis();
+        if (exposures == null) return publishedAt;
+        foreach (var exposure in exposures)
+            if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;
+        return publishedAt;
     }
 
     private sealed class PublishScope
@@ -2973,10 +2985,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // A switchback slot's serving resolution and whether the Collector records it.
     internal sealed class SwitchbackState
     {
-        // The serving unit and cluster key, read once per slot (reused by a slot rebuilt in the same
-        // epoch, unless no linked unit was set then).
+        // Read once per slot: a slot rebuilt in the same epoch reuses it, unless no linked unit was
+        // set then. The exposure is stamped with ServingReadAt.
         public SwitchbackServing Serving;
-        // The clock reading Serving was read at; the slot's exposure is stamped with it.
         public long ServingReadAt;
         public bool Silent;
         public int? CustomAssignment;

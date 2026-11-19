@@ -529,7 +529,7 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
         context.PendingCount.Should().Be(1);
 
-        // Same period index 0 under both grids, so only the config comparison can invalidate.
+        // Same period index 0 under both grids, so only the new refresh generation can invalidate.
         RefreshTo(context, NewSwitchback(2, 2 * Hour));
         context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
         context.PendingCount.Should().Be(2);

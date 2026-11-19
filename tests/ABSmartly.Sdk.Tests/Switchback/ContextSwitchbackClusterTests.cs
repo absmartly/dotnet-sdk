@@ -449,7 +449,7 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
     }
 
     // Review regression: a dictionary keyed by an enum beside the cluster field neither hides the
-    // field nor changes how the attribute is published.
+    // field nor changes its published key names; an enum value is published as its name.
     [Test]
     public void EnumKeyedSiblingsDoNotHideTheClusterValue()
     {
@@ -463,13 +463,66 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         });
         context.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
         var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
-        json.Should().Contain("\"value\":{\"city\":\"Faro\",\"hours\":{\"monday\":9},\"day\":5}");
+        json.Should().Contain("\"value\":{\"city\":\"Faro\",\"hours\":{\"monday\":9},\"day\":\"Friday\"}");
+    }
 
-        // The enum value itself is still no key.
-        var enumValue = Create(DataOf(AttributeSwitchback("profile/day")));
-        enumValue.SetAttribute("profile", new Dictionary<string, object> { ["day"] = DayOfWeek.Friday });
-        enumValue.GetTreatment("exp_sb").Should().Be(0);
-        enumValue.PendingCount.Should().Be(0);
+    // Review regression: an enum value is a cluster key by its name, in the lookup and on the wire,
+    // so the SDK and the Collector's replay agree. Two linked sources, "Faro" and an enum: both
+    // disagree, so neither serves; an enum alone serves under its name.
+    [Test]
+    public void EnumValuesKeyByNameInTheLookupAndOnTheWire()
+    {
+        var experiment = AttributeSwitchback("city");
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "profile/n");
+        var context = Create(new Dictionary<string, string> { [UnitType] = Uid, ["user_id"] = "u1" }, DataOf(experiment));
+        Clock.Now = Anchor + 10;
+        context.SetAttribute("city", "Faro");
+        context.SetAttribute("profile", new Dictionary<string, object> { ["n"] = DayOfWeek.Friday });
+        context.GetTreatment("exp_sb").Should().Be(0);
+        context.PendingCount.Should().Be(0);
+        context.Track("goal", null!);
+        Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)))
+            .Should().Contain("\"value\":{\"n\":\"Friday\"}");
+
+        var alone = Create(DataOf(AttributeSwitchback("profile/day")));
+        Clock.Now = Anchor;
+        alone.SetAttribute("profile", new Dictionary<string, object> { ["day"] = DayOfWeek.Friday });
+        PeekSchedule(alone).Should().Equal(ExpectedSchedule("Friday"));
+    }
+
+    // Review regression: a NaN or infinite number anywhere in the attributes (even one the caller's
+    // own number handling would write as "NaN") is published as null, so the default serializer
+    // never fails the whole batch of exposures and goals; it never keys a cluster.
+    [Test]
+    public void NonFiniteNumbersDoNotFailThePublish()
+    {
+        var context = Create(DataOf(AttributeSwitchback("city")));
+        Clock.Now = Anchor + 10;
+        context.SetAttribute("city", "Faro");
+        context.SetAttribute("reading", new Reading { Value = double.NaN, Ratio = float.PositiveInfinity });
+        context.SetAttribute("plain", double.NaN);
+        context.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
+        context.Track("goal", null!);
+        var bytes = new DefaultContextEventSerializer().Serialize(PublishEvent(context));
+        bytes.Should().NotBeNull();
+        var json = Encoding.UTF8.GetString(bytes);
+        json.Should().Contain("{\"name\":\"reading\",\"value\":{\"value\":null,\"ratio\":null},");
+        json.Should().Contain("{\"name\":\"plain\",\"value\":null,");
+        json.Should().Contain("\"name\":\"exp_sb\"").And.Contain("\"name\":\"goal\"");
+
+        var keyed = Create(DataOf(AttributeSwitchback("city")));
+        keyed.SetAttribute("city", double.NaN);
+        keyed.GetTreatment("exp_sb").Should().Be(0);
+        keyed.PendingCount.Should().Be(0);
+    }
+
+    private sealed class Reading
+    {
+        [System.Text.Json.Serialization.JsonNumberHandling(
+            System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals)]
+        public double Value { get; set; }
+
+        public float Ratio { get; set; }
     }
 
     // Within a period the cluster key is fixed at first resolution; the next period reads the
