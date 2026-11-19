@@ -697,11 +697,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // The Collector rejects a request with an exposure later than publishedAt. A switchback exposure
     // keeps the instant its cluster was read, which a clock moved back since can put after the
-    // current reading, so publishedAt is never earlier than the batch's latest exposure.
+    // current reading, so with switchbacks installed publishedAt is never earlier than the batch's
+    // latest exposure. Without them it is the clock reading, as before.
     private long PublishedAt(Exposure[] exposures)
     {
         var publishedAt = _clock.Millis();
-        if (exposures == null) return publishedAt;
+        if (exposures == null || !_hasSwitchbacks) return publishedAt;
         foreach (var exposure in exposures)
             if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;
         return publishedAt;

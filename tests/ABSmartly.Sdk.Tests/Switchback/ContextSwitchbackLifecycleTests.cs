@@ -351,13 +351,24 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         var published = PublishEvent(context);
         published.Exposures.Single().ExposedAt.Should().Be(Anchor + Hour + 20);
         published.Goals.Single().AchievedAt.Should().Be(Anchor + Hour + 15);
-        published.PublishedAt.Should().BeGreaterThanOrEqualTo(published.Exposures.Single().ExposedAt);
-        published.PublishedAt.Should().BeGreaterThanOrEqualTo(published.Goals.Single().AchievedAt);
+        published.PublishedAt.Should().Be(Anchor + Hour + 20);
 
         // Without a rollback publishedAt is the clock reading, as before.
         Clock.Now = Anchor + Hour + 40;
         context.Track("later", null!);
         PublishEvent(context).PublishedAt.Should().Be(Anchor + Hour + 40);
+    }
+
+    // A context that never had switchback data publishes the clock reading as publishedAt, even
+    // after a rollback, exactly as before switchbacks existed.
+    [Test]
+    public void PublishedAtIsTheClockReadingWithoutSwitchbacks()
+    {
+        var context = CreateContext(DataOf(AsUnit(NewSwitchback(2, Hour))));
+        Clock.Now = Anchor + 100;
+        context.GetTreatment("exp_sb");
+        Clock.Now = Anchor + 50;
+        PublishEvent(context).PublishedAt.Should().Be(Anchor + 50);
     }
 
     // Unit experiments keep stamping at enqueue time: their lookup does not read the clock, so the

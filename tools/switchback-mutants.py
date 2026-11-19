@@ -76,7 +76,7 @@ M = [
  ('wire: enum name lowercased', S+'Internal/SwitchbackAttributePath.cs', 'writer.WriteStringValue(value!.ToString());', 'writer.WriteStringValue(value!.ToString().ToLowerInvariant());'),
  ('wire: NaN through the default converter', S+'Internal/SwitchbackAttributePath.cs', '            if (double.IsNaN(d) || double.IsInfinity(d))\n            {\n                writer.WriteNullValue();', '            if (double.IsNaN(d) || double.IsInfinity(d))\n            {\n                Default(options).Write(writer, value, options);'),
  ('publish: publishedAt ignores exposures', S+'Context.cs', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;', 'if (exposure.ExposedAt < 0) publishedAt = exposure.ExposedAt;'),
- ('publish: publishedAt always max of exposures', S+'Context.cs', '        var publishedAt = _clock.Millis();\n        if (exposures == null) return publishedAt;', '        var publishedAt = 0L;\n        if (exposures == null) return _clock.Millis();'),
+ ('publish: publishedAt always max of exposures', S+'Context.cs', '        var publishedAt = _clock.Millis();\n        if (exposures == null || !_hasSwitchbacks) return publishedAt;', '        var publishedAt = 0L;\n        if (exposures == null || !_hasSwitchbacks) return _clock.Millis();'),
  ('wire: whole floats published as ints', S+'Context.cs', 'SwitchbackWireAttributes = _hasSwitchbacks,', 'SwitchbackWireAttributes = false,'),
  ('wire: wire form also without switchbacks', S+'Context.cs', 'SwitchbackWireAttributes = _hasSwitchbacks,', 'SwitchbackWireAttributes = true,'),
  ('wire: flag only when all switchback', S+'Context.cs', '                hasSwitchbacks = true;', '                hasSwitchbacks = index.Count == 1;'),
@@ -95,6 +95,8 @@ M = [
  ('allow-list: numbers skipped', S+'Services/Json/SwitchbackConverters.cs', '                case JsonTokenType.Number:\n', '                case JsonTokenType.Comment:\n'),
  ('allow-list: rejected elements dropped', S+'Services/Json/SwitchbackConverters.cs', '                    reader.Skip();\n                    values.Add(null);', '                    reader.Skip();'),
  ('allow-list: null entry admits all', S+'Internal/SwitchbackServing.cs', 'if (string.Equals(key, allowed, StringComparison.Ordinal)) return true;', 'if (allowed == null || string.Equals(key, allowed, StringComparison.Ordinal)) return true;'),
+ ('publish: clamp without switchbacks', S+'Context.cs', 'if (exposures == null || !_hasSwitchbacks) return publishedAt;', 'if (exposures == null) return publishedAt;'),
+ ('publish: clamp past the exposure', S+'Context.cs', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt + 1;'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {
