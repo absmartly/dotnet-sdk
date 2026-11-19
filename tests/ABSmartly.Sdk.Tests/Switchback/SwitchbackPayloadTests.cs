@@ -127,26 +127,28 @@ public class SwitchbackPayloadTests
         DeserializeExperiment(",\"switchbackClusterValues\":" + json).SwitchbackClusterValues.Should().Equal(expected);
     }
 
-    // A numeric allow-list filters cluster keys by their decimal text.
-    [Test]
-    public void NumericAllowListFiltersIntegerClusterKeys()
+    // A numeric allow-list filters cluster keys by their decimal text; a list of null or rejected
+    // elements filters every key (it is never the allow-all empty list).
+    [TestCase("[7,8]", 42, 0)]
+    [TestCase("[7,8]", 7, 1)]
+    [TestCase("[42]", 42, 1)]
+    [TestCase("[null]", 42, 0)]
+    [TestCase("[{}]", 42, 0)]
+    public void NumericAllowListFiltersIntegerClusterKeys(string allowList, int value, int exposures)
     {
         var data = Deserialize(
             "{\"experiments\":[{\"id\":1,\"name\":\"exp_sb\",\"unitType\":\"store_id\",\"iteration\":1," +
             "\"seedHi\":-5,\"seedLo\":-7,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2," +
             "\"trafficSplit\":[0,1],\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}]," +
             "\"randomizationType\":\"switchback\",\"switchbackClusters\":{\"store_id\":\"store_number\"}," +
-            "\"switchbackClusterValues\":[7,8],\"switchbackStartAt\":1767225600000,\"switchbackPeriodMs\":3600000}]}");
-        foreach (var (value, exposures) in new[] { (42, 0), (7, 1) })
-        {
-            var context = Context.CreateWithData(
-                new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) }.SetUnit("store_id", "u1")
-                    .SetAttribute("store_number", value),
-                data, Clock.Fixed(1_767_225_600_000L + 10), Mock.Of<IContextDataProvider>(), Mock.Of<IContextPublisher>(),
-                null, new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), null);
-            context.GetTreatment("exp_sb");
-            context.PendingCount.Should().Be(exposures, "store_number {0}", value);
-        }
+            "\"switchbackClusterValues\":" + allowList + ",\"switchbackStartAt\":1767225600000,\"switchbackPeriodMs\":3600000}]}");
+        var context = Context.CreateWithData(
+            new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) }.SetUnit("store_id", "u1")
+                .SetAttribute("store_number", value),
+            data, Clock.Fixed(1_767_225_600_000L + 10), Mock.Of<IContextDataProvider>(), Mock.Of<IContextPublisher>(),
+            null, new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), null);
+        context.GetTreatment("exp_sb");
+        context.PendingCount.Should().Be(exposures);
     }
 
     // Forward compatibility: unknown scalar, object and array keys inside a switchback experiment

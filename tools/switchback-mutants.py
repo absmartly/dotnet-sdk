@@ -90,6 +90,7 @@ M = [
  ('rules: revalidate over payload unitType', S+'Context.cs', 'assignment.Switchback != null ? assignment.UnitType : experiment.Data.UnitType', 'experiment.Data.UnitType'),
  ('allow-list: numbers skipped', S+'Services/Json/SwitchbackConverters.cs', '                case JsonTokenType.Number:\n', '                case JsonTokenType.Comment:\n'),
  ('allow-list: rejected elements dropped', S+'Services/Json/SwitchbackConverters.cs', '                    reader.Skip();\n                    values.Add(null);', '                    reader.Skip();'),
+ ('allow-list: null entry admits all', S+'Internal/SwitchbackServing.cs', 'if (string.Equals(key, allowed, StringComparison.Ordinal)) return true;', 'if (allowed == null || string.Equals(key, allowed, StringComparison.Ordinal)) return true;'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {

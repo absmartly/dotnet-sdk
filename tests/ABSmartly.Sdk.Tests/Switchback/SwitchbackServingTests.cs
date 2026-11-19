@@ -161,6 +161,11 @@ public class SwitchbackServingTests
         Resolve(sources, units, "{\"va\":\"x\"}", new[] { "k", "j" }).Status.Should().Be(SwitchbackServing.ServingStatus.Ineligible);
         Resolve(sources, units, "{\"va\":\"x\"}", Array.Empty<string>()).Status.Should().Be(SwitchbackServing.ServingStatus.Eligible);
         Resolve(sources, units, "{\"va\":\"x\"}").Status.Should().Be(SwitchbackServing.ServingStatus.Eligible);
+        // A null entry (the decoder's placeholder for an element Jackson rejects) never matches, so
+        // [null] filters every value rather than allowing all.
+        SwitchbackServing.Allowed(new string[] { null! }, "42").Should().BeFalse();
+        Resolve(sources, units, "{\"va\":\"x\"}", new string[] { null! }).Status
+            .Should().Be(SwitchbackServing.ServingStatus.Ineligible);
         // Compared ordinally: case and normalisation are significant.
         Resolve(sources, units, "{\"va\":\"K\"}", new[] { "k" }).Status.Should().Be(SwitchbackServing.ServingStatus.Ineligible);
     }
