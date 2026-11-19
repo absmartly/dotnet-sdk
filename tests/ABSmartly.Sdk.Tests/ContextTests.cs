@@ -716,28 +716,14 @@ public class ContextTests
     }
 
     [Test]
-    public void
-        TestGetVariableValueQueuesExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode()
+    public void TestGetVariableValueDoesNotQueueExposureOnAudienceMismatchInStrictMode()
     {
+        // As the Java SDK: a strict audience mismatch is not assigned, so the experiment does
+        // not win the key; the default is returned and nothing is exposed.
         var context = CreateContext(_audienceStrictData);
 
         context.GetVariableValue("banner.size", "small").Should().Be("small");
-        context.PendingCount.Should().Be(1);
-
-        var expectedEvent = new PublishEvent
-        {
-            Hashed = true,
-            PublishedAt = _clock.Millis(),
-            Units = _publishUnits,
-            Exposures = new[]
-            {
-                Exposure(1, "exp_test_ab", "session_id", 0, _clock.Millis(), false, true, false, false, false, true)
-            }
-        };
-
-        context.Publish();
-
-        VerifyPublishData(_eventHandler, context, expectedEvent);
+        context.PendingCount.Should().Be(0);
     }
 
     [Test]

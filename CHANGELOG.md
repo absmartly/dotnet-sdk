@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1
+
+### Fixed
+- A shared variable key no longer returns the control value of an experiment the unit is not assigned to. When several experiments define the same key and none of them is assigned (or overridden, or won by an assignment rule) for the unit, for example on a strict audience mismatch or with no unit for the experiment's unit type, `GetVariableValue`/`PeekVariableValue` now return the default value and `GetVariableValue` exposes nothing for the key. 1.4.0 fell back to the first of those experiments, returning its control value and queuing its exposure. This now matches the Java and JavaScript SDKs. A unit outside the traffic split is still assigned, so its experiment still serves control.
+
 ## 1.4.0 (unreleased)
 
 There are no source or binary API breaks against 1.3.0; this is enforced at build time by package validation against the published 1.3.0 package. Public signatures that were reshaped during development are kept as `[Obsolete]` forwarders (`ABSdk`, `ABSdkConfig`, `ABSdkHttpClientFactory`, `IABSdkHttpClientFactory`, the `ABSmartlyService` and `Context` constructors taking the legacy types, `IContextEventHandler`).
