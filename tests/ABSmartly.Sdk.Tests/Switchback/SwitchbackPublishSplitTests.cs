@@ -310,26 +310,32 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         sent[1].Units.Select(u => u.Type).Should().Equal(UnitType, "device_id");
     }
 
-    // Refresh (which registers cluster roots) running against concurrent lookups and setters never
-    // deadlocks: roots are registered outside the data lock, so no lock-order cycle exists.
+    // Refresh registers cluster roots outside the data lock. A lookup takes the context lock and
+    // then the data lock, so registering under the data lock would deadlock with it. This forces
+    // the interleaving: while a setter holds the context lock, a refresh starts (and would take the
+    // data lock first) and a lookup queues behind the setter; everything must still complete.
     [Test]
     [Timeout(20000)]
-    public void RefreshConcurrentWithLookupsDoesNotDeadlock()
+    public void RefreshDuringALookupDoesNotDeadlock()
     {
         var context = CreateContext(DataOf(Linked()));
         DataProvider.Setup(x => x.GetContextDataAsync()).ReturnsAsync(() => DataOf(Linked()));
         Clock.Now = Anchor + Hour + 1;
         context.SetAttribute("city", "Faro");
-        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        var workers = new[]
+        Thread? refresh = null;
+        Task? lookup = null;
+        context.InsideAttributeAppend = () =>
         {
-            Task.Run(() => { while (!stop.IsCancellationRequested) context.Refresh(); }),
-            Task.Run(() => { var i = 0; while (!stop.IsCancellationRequested) context.SetCustomAssignment("exp_sb", ++i % 2); }),
-            Task.Run(() => { while (!stop.IsCancellationRequested) context.GetTreatment("exp_sb"); }),
-            Task.Run(() => { while (!stop.IsCancellationRequested) context.PeekTreatment("exp_sb"); }),
-            Task.Run(() => { while (!stop.IsCancellationRequested) context.SetAttribute("city", "Faro"); })
+            refresh = new Thread(() => context.Refresh()) { IsBackground = true };
+            refresh.Start();
+            Thread.Sleep(300);
+            lookup = Task.Run(() => context.PeekTreatment("exp_sb"));
+            Thread.Sleep(100);
         };
-        Task.WaitAll(workers, TimeSpan.FromSeconds(15)).Should().BeTrue("no lock-order deadlock");
+        var setter = Task.Run(() => context.SetAttribute("city", "Faro"));
+        setter.Wait(5000).Should().BeTrue("the setter completes");
+        refresh!.Join(5000).Should().BeTrue("the refresh completes");
+        lookup!.Wait(5000).Should().BeTrue("the lookup completes");
     }
 
     // The rewind decision and the attribute append are one write-locked step: a serving read that
