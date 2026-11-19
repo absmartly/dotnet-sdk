@@ -359,6 +359,23 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         PublishEvent(context).PublishedAt.Should().Be(Anchor + Hour + 40);
     }
 
+    // The clamp takes the latest exposure of the batch, wherever it sits in the batch.
+    [Test]
+    public void ClockRollbackClampsToTheLatestExposureOfTheBatch()
+    {
+        var context = CreateContext(DataOf(NewSwitchback(1, "exp_a", 2, Hour), NewSwitchback(2, "exp_b", 2, Hour)));
+        Clock.Now = Anchor + Hour + 10;
+        context.PeekTreatment("exp_a");
+        Clock.Now = Anchor + Hour + 20;
+        context.PeekTreatment("exp_b");
+        Clock.Now = Anchor + Hour + 5;
+        context.GetTreatment("exp_a");
+        context.GetTreatment("exp_b");
+        var published = PublishEvent(context);
+        published.Exposures.Select(e => e.ExposedAt).Should().Equal(Anchor + Hour + 10, Anchor + Hour + 20);
+        published.PublishedAt.Should().Be(Anchor + Hour + 20);
+    }
+
     // A context that never had switchback data publishes the clock reading as publishedAt, even
     // after a rollback, exactly as before switchbacks existed.
     [Test]

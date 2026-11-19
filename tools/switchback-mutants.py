@@ -97,6 +97,8 @@ M = [
  ('allow-list: null entry admits all', S+'Internal/SwitchbackServing.cs', 'if (string.Equals(key, allowed, StringComparison.Ordinal)) return true;', 'if (allowed == null || string.Equals(key, allowed, StringComparison.Ordinal)) return true;'),
  ('publish: clamp without switchbacks', S+'Context.cs', 'if (exposures == null || !_hasSwitchbacks) return publishedAt;', 'if (exposures == null) return publishedAt;'),
  ('publish: clamp past the exposure', S+'Context.cs', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt + 1;'),
+ ('publish: clamp to the first exposure only', S+'Context.cs', 'if (exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;', 'if (exposure == exposures[0] && exposure.ExposedAt > publishedAt) publishedAt = exposure.ExposedAt;'),
+ ('publish: no clamp for multi-exposure batches', S+'Context.cs', 'if (exposures == null || !_hasSwitchbacks) return publishedAt;', 'if (exposures == null || !_hasSwitchbacks || exposures.Length > 1) return publishedAt;'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
 ]
 EQUIVALENT = {
