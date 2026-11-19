@@ -659,38 +659,35 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         try
         {
-            var requests = SplitByServingUnits(exposures, achievements);
+            Unit[] units;
+            _contextLock.EnterReadLock();
+            try
+            {
+                units = _unitOrder.Select(type => new Unit
+                {
+                    Type = type,
+                    Uid = Md5.Hash(_units[type])
+                }).ToArray();
+            }
+            finally { _contextLock.ExitReadLock(); }
+            var requests = SplitByServingUnits(exposures, achievements, units);
             var delivered = new List<PublishEvent>(requests.Count);
             try
             {
+                _publishScope.Value = new PublishScope(inFlight.Task, _publishScope.Value);
                 foreach (var request in requests)
                 {
                     var publishEvent = new PublishEvent
                     {
                         Hashed = true,
                         PublishedAt = PublishedAt(request.Exposures),
-                        Units = request.UnitCount < 0
-                            ? _units
-                                .Select(kv => new Unit
-                                {
-                                    Type = kv.Key,
-                                    Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
-                                })
-                                .ToArray()
-                            : _unitOrder.Take(request.UnitCount)
-                                .Select(type => new Unit
-                                {
-                                    Type = type,
-                                    Uid = Encoding.ASCII.GetString(GetUnitHash(type, _units[type]))
-                                })
-                                .ToArray(),
+                        Units = request.UnitCount < 0 ? units : units.Take(request.UnitCount).ToArray(),
                         Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
                         SwitchbackWireAttributes = _hasSwitchbacks,
                         Exposures = request.Exposures,
                         Goals = request.Goals
                     };
 
-                    _publishScope.Value = new PublishScope(inFlight.Task, _publishScope.Value);
                     var publishTask = _eventHandler.PublishAsync(this, publishEvent) ??
                                       throw new InvalidOperationException("Context publisher returned no task.");
                     await publishTask.ConfigureUnboundContinuation();
@@ -766,26 +763,26 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // the units present when its cluster was read (they were set in that order), so a unit linked
     // later cannot add a disagreeing cluster value. Everything else, and every batch without such an
     // exposure, goes in one request with every unit, exactly as before.
-    private List<PublishRequest> SplitByServingUnits(Exposure[] exposures, GoalAchievement[] goals)
+    private List<PublishRequest> SplitByServingUnits(Exposure[] exposures, GoalAchievement[] goals, Unit[] units)
     {
-        if (exposures == null || !exposures.Any(HasLateLinkedUnit))
+        if (exposures == null || !exposures.Any(e => HasLateLinkedUnit(e, units)))
             return new List<PublishRequest> { new(-1, exposures, goals) };
 
         var requests = new List<PublishRequest>();
-        foreach (var group in exposures.Where(HasLateLinkedUnit).GroupBy(e => e.ServingUnitCount).OrderBy(g => g.Key))
+        foreach (var group in exposures.Where(e => HasLateLinkedUnit(e, units)).GroupBy(e => e.ServingUnitCount).OrderBy(g => g.Key))
             requests.Add(new PublishRequest(group.Key, group.ToArray(), null));
 
-        var rest = exposures.Where(e => !HasLateLinkedUnit(e)).ToArray();
+        var rest = exposures.Where(e => !HasLateLinkedUnit(e, units)).ToArray();
         if (rest.Length > 0 || goals != null) requests.Add(new PublishRequest(-1, rest.Length > 0 ? rest : null, goals));
         return requests;
     }
 
     // Whether a unit of one of the exposure's linked types was set after its cluster was served.
-    private bool HasLateLinkedUnit(Exposure exposure)
+    private static bool HasLateLinkedUnit(Exposure exposure, Unit[] units)
     {
         if (exposure.ServingUnitCount <= 0 || exposure.LinkedUnitTypes == null) return false;
-        for (var i = exposure.ServingUnitCount; i < _unitOrder.Count; i++)
-            if (Array.IndexOf(exposure.LinkedUnitTypes, _unitOrder[i]) >= 0) return true;
+        for (var i = exposure.ServingUnitCount; i < units.Length; i++)
+            if (Array.IndexOf(exposure.LinkedUnitTypes, units[i].Type) >= 0) return true;
         return false;
     }
 
@@ -1391,20 +1388,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     private long ReadClockOnce(ref long now) => now != ClockNotRead ? now : now = _clock.Millis();
 
-    private bool IsClusterRootName(string name)
-    {
-        if (name == null) return false;
-        _contextLock.EnterReadLock();
-        try
-        {
-            return _clusterRootNames.Contains(name.Trim());
-        }
-        finally
-        {
-            _contextLock.ExitReadLock();
-        }
-    }
-
     private static bool IsSwitchback(Experiment experiment) =>
         string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);
 
@@ -1932,12 +1915,17 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // from the latest attribute set at or before exposedAt, still sees the value that served.
         // Every other attribute, and any attribute on a clock that does not go back, keeps the clock
         // reading, as before.
-        var setAt = _clock.Millis();
-        var latestRead = Interlocked.Read(ref _latestServingReadAt);
-        if (latestRead != long.MinValue && setAt < latestRead && IsClusterRootName(name)) setAt = latestRead + 1;
-        var attribute = new Attribute { Name = name, Value = value, SetAt = setAt };
-        _attributes.ConcurrentAdd(attribute);
-        Interlocked.Increment(ref _attrsSeq);
+        _contextLock.EnterWriteLock();
+        try
+        {
+            var setAt = _clock.Millis();
+            var latestRead = Interlocked.Read(ref _latestServingReadAt);
+            if (latestRead != long.MinValue && setAt < latestRead && name != null &&
+                _clusterRootNames.Contains(name.Trim())) setAt = latestRead + 1;
+            _attributes.Add(new Attribute { Name = name, Value = value, SetAt = setAt });
+            Interlocked.Increment(ref _attrsSeq);
+        }
+        finally { _contextLock.ExitWriteLock(); }
     }
 
     public void SetAttributes(Dictionary<string, object> attributes)
@@ -2629,6 +2617,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             contextCustomFields[experiment.Name] = experimentCustomFields;
         }
 
+        // Register roots before taking dataLock: lookups take contextLock then dataLock.
+        if (clusterRoots != null)
+        {
+            _contextLock.EnterWriteLock();
+            try { _clusterRootNames.UnionWith(clusterRoots); }
+            finally { _contextLock.ExitWriteLock(); }
+        }
+
         try
         {
             _dataLock.EnterWriteLock();
@@ -2648,18 +2644,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
 
             if (hasSwitchbacks) _hasSwitchbacks = true;
-            if (clusterRoots != null)
-            {
-                _contextLock.EnterWriteLock();
-                try
-                {
-                    _clusterRootNames.UnionWith(clusterRoots);
-                }
-                finally
-                {
-                    _contextLock.ExitWriteLock();
-                }
-            }
             _index = index;
             _holdoutsById = holdoutsById;
             _contextCustomFields = contextCustomFields;
