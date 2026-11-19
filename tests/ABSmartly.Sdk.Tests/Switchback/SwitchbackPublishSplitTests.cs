@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using ABSmartly.Models;
 using ABSmartly.Services;
 
@@ -231,6 +233,58 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         Published.SelectMany(p => p.Event.Exposures ?? Array.Empty<Exposure>())
             .Select(e => e.Name).Should().Equal("exp_sb", "exp_current");
         Published.Should().HaveCount(2);
+    }
+
+    // Round 5: a split request keeps the publishedAt the unsplit batch had. Exposed at +20, a linked
+    // unit set later, a goal at +18 after a rewind, published at +15: the goal-only request must not
+    // carry publishedAt=+15, which the Collector rejects (achievedAt > publishedAt).
+    [Test]
+    public void SplitRequestsShareTheBatchPublishedAt()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 20;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("user_id", "u1");
+        Clock.Now = Anchor + Hour + 18;
+        context.Track("purchase", null!);
+        Clock.Now = Anchor + Hour + 15;
+        context.Publish();
+        Published.Select(p => p.Event.Units.Length).Should().Equal(1, 2);
+        Published.Select(p => p.Event.PublishedAt).Should().Equal(Anchor + Hour + 20, Anchor + Hour + 20);
+        Published[1].Event.Goals!.Single().AchievedAt.Should().BeLessThanOrEqualTo(Published[1].Event.PublishedAt);
+    }
+
+    // Round 5: names are trimmed as the Collector trims them (Java String.trim(): only characters at
+    // or below U+0020). A name padded with U+00A0 is published as is and replays as a different name,
+    // so it keys no cluster and is not re-dated; one padded with a tab or space keys "city".
+    [TestCase("\u00a0city\u00a0", false)]
+    [TestCase("\u2003city", false)]
+    [TestCase("\tcity ", true)]
+    [TestCase("\u0001city\u0000", true)]
+    public void AttributeNamesAreTrimmedAsJavaTrims(string name, bool matches)
+    {
+        var context = CreateContext(DataOf(Linked()));
+        context.SetAttribute(name, "Faro");
+        Clock.Now = Anchor + Hour + 20;
+        context.PeekTreatment("exp_sb");
+        context.Track("g", null!);
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+        json.Should().Contain(JsonSerializer.Serialize(name), "the name is published untrimmed");
+
+        var served = CreateContext(DataOf(Linked()));
+        served.SetAttribute(name, "Faro");
+        Clock.Now = Anchor + Hour + 20;
+        served.GetTreatment("exp_sb");
+        served.PendingCount.Should().Be(matches ? 1 : 0);
+
+        var rewound = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 20;
+        rewound.PeekTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 10;
+        rewound.SetAttribute(name, "Faro");
+        rewound.Track("g", null!);
+        PublishEvent(rewound).Attributes!.Last().SetAt.Should().Be(Anchor + Hour + (matches ? 21 : 10));
     }
 
     [TestCase(" city ", true)]

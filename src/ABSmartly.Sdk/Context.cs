@@ -675,6 +675,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
             finally { _contextLock.ExitReadLock(); }
             var requests = SplitByServingUnits(exposures, achievements, units);
+            // One instant for the whole batch, as before a split: each request's exposures and goals
+            // keep the bound the unsplit batch gave them.
+            var publishedAt = PublishedAt(exposures);
             var delivered = new List<PublishEvent>(requests.Count);
             try
             {
@@ -684,7 +687,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                     var publishEvent = new PublishEvent
                     {
                         Hashed = true,
-                        PublishedAt = PublishedAt(request.Exposures),
+                        PublishedAt = publishedAt,
                         Units = request.UnitCount < 0 ? units : units.Take(request.UnitCount).ToArray(),
                         // Attributes are read per request: the Collector replays them by setAt, so a
                         // later attribute cannot change an earlier exposure's replay (units can).
@@ -1546,7 +1549,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         foreach (var attribute in _attributes)
         {
             if (attribute.SetAt <= now && attribute.Name != null &&
-                string.Equals(name, attribute.Name.Trim(), StringComparison.Ordinal) &&
+                string.Equals(name, SwitchbackAttributePath.JavaTrim(attribute.Name), StringComparison.Ordinal) &&
                 (selected == null || attribute.SetAt >= selected.SetAt))
                 selected = attribute;
         }
@@ -1927,7 +1930,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var setAt = _clock.Millis();
             var latestRead = Interlocked.Read(ref _latestServingReadAt);
             if (latestRead != long.MinValue && setAt < latestRead && name != null &&
-                _clusterRootNames.Contains(name.Trim())) setAt = latestRead + 1;
+                _clusterRootNames.Contains(SwitchbackAttributePath.JavaTrim(name))) setAt = latestRead + 1;
             if (InsideAttributeAppend != null) Interlocked.Exchange(ref InsideAttributeAppend, null)?.Invoke();
             _attributes.Add(new Attribute { Name = name, Value = value, SetAt = setAt });
             Interlocked.Increment(ref _attrsSeq);

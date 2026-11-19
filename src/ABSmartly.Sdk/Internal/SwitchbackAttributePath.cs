@@ -163,6 +163,16 @@ internal sealed class SwitchbackAttributePath
         return new SwitchbackAttributePath(keys.ToArray(), indices.ToArray());
     }
 
+    // Java String.trim(), as the Collector trims attribute names: only characters at or below
+    // U+0020 are removed from either end (.NET Trim() also removes Unicode white space, e.g. U+00A0).
+    internal static string JavaTrim(string s)
+    {
+        int start = 0, end = s.Length;
+        while (start < end && s[start] <= ' ') start++;
+        while (end > start && s[end - 1] <= ' ') end--;
+        return start == 0 && end == s.Length ? s : s.Substring(start, end - start);
+    }
+
     // Guava Ints.tryParse(String): optional '-', then one or more ASCII digits, within int range;
     // otherwise null. "+1" and non-ASCII digits are not numbers; "-0" is 0.
     internal static int? TryParseInt(string s)
