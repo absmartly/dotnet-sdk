@@ -38,6 +38,7 @@ There are no source or binary API breaks against 1.3.0; this is enforced at buil
 - `System.Text.Json` `JsonElement` attributes now work in audience expressions.
 - `SetUnit` with the UID already set is a no-op; a different UID throws `ArgumentException` with the message `Unit '<type>' UID already set.`, as the Java SDK.
 - `Context.Dispose(bool)` is `public` again, as in 1.3.0.
+- An exposure whose event logger throws is now sent by the publish timer, as the JavaScript and Java SDKs; in 1.3.0 it was queued but only sent by the next explicit publish or close. **Who is affected:** apps whose event logger throws on exposures now publish those exposures on the publish delay instead of waiting for `Publish()`/`Close()`.
 
 ### Fixed
 - The context fetch (`GET /context`) now sends the same SDK headers as the publish (`X-API-Key`, `X-Application`, `X-Environment`, `X-Application-Version`, `X-Agent`), as the JavaScript and Java SDKs.
@@ -55,4 +56,3 @@ There are no source or binary API breaks against 1.3.0; this is enforced at buil
 - `CreateContext`/`CreateContextAsync` return only after the `Ready`/`Error` event has been logged.
 - Custom-field reads work after the context is closed.
 - Publish failures rethrow the original exception when no logger factory is configured.
-- An exposure whose event logger throws is still published by the publish timer, as the JavaScript and Java SDKs; it was queued but only sent by the next explicit publish or close.

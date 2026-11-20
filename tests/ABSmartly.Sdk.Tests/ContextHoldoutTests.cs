@@ -1430,6 +1430,21 @@ public class ContextHoldoutTests
             Exposure(2, "exp_var_winner", NormalVariant), HoldoutExposure(12, "holdout_b", 1));
     }
 
+    // A warmed covered read reuses the coverage resolved when the data was installed: no
+    // per-read resolving, sorting or allocation.
+    [Test]
+    public void CoveredCachedReadsDoNotResolveCoverageAgain()
+    {
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_cached_coverage"), 11)));
+        for (var i = 0; i < 1000; i++) context.GetTreatment("exp_cached_coverage");
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++) context.GetTreatment("exp_cached_coverage");
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0);
+    }
+
     // A context without holdouts allocates no holdout decision state; the first decision does.
     [Test]
     public void HoldoutDecisionStateIsCreatedOnlyOnTheFirstHoldoutDecision()
