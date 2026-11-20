@@ -1451,6 +1451,28 @@ public class ContextHoldoutTests
             Exposure(2, "exp_var_winner", NormalVariant), HoldoutExposure(12, "holdout_b", 1));
     }
 
+    [Test]
+    public void UncoveredCachedReadsAllocateNoHoldoutState()
+    {
+        var context = CreateContext(DataOf(WithVariables(NewExperiment(1, "exp_cached_plain"), "plain_key")));
+        for (var i = 0; i < 1000; i++)
+        {
+            context.GetTreatment("exp_cached_plain");
+            context.PeekTreatment("exp_cached_plain");
+            context.GetVariableValue("plain_key", "default");
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++)
+        {
+            context.GetTreatment("exp_cached_plain");
+            context.PeekTreatment("exp_cached_plain");
+            context.GetVariableValue("plain_key", "default");
+        }
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0);
+    }
+
     // A warmed covered read reuses the coverage resolved when the data was installed: no
     // per-read resolving, sorting or allocation.
     [Test]
