@@ -505,6 +505,48 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.PendingCount.Should().Be(0);
     }
 
+    // Owner decision (php-sdk#13 Q2): changing a cluster attribute mid-period, before the exposure is
+    // published or while it waits for a retry, is not supported. The arm cached at the period's first
+    // read stays for the period, the requeued exposure is sent unchanged, and the change takes effect
+    // in the next period.
+    [Test]
+    public void MidPeriodClusterChangeBeforeARequeueKeepsTheCachedArm()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city");
+        var calls = 0;
+        var sent = new List<PublishEvent>();
+        var publisher = new Mock<IContextPublisher>();
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>((_, e) =>
+            {
+                if (++calls == 1) throw new InvalidOperationException("down");
+                sent.Add(e);
+                return Task.CompletedTask;
+            });
+        Publisher = publisher.Object;
+        var faro = SwitchbackAssigner.Assign("Faro", 1, Seed, 2);
+        var porto = Enumerable.Range(2, 64).Select(i => (Period: (long)i, Arm: SwitchbackAssigner.Assign("Porto", i, Seed, 2)))
+            .First(p => SwitchbackAssigner.Assign("Faro", p.Period, Seed, 2) != p.Arm);
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb").Should().Be(faro);
+        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
+
+        Clock.Now = Anchor + Hour + 2;
+        context.SetAttribute("city", "Porto");
+        context.GetTreatment("exp_sb").Should().Be(faro, "the period keeps the arm cached at its first read");
+        context.PeekTreatment("exp_sb").Should().Be(faro);
+        context.Publish();
+        var exposure = sent.Should().ContainSingle().Which.Exposures.Should().ContainSingle().Subject;
+        exposure.Should().Be(NewExposure(1, "exp_sb", faro, Anchor + Hour + 1, true, true));
+        Replay(sent[0], "city", exposure.ExposedAt).Should().Be("Faro");
+
+        Clock.Now = Anchor + porto.Period * Hour + 1;
+        context.GetTreatment("exp_sb").Should().Be(porto.Arm, "the change takes effect in the next period");
+    }
+
     // The Collector's attribute replay: the latest setAt at or before `at`, the last set on a tie.
     private static object? Replay(PublishEvent published, string name, long at)
     {
