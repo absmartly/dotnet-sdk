@@ -137,7 +137,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         {
             var experiment = NewSwitchback(2, Hour);
             experiment.SwitchbackStartAt = startAt;
-            // The cluster attribute is set at context creation, before every resolution below.
             Clock.Now = 0;
             var context = CreateContext(DataOf(experiment));
             foreach (var now in new[] { 0, Anchor, Anchor + 2 * Hour + 1, startAt, startAt + Hour, maxAnchor + Day })
@@ -298,7 +297,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
 
         context.PendingCount.Should().Be(0);
 
-        // Setting a linked unit later makes the experiment apply.
         context.SetUnit(UnitType, Uid);
         context.GetTreatment("exp_sb").Should().Be(Expected2Arms[2]);
         PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", Expected2Arms[2], Anchor + 2 * Hour, true, true));
@@ -347,7 +345,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         }
     }
 
-    // A custom assignment changed within a period re-resolves the period's slot.
     [Test]
     public void CustomAssignmentChangeWithinAPeriodReresolves()
     {
@@ -493,7 +490,7 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         unit.RandomizationType = "unit";
         var absent = NewSwitchback(2, "exp_absent", 2, Hour);
         absent.RandomizationType = null;
-        // Not "switchback" exactly (the comparison is ordinal): a unit experiment.
+        // The comparison is ordinal.
         var cased = NewSwitchback(3, "exp_cased", 2, Hour);
         cased.RandomizationType = "Switchback";
 
@@ -672,7 +669,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
             var context = CreateContext(new Dictionary<string, string> { [UnitType] = "user-" + u }, DataOf(experiment));
             context.GetTreatment("exp_sb").Should().Be(1);
             context.GetVariableValue("sb.arm", -1).Should().Be(1);
-            // The rule also beats every period's schedule draw.
             for (var i = 0; i < 4; ++i)
             {
                 Clock.Now = Anchor + i * Hour;
@@ -711,7 +707,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
             NewExposure(3, "sb_unaligned_rules", 1, Anchor, false, true, ruleOverride: true));
     }
 
-    // Rules are evaluated only for an eligible cluster.
     [Test]
     public void AssignmentRulesDoNotApplyToAnIneligibleCluster()
     {
@@ -872,7 +867,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         PublishExposures(context).Should().Equal(NewExposure(2, "exp_unit", 1, Anchor + Hour + 3, true, true, fullOn: true));
     }
 
-    // Alone on the key, a strict-mismatched switchback yields the default value and records nothing.
     [Test]
     public void StrictMismatchedSwitchbackAloneOnAVariableKeyReturnsTheDefault()
     {

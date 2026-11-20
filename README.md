@@ -468,10 +468,12 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 | `Error`    | Context receives an error                                   | `Exception` object                                     |
 | `Ready`    | Context turns ready                                         | `ContextData` used to initialize the context           |
 | `Refresh`  | `Refresh()` method succeeds                                 | `ContextData` used to refresh the context              |
-| `Publish`  | `Publish()` or `PublishAsync()` method succeeds             | `PublishEvent` sent to the A/B Smartly event collector |
+| `Publish`  | The publisher completes a request (from `Publish()`, `PublishAsync()`, a timed flush or a close) | `PublishEvent` handed to the `IContextPublisher` |
 | `Exposure` | `GetTreatment()` method succeeds on first exposure          | `Exposure` enqueued for publishing                     |
 | `Goal`     | `Track()` method succeeds                                   | `GoalAchievement` enqueued for publishing              |
 | `Close`    | Context disposal, `Close()` or `FinalizeAsync()` succeeds   | `null`                                                 |
+
+A `Publish` event means the `IContextPublisher` task completed; with the default publisher that is the HTTP call returning, not an acknowledgement that the Collector accepted every event. In a context with switchback experiments one flush or close can send more than one request (see [Switchback Experiments](#switchback-experiments)): each completed request logs its own `Publish` event, in order, and when a later request fails the earlier ones have already been logged before its `Error`.
 
 ## Platform-Specific Examples
 

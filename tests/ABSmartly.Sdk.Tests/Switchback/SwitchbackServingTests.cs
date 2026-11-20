@@ -136,7 +136,6 @@ public class SwitchbackServingTests
         var none = Resolve(sources, units, "{}");
         (none.Status, none.UnitType).Should().Be((SwitchbackServing.ServingStatus.Ineligible, "a"));
 
-        // A whole number agrees with its decimal text.
         Resolve(sources, units, "{\"va\":17,\"vb\":\"17\"}").ClusterKey.Should().Be("17");
     }
 

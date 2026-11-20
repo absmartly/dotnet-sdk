@@ -164,7 +164,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.GetCustomFieldValue("exp_sb", "missing").Should().BeNull();
     }
 
-    // Each experiment keeps entries for at most its two most recent periods.
     [Test]
     public void PerPeriodCacheIsBounded()
     {
@@ -197,7 +196,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         exposures.Should().OnlyContain(e => e.Unit == UnitType);
     }
 
-    // The publish payload carries no switchback-specific exposure or publish fields.
     [Test]
     public void PublishPayloadHasNoNewFields()
     {
@@ -261,7 +259,7 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
     [Test]
     public void VariableExposureIsStampedWithTheResolutionInstant()
     {
-        // Two arms, all traffic in arm 1; holdouts never fire through a switchback.
+        // Holdouts never fire through a switchback.
         var covered = NewSwitchback(2, Hour);
         covered.HoldoutIds = new[] { 11 };
         var context = CreateContext(new ContextData(new[] { covered }, new[] { Holdout(new[] { 0.0, 1.0 }) }));
@@ -353,13 +351,11 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         published.Goals.Single().AchievedAt.Should().Be(Anchor + Hour + 15);
         published.PublishedAt.Should().Be(Anchor + Hour + 20);
 
-        // Without a rollback publishedAt is the clock reading, as before.
         Clock.Now = Anchor + Hour + 40;
         context.Track("later", null!);
         PublishEvent(context).PublishedAt.Should().Be(Anchor + Hour + 40);
     }
 
-    // The clamp takes the latest exposure of the batch, wherever it sits in the batch.
     [Test]
     public void ClockRollbackClampsToTheLatestExposureOfTheBatch()
     {
@@ -401,11 +397,9 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         exposure.ExposedAt.Should().Be(Anchor + Hour + 20);
         published.PublishedAt.Should().BeGreaterThanOrEqualTo(exposure.ExposedAt);
         Replay(published, "city", exposure.ExposedAt).Should().Be("Faro");
-        // The later write is still published, dated just after the read it follows, not before it.
         published.Attributes.Last().SetAt.Should().Be(Anchor + Hour + 21);
     }
 
-    // Without a rewind, attributes keep the clock reading, as before.
     [Test]
     public void AttributeSetAtIsTheClockReadingWithoutARewind()
     {
@@ -470,7 +464,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         Published[0].Event.Goals.Should().ContainSingle();
     }
 
-    // A failure on the second request restores only what was not delivered, and a retry sends it.
     [Test]
     public void SplitPublishRetriesOnlyTheUndeliveredRequest()
     {
@@ -565,6 +558,7 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         var context = CreateContext(DataOf(AsUnit(NewSwitchback(2, Hour))));
         Clock.Now = Anchor + 100;
         context.GetTreatment("exp_sb");
+        context.Track("purchase", null!);
         Clock.Now = Anchor + 50;
         PublishEvent(context).PublishedAt.Should().Be(Anchor + 50);
     }
@@ -637,7 +631,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         for (var i = 0; i < 3; ++i) context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
         context.PendingCount.Should().Be(4);
 
-        // Retained {0, 2}: period 2 is still deduplicated, period 1 was evicted.
         Clock.Now = Anchor + 2 * Hour;
         context.GetTreatment("exp_sb");
         context.PendingCount.Should().Be(4);
@@ -719,7 +712,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.PendingCount.Should().Be(3);
     }
 
-    // The pre-anchor bare-name slot shares the lifecycle of the period slots.
     [Test]
     public void PreAnchorSlotIsDroppedWhenTheGridChanges()
     {
@@ -771,7 +763,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
         context.PendingCount.Should().Be(4);
 
-        // An unchanged identity keeps the epoch.
         RefreshTo(context, NewSwitchback(2, Hour));
         context.GetTreatment("exp_sb");
         context.PendingCount.Should().Be(4);
@@ -832,7 +823,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.PendingCount.Should().Be(pending);
     }
 
-    // An iteration bump starts a new epoch.
     [Test]
     public void IterationChangeReexposesInTheSamePeriod()
     {
@@ -994,7 +984,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         PublishExposures(context).Should().Equal(RuleExposure("exp_sb", 1, Anchor + Hour + 10));
     }
 
-    // A rule-won switchback re-resolved in the same period keeps its variant and is exposed once.
     [Test]
     public void InPeriodRuleRefreshKeepsTheVariantAndExposesOnce()
     {
@@ -1056,7 +1045,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         PublishExposures(context).Should().Equal(
             NewExposure(1, "exp_missing_map", 1, Anchor + 5, false, true, overridden: true, unit: "user_id"),
             NewExposure(2, "exp_unreadable_map", 1, Anchor + 5, false, true, overridden: true, unit: "user_id"),
-            // A readable map without a linked unit: the first linked type.
             NewExposure(3, "exp_no_linked_unit", 1, Anchor + 5, false, true, overridden: true, unit: "device_id"));
     }
 
@@ -1098,7 +1086,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         SwitchbackAssigner.Assign("Lisboa", 1, Seed, 2).Should().Be(1);
         SwitchbackAssigner.Assign("Faro", 1, Seed, 2).Should().Be(0);
         var experiment = NewSwitchback(2, Hour);
-        // Not matched until country is set, so setting it makes the cached slot stale.
         experiment.Audience = "{\"filter\":[{\"eq\":[{\"var\":\"country\"},{\"value\":\"PT\"}]}]}";
         experiment.SwitchbackClusters = Clusters(UnitType, "city");
         var context = CreateContext(DataOf(experiment));

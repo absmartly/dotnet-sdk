@@ -716,9 +716,6 @@ public class ContextTests
         VerifyPublishData(_eventHandler, context, expectedEvent);
     }
 
-    // As java-sdk getVariableValueDoesNotQueuesExposureWithAudienceMismatchFalseAndControlVariant...:
-    // a strict audience mismatch is not assigned, so the key gives the default and nothing is
-    // exposed (the control value used to leak, with an exposure).
     [Test]
     public void TestGetVariableValueDoesNotQueueExposureOnAudienceMismatchInStrictMode()
     {
@@ -728,7 +725,6 @@ public class ContextTests
         context.PendingCount.Should().Be(0);
     }
 
-    // A variable read before the experiment's unit is set gives the default and exposes nothing.
     [Test]
     public void TestVariableBeforeTheUnitIsSetReturnsTheDefault()
     {
@@ -745,8 +741,6 @@ public class ContextTests
         context.PendingCount.Should().Be(0);
     }
 
-    // Customer regression: on a key shared by two experiments, both strict-mismatched, the default is
-    // returned and neither experiment's control value or exposure leaks.
     [Test]
     public void TestStrictMismatchOnASharedVariableKeyReturnsTheDefault()
     {

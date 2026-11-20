@@ -134,7 +134,6 @@ public class SwitchbackAttributePathTests
             new Dictionary<string, object> { ["city"] = "Faro" }
         })).Should().Be("\"Faro\"");
 
-        // A root scalar is the value itself; a deeper path into a scalar finds nothing.
         var root = SwitchbackAttributePath.ParseSupported("city")!;
         root.ResolveAttribute("Porto").Should().Be("Porto");
         root.ResolveAttribute(7).Should().Be(7);
@@ -199,7 +198,6 @@ public class SwitchbackAttributePathTests
 
         path.ResolveAttribute(new Dictionary<string, object> { ["city"] = typeof(string) }).Should().BeNull();
 
-        // A value reached twice through siblings is not a cycle.
         var shared = new Dictionary<string, object> { ["a"] = "b" };
         Text(path.ResolveAttribute(new Dictionary<string, object> { ["city"] = "Porto", ["x"] = shared, ["y"] = shared }))
             .Should().Be("\"Porto\"");

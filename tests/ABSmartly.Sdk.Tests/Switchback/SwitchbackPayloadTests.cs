@@ -73,7 +73,6 @@ public class SwitchbackPayloadTests
         experiment.SwitchbackClusters!.Select(c => c.Key).Should().Equal("zeta_id", "alpha_id", "mid_id", "beta_id");
         experiment.SwitchbackClusters!.Select(c => c.Value).Should().Equal("z", "a2", "m", "b");
 
-        // And round-trips in that order.
         var json = JsonSerializer.Serialize(experiment, JsonOptionsProvider.Default.SerializerOptions);
         json.Should().Contain("\"switchbackClusters\":{\"zeta_id\":\"z\",\"alpha_id\":\"a2\",\"mid_id\":\"m\",\"beta_id\":\"b\"}");
         DeserializeExperiment(",\"switchbackClusters\":" +
@@ -109,7 +108,6 @@ public class SwitchbackPayloadTests
         mixed.SwitchbackStartAt.Should().Be(3_600_000L);
         mixed.SwitchbackPeriodMs.Should().Be(-1);
 
-        // 64-bit bounds are exact; one past them is not a long.
         DeserializeExperiment(",\"switchbackStartAt\":9223372036854775807").SwitchbackStartAt.Should().Be(long.MaxValue);
         DeserializeExperiment(",\"switchbackStartAt\":-9223372036854775808").SwitchbackStartAt.Should().Be(long.MinValue);
         DeserializeExperiment(",\"switchbackStartAt\":9223372036854775808").SwitchbackStartAt.Should().BeNull();

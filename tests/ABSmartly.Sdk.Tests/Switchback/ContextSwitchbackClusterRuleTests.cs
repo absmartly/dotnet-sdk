@@ -218,7 +218,6 @@ public class ContextSwitchbackClusterRuleTests
         }
         else if (broken == "unknown-unit")
         {
-            // A readable map whose only linked type (device_id) is absent from the context.
             Link("device_id", "session_store");
             Sbc(Attrs("session_store", "s-1"), Unit(Session, "x1"), Unit(User, "u1")).Should().BeNull();
             return;
@@ -330,7 +329,6 @@ public class ContextSwitchbackClusterRuleTests
     [Test]
     public void NoMatchingUnitIsNotApplicable()
     {
-        // A value at the path, but no unit of a linked type: not applicable to this context.
         Sbc(Attrs("session_store", "s-1"), Unit("device_id", "d1")).Should().BeNull();
         Sbc(Attrs("session_store", "s-1")).Should().BeNull();
     }
@@ -357,7 +355,6 @@ public class ContextSwitchbackClusterRuleTests
 
         assignment.Eligible.Should().BeTrue();
         assignment.Variant.Should().Be(Scheduled("17"));
-        // Equal to the string "17" from another unit type, so the two agree.
         Sbc(Attrs("session_store", 17, "profile", Store("17")), Unit(Session, "x1"), Unit(User, "u1"))!.Eligible
             .Should().BeTrue();
     }
@@ -531,7 +528,6 @@ public class ContextSwitchbackClusterRuleTests
                              anchor + 3 * periodMs + 5, anchor + 11 * periodMs
                          })
                 {
-                    // The attributes are set at Now's predecessor, before every resolution below.
                     _clock.Now = anchor - Hour;
                     var context = GridContext(cluster, uid, key);
                     _clock.Now = now;

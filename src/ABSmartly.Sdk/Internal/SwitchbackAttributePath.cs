@@ -73,20 +73,16 @@ internal sealed class SwitchbackAttributePath
             return null;
         }
 
-        for (var i = 1; i < _keys.Length; ++i)
-        {
-            if (!Step(ref element, _keys[i], _indices[i])) return null;
-        }
-
-        return element.ValueKind == JsonValueKind.Null ? null : element;
+        return Walk(element, 1);
     }
 
     // Resolves the whole path, root segment included, in a decoded JSON object; for the shared
     // attribute-path cases, which are written as one JSON object of attributes.
-    internal object Resolve(JsonElement attributes)
+    internal object Resolve(JsonElement attributes) => Walk(attributes, 0);
+
+    private object Walk(JsonElement element, int from)
     {
-        var element = attributes;
-        for (var i = 0; i < _keys.Length; ++i)
+        for (var i = from; i < _keys.Length; ++i)
         {
             if (!Step(ref element, _keys[i], _indices[i])) return null;
         }
@@ -204,9 +200,8 @@ internal sealed class SwitchbackAttributePath
     internal static readonly Lazy<JsonSerializerOptions> WireOptions = new(() =>
     {
         var options = new JsonSerializerOptions(JsonOptionsProvider.Default.SerializerOptions);
-        options.Converters.Add(new FloatingPointConverter<double>(v => (double)v));
-        options.Converters.Add(new FloatingPointConverter<float>(v => (float)v,
-            v => ((float)v).ToString("R", CultureInfo.InvariantCulture)));
+        options.Converters.Add(new FloatingPointConverter<double>());
+        options.Converters.Add(new FloatingPointConverter<float>());
         // System.Half, by name: the netstandard2.0 build (used on net6.0 and .NET Framework) does
         // not see the type, and must still treat it as a float.
         options.Converters.Add(new HalfAsFloatConverterFactory());
@@ -271,39 +266,27 @@ internal sealed class SwitchbackAttributePath
         public override bool CanConvert(Type typeToConvert) => typeToConvert.FullName == "System.Half";
 
         public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) =>
-            (JsonConverter)Activator.CreateInstance(typeof(FloatingPointConverter<>).MakeGenericType(typeToConvert),
-                (Func<object, double>)(v => double.Parse(Text(v), NumberStyles.Float, CultureInfo.InvariantCulture)),
-                (Func<object, string>)Text);
-
-        private static string Text(object v) => ((IFormattable)v).ToString("R", CultureInfo.InvariantCulture);
+            (JsonConverter)Activator.CreateInstance(typeof(FloatingPointConverter<>).MakeGenericType(typeToConvert));
     }
 
-    private sealed class FloatingPointConverter<T> : JsonConverter<T>
+    private sealed class FloatingPointConverter<T> : JsonConverter<T> where T : IFormattable
     {
-        private readonly Func<object, double> _toDouble;
-        // The shortest round-trip text of the value in its own type (a float as "0.1", not the
-        // double "0.10000000149011612"), as the publish serializer writes it.
-        private readonly Func<object, string> _toText;
-
-        public FloatingPointConverter(Func<object, double> toDouble, Func<object, string> toText = null)
-        {
-            _toDouble = toDouble;
-            _toText = toText ?? (v => toDouble(v).ToString("R", CultureInfo.InvariantCulture));
-        }
-
         public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             throw new NotSupportedException();
 
         public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
         {
-            var d = _toDouble(value!);
-            if (double.IsNaN(d) || double.IsInfinity(d))
+            // The shortest round-trip text of the value in its own type (a float as "0.1", not the
+            // double "0.10000000149011612"), as the publish serializer writes it.
+            var text = value.ToString("R", CultureInfo.InvariantCulture);
+            var numberFormat = CultureInfo.InvariantCulture.NumberFormat;
+            if (text == numberFormat.NaNSymbol || text == numberFormat.PositiveInfinitySymbol ||
+                text == numberFormat.NegativeInfinitySymbol)
             {
                 writer.WriteNullValue();
                 return;
             }
 
-            var text = _toText(value!);
             if (text.IndexOfAny(FloatMarkers) < 0) text += ".0";
             writer.WriteRawValue(text, skipInputValidation: true);
         }

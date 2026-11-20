@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Globalization;
 using ABSmartly.Internal.Hashing;
 
@@ -34,9 +35,8 @@ internal static class SwitchbackAssigner
         var keyHash = (int)MurMur3.HashToUInt32(keyBytes, 0, keyLength);
 
         var buffer = new byte[12];
-        PutUInt32(buffer, 0, unchecked((int)seed));
-        PutUInt32(buffer, 4, unchecked((int)(seed >> 32)));
-        PutUInt32(buffer, 8, keyHash);
+        BinaryPrimitives.WriteInt64LittleEndian(buffer, seed);
+        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(8), keyHash);
         return (int)MurMur3.HashToUInt32(buffer);
     }
 
@@ -48,10 +48,10 @@ internal static class SwitchbackAssigner
         for (var i = 0; i < armCount; ++i) permutation[i] = i;
 
         var buffer = new byte[8];
-        PutUInt32(buffer, 0, baseHash);
+        BinaryPrimitives.WriteInt32LittleEndian(buffer, baseHash);
         for (var i = armCount - 1; i > 0; --i)
         {
-            PutUInt32(buffer, 4, i);
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4), i);
             var stepHash = MurMur3.HashToUInt32(buffer);
             var probability = stepHash * Normalizer;
             // probability == 1.0 would map to i + 1
@@ -104,14 +104,6 @@ internal static class SwitchbackAssigner
         }
 
         return offset;
-    }
-
-    private static void PutUInt32(byte[] buffer, int offset, int x)
-    {
-        buffer[offset] = (byte)(x & 0xff);
-        buffer[offset + 1] = (byte)((x >> 8) & 0xff);
-        buffer[offset + 2] = (byte)((x >> 16) & 0xff);
-        buffer[offset + 3] = (byte)((x >> 24) & 0xff);
     }
 
     private static void RequireValidArmCount(int armCount)

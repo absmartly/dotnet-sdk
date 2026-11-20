@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using ABSmartly.Models;
@@ -5,9 +6,9 @@ using ABSmartly.Services;
 
 namespace ABSmartly.Sdk.Tests.Switchback;
 
-// Review regressions (round 3): split publish requests reach the event logger in order, in normal
-// and failing flushes and on close; serving unit counts are kept per slot; only cluster attributes
-// are re-dated after a clock rewind; and only a late *linked* unit splits a request.
+// Split publish requests and the publish-path replay rules: the logger sees every request, a
+// failure retries only the undelivered ones, publishedAt bounds every request, and only cluster
+// attributes are re-dated after a clock rewind.
 [TestFixture]
 public class SwitchbackPublishSplitTests : SwitchbackTestBase
 {
@@ -75,7 +76,6 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     [Test]
     public void TwoServingUnitCountsGiveOrderedRequests()
     {
-        // exp_a is served with one unit and exp_b with two; a third linked unit is set after both.
         var a = NewSwitchback(1, "exp_a", 2, Hour); a.SwitchbackClusters = Clusters(UnitType, "city", "device_id", "device_city");
         var b = NewSwitchback(2, "exp_b", 2, Hour); b.SwitchbackClusters = Clusters(UnitType, "city", "device_id", "device_city");
         var context = CreateContext(DataOf(a, b));
@@ -235,9 +235,8 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         Published.Should().HaveCount(2);
     }
 
-    // Round 5: a split request keeps the publishedAt the unsplit batch had. Exposed at +20, a linked
-    // unit set later, a goal at +18 after a rewind, published at +15: the goal-only request must not
-    // carry publishedAt=+15, which the Collector rejects (achievedAt > publishedAt).
+    // A split request keeps the publishedAt the unsplit batch had; the Collector rejects a goal
+    // later than its request's publishedAt.
     [Test]
     public void SplitRequestsShareTheBatchPublishedAt()
     {
@@ -255,8 +254,75 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         Published[1].Event.Goals!.Single().AchievedAt.Should().BeLessThanOrEqualTo(Published[1].Event.PublishedAt);
     }
 
-    // The batch instant covers every request, not only the last: exp_a (served at +10 before a linked
-    // unit, so split off) and exp_b (served at +20, after it) published at +15 both get +20.
+    // A partially delivered split retries its goal-only request without the exposure that set the
+    // batch instant: the retry is still dated no earlier than the goal, or the Collector rejects it.
+    [Test]
+    public void GoalRetriedAfterAPartialSplitKeepsAValidPublishedAt()
+    {
+        var calls = 0;
+        var sent = new List<PublishEvent>();
+        var publisher = new Mock<IContextPublisher>();
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>((_, e) =>
+            {
+                if (++calls == 2) throw new InvalidOperationException("down");
+                sent.Add(e);
+                return Task.CompletedTask;
+            });
+        Publisher = publisher.Object;
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 20;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("user_id", "u1");
+        Clock.Now = Anchor + Hour + 18;
+        context.Track("purchase", null!);
+        Clock.Now = Anchor + Hour + 15;
+        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
+        context.Publish();
+
+        sent.Should().HaveCount(2);
+        sent[1].Exposures.Should().BeNull("the delivered exposure is not resent");
+        var goal = sent[1].Goals.Should().ContainSingle().Subject;
+        goal.AchievedAt.Should().Be(Anchor + Hour + 18);
+        sent[1].PublishedAt.Should().Be(Anchor + Hour + 18);
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(sent[1]));
+        json.Should().Contain($"\"publishedAt\":{Anchor + Hour + 18}");
+    }
+
+    // A failure before the first request (here the clock) puts the whole batch back, and a close
+    // that hit it settles and can be retried.
+    [Test]
+    [Timeout(20000)]
+    public async Task FailureBeforeTheFirstRequestKeepsTheBatchAndSettlesClose()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.Track("purchase", null!);
+        Clock.NextReadThrows = new InvalidOperationException("clock");
+        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
+        context.PendingCount.Should().Be(2);
+        Published.Should().BeEmpty();
+
+        context.Track("refund", null!);
+        Clock.NextReadThrows = new InvalidOperationException("clock");
+        await FluentActions.Awaiting(() => context.FinalizeAsync()).Should().ThrowAsync<InvalidOperationException>();
+        context.IsClosing().Should().BeFalse();
+        context.IsClosed().Should().BeFalse();
+        context.PendingCount.Should().Be(3);
+
+        var retry = context.FinalizeAsync();
+        (await Task.WhenAny(retry, Task.Delay(5000))).Should().BeSameAs(retry, "the retried close completes");
+        await retry;
+        context.IsClosed().Should().BeTrue();
+        Published.Should().ContainSingle();
+        Published[0].Event.Exposures.Should().ContainSingle();
+        Published[0].Event.Goals!.Select(g => g.Name).Should().Equal("purchase", "refund");
+    }
+
+    // The batch instant covers every request, not only the last.
     [Test]
     public void SplitRequestsUseTheLatestExposureOfTheWholeBatch()
     {
@@ -277,7 +343,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
             request.Event.Exposures!.Should().OnlyContain(e => e.ExposedAt <= request.Event.PublishedAt);
     }
 
-    // Round 5: names are trimmed as the Collector trims them (Java String.trim(): only characters at
+    // Names are trimmed as the Collector trims them (Java String.trim(): only characters at
     // or below U+0020). A name padded with U+00A0 is published as is and replays as a different name,
     // so it keys no cluster and is not re-dated; one padded with a tab or space keys "city".
     [TestCase("\u00a0city\u00a0", false)]
@@ -359,8 +425,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         PublishEvent(context).Attributes.Last().SetAt.Should().Be(Anchor + Hour + 21);
     }
 
-    // A unit set from inside a publisher callback (between split requests) never reaches a later
-    // request of the same flush: every request uses the units snapshotted when the flush started.
+    // Every request of a flush uses the units snapshotted when it started.
     [Test]
     public void UnitSetDuringASplitFlushDoesNotReachLaterRequests()
     {
@@ -391,35 +456,33 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     }
 
     // Refresh registers cluster roots outside the data lock. A lookup takes the context lock and
-    // then the data lock, so registering under the data lock would deadlock with it. This forces
-    // the interleaving: while a setter holds the context lock, a refresh starts (and would take the
-    // data lock first) and a lookup queues behind the setter; everything must still complete.
+    // then the data lock, so a refresh that took the data lock before the context lock would
+    // deadlock with it. While a setter holds the context lock, a refresh is left waiting for it; the
+    // data lock a lookup needs next must still be free.
     [Test]
     [Timeout(20000)]
-    public void RefreshDuringALookupDoesNotDeadlock()
+    public void RefreshWaitingForTheContextLockHoldsNoDataLock()
     {
         var context = CreateContext(DataOf(Linked()));
         DataProvider.Setup(x => x.GetContextDataAsync()).ReturnsAsync(() => DataOf(Linked()));
-        Clock.Now = Anchor + Hour + 1;
-        context.SetAttribute("city", "Faro");
+        var contextLock = (ReaderWriterLockSlim)typeof(Context)
+            .GetField("_contextLock", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(context)!;
         Thread? refresh = null;
-        Task? lookup = null;
+        var dataLockFree = false;
         context.InsideAttributeAppend = () =>
         {
             refresh = new Thread(() => context.Refresh()) { IsBackground = true };
             refresh.Start();
-            Thread.Sleep(300);
-            lookup = Task.Run(() => context.PeekTreatment("exp_sb"));
-            Thread.Sleep(100);
+            SpinWait.SpinUntil(() => contextLock.WaitingWriteCount > 0, 5000).Should().BeTrue("the refresh waits for the context lock");
+            dataLockFree = Task.Run(() => context.GetContextData()).Wait(1000);
         };
-        var setter = Task.Run(() => context.SetAttribute("city", "Faro"));
-        setter.Wait(5000).Should().BeTrue("the setter completes");
+        context.SetAttribute("city", "Faro");
         refresh!.Join(5000).Should().BeTrue("the refresh completes");
-        lookup!.Wait(5000).Should().BeTrue("the lookup completes");
+        dataLockFree.Should().BeTrue("a refresh waiting for the context lock must not hold the data lock");
     }
 
-    // The rewind decision and the attribute append are one write-locked step: a serving read that
-    // tries to run between them waits, so the appended value is never dated before a read it missed.
+    // The rewind decision and the attribute append are one write-locked step, so the appended value
+    // is never dated before a read it missed.
     [Test]
     [Timeout(10000)]
     public void ServingReadCannotSlipBetweenTheRewindDecisionAndTheAppend()
@@ -439,7 +502,6 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
                 context.PeekTreatment("exp_sb");
             });
             lookupStarted.Wait();
-            // The lookup needs the context lock this setter holds: it cannot complete in between.
             lookup.Wait(300).Should().BeFalse("a serving read must not run inside the append");
         };
         context.SetAttribute("city", "Porto");

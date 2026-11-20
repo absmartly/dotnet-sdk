@@ -12,6 +12,7 @@ internal sealed class MutableClock : Clock
 {
     public long Now;
     public long? NextRead;
+    public Exception? NextReadThrows;
 
     public MutableClock(long now)
     {
@@ -20,6 +21,12 @@ internal sealed class MutableClock : Clock
 
     public override long Millis()
     {
+        if (NextReadThrows is { } error)
+        {
+            NextReadThrows = null;
+            throw error;
+        }
+
         if (NextRead is { } next)
         {
             NextRead = null;
@@ -61,7 +68,6 @@ public abstract class SwitchbackTestBase
     protected static readonly int[] UidHash3Arms = { 1, 2, 0, 2, 1, 0, 2, 0, 1, 1, 2, 0 };
     protected static readonly int[] Uid3Arms = { 2, 0, 1, 0, 1, 2, 1, 2, 0, 0, 1, 2 };
 
-    // An audience the default context never matches (no "tier" attribute).
     protected const string StrictGoldAudience = "{\"filter\":[{\"eq\":[{\"var\":\"tier\"},{\"value\":\"gold\"}]}]}";
     protected const string AssignVariant1 = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],\"variant\":1}]}";
     protected const string AssignVariant2 = "{\"rules\":[{\"type\":\"assign\",\"environments\":[],\"variant\":2}]}";
