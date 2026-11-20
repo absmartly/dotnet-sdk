@@ -1858,7 +1858,7 @@ public class ContextHoldoutTests
             {
                 NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo), bumped
             }, CoveredBy(NewExperiment(1, "exp_mid_refresh"), 11, 12)));
-            Task.Run(() => context.RefreshAsync()).Wait();
+            Task.Run(() => context.RefreshAsync()).Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
         };
 
         context.GetTreatment("exp_mid_refresh").Should().Be(0); // UidNotHeldOut's normal variant
