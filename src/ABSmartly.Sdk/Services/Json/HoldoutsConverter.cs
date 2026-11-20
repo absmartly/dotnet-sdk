@@ -9,6 +9,8 @@ namespace ABSmartly.Services.Json;
 // Reads ContextData.Holdouts. A value that is not an array is read as null (no holdouts), and an
 // entry that is not an object, or does not decode as one (for example a string id), is skipped,
 // so a malformed holdout only loses that holdout instead of failing the whole context.
+// Only the holdout fields (JS HoldoutData) are read: experiment-only keys such as variants or
+// trafficSplit are ignored like unknown keys, whatever their type.
 internal sealed class HoldoutsConverter : JsonConverter<Experiment[]>
 {
     public override Experiment[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -31,7 +33,7 @@ internal sealed class HoldoutsConverter : JsonConverter<Experiment[]>
             var element = JsonElement.ParseValue(ref reader);
             try
             {
-                holdouts.Add(element.Deserialize<Experiment>(options));
+                holdouts.Add(element.Deserialize<HoldoutData>(options).ToExperiment());
             }
             catch (JsonException)
             {
@@ -44,5 +46,30 @@ internal sealed class HoldoutsConverter : JsonConverter<Experiment[]>
     public override void Write(Utf8JsonWriter writer, Experiment[] value, JsonSerializerOptions options)
     {
         JsonSerializer.Serialize(writer, value, options);
+    }
+
+    private sealed class HoldoutData
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public string UnitType { get; set; }
+        public int Iteration { get; set; }
+        public int SeedHi { get; set; }
+        public int SeedLo { get; set; }
+        public double[] Split { get; set; }
+        [JsonConverter(typeof(LenientStringConverter))]
+        public string HoldoutType { get; set; }
+
+        public Experiment ToExperiment() => new()
+        {
+            Id = Id,
+            Name = Name,
+            UnitType = UnitType,
+            Iteration = Iteration,
+            SeedHi = SeedHi,
+            SeedLo = SeedLo,
+            Split = Split,
+            HoldoutType = HoldoutType
+        };
     }
 }
