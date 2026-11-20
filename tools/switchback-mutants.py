@@ -135,6 +135,7 @@ M = [
  ('recovery: mixed batch ignores goals', S+'Context.cs', 'if (goals != null)', 'if (goals != null && exposures == null)'),
  ('recovery: only first pending exposure group restored', S+'Context.cs', 'pending.SelectMany(r => r.Exposures', 'pending.Take(1).SelectMany(r => r.Exposures'),
  ('wire: negative infinity not null', S+'Internal/SwitchbackAttributePath.cs', 'text == numberFormat.NaNSymbol || text == numberFormat.PositiveInfinitySymbol ||\n                text == numberFormat.NegativeInfinitySymbol', 'text == numberFormat.NaNSymbol || text == numberFormat.PositiveInfinitySymbol'),
+ ('cache: cluster paths re-parsed per lookup', S+'Context.cs', '        if (experiment == null || !IsSwitchback(experiment.Data) || experiment.SwitchbackSources == null ||', '        if (experiment != null && IsSwitchback(experiment.Data)) experiment.SwitchbackSources = SwitchbackServing.Sources(experiment.Data.SwitchbackClusters);\n        if (experiment == null || !IsSwitchback(experiment.Data) || experiment.SwitchbackSources == null ||'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',

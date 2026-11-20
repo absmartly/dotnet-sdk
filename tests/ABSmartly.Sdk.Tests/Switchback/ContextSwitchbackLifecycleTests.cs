@@ -164,6 +164,22 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.GetCustomFieldValue("exp_sb", "missing").Should().BeNull();
     }
 
+    // Cluster paths are parsed once, when the data is installed: a cached lookup does not re-parse
+    // them (re-parsing allocates ~536 bytes a lookup for this path; a cached peek ~40).
+    [Test]
+    public void CachedReadsDoNotReparseClusterPaths()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "location/stores/0/city");
+        var context = CreateContext(DataOf(experiment));
+        context.SetAttribute("location", new { stores = new[] { new { city = "Faro" } } });
+        Clock.Now = Anchor + 5;
+        for (var i = 0; i < 10000; ++i) context.PeekTreatment("exp_sb");
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 10000; ++i) context.PeekTreatment("exp_sb");
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().BeLessThan(2_000_000);
+    }
+
     [Test]
     public void PerPeriodCacheIsBounded()
     {
