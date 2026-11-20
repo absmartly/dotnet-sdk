@@ -1331,7 +1331,8 @@ public class ContextHoldoutTests
     }
 
     // On the variable path, a logger throwing on a losing candidate's holdout exposure still
-    // propagates (as Java) once the key is resolved, and the exposure stays queued.
+    // propagates (as Java) once the key is resolved; that exposure stays queued, and so does the
+    // winner's own.
     [Test]
     public void ThrowingLoggerOnAVariableCandidatesHoldoutPropagates()
     {
@@ -1346,7 +1347,10 @@ public class ContextHoldoutTests
         var act = () => context.GetVariableValue("throw_key", "default");
 
         act.Should().Throw<InvalidOperationException>().WithMessage("boom");
-        context.PendingCount.Should().Be(1);
+        context.PendingCount.Should().Be(2);
+        _eventLogger.Reset();
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0),
+            Exposure(2, "exp_var_throw_assigned", NormalVariant));
     }
 
     // Two losing candidates with distinct holdouts: the first holdout's logger throws, and the
@@ -1371,6 +1375,50 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(2);
         _eventLogger.Reset();
         AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 0));
+    }
+
+    // A held-out first candidate's holdout logger throws, and a later candidate wins: the winner's
+    // own exposure and its holdout's are still queued, in the usual order, before the first
+    // failure propagates; a second read exposes nothing again.
+    [Test]
+    public void ThrowingLoggerOnALosingCandidateStillExposesTheWinnerAndItsHoldouts()
+    {
+        ThrowOnExposure(e => e.Id == 11);
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"winner_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"winner_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+
+        var act = () => context.GetVariableValue("winner_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.PendingCount.Should().Be(3);
+        _eventLogger.Reset();
+        context.GetVariableValue("winner_key", "default").Should().Be("b");
+        context.PendingCount.Should().Be(3);
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0),
+            Exposure(2, "exp_var_winner", NormalVariant), HoldoutExposure(12, "holdout_b", 1));
+    }
+
+    // A context without holdouts allocates no holdout decision state; the first decision does.
+    [Test]
+    public void HoldoutDecisionStateIsCreatedOnlyOnTheFirstHoldoutDecision()
+    {
+        var field = typeof(Context).GetField("_holdoutAssignments", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var plain = CreateContext(DataOf(NewExperiment(1, "exp_no_holdouts")));
+        plain.GetTreatment("exp_no_holdouts");
+        field.GetValue(plain).Should().BeNull();
+
+        var covered = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_lazy_holdouts"), 11)));
+        field.GetValue(covered).Should().BeNull();
+        covered.GetTreatment("exp_lazy_holdouts").Should().Be(0);
+        field.GetValue(covered).Should().NotBeNull();
     }
 
     // When several candidates' holdout loggers throw, the first failure is the one rethrown.

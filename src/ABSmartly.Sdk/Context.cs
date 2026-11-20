@@ -109,8 +109,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // The installed holdouts by id (entries with a split only); null when the payload has none.
     private Dictionary<int, Experiment> _holdoutsById;
     // A holdout's own assignment per (holdout id, covered experiment's unit type), kept across
-    // refreshes while the holdout's iteration is unchanged. Guarded by the context write lock.
-    private readonly Dictionary<(int, string), Assignment> _holdoutAssignments = new();
+    // refreshes while the holdout's iteration is unchanged. Guarded by the context write lock;
+    // created on the first holdout decision, so a context without holdouts allocates none.
+    private Dictionary<(int, string), Assignment> _holdoutAssignments;
 
     private volatile int _pendingCount;
     private int _refreshing;
@@ -930,7 +931,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         var live = GetHoldoutById(holdout.Id) ?? holdout;
         var key = (live.Id, unitType);
-        if (_holdoutAssignments.TryGetValue(key, out var cached) && cached.Iteration == live.Iteration)
+        if (_holdoutAssignments != null && _holdoutAssignments.TryGetValue(key, out var cached) &&
+            cached.Iteration == live.Iteration)
             return cached;
 
         var assigner = GetVariantAssigner(unitType, GetUnitHash(unitType, uid));
@@ -945,7 +947,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             Eligible = true,
             Holdout = new HoldoutState { ArmCount = live.Split.Length }
         };
-        _holdoutAssignments[key] = assignment;
+        (_holdoutAssignments ??= new Dictionary<(int, string), Assignment>())[key] = assignment;
         return assignment;
     }
 
@@ -1222,8 +1224,21 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // counted too.
             if (assignment.Assigned || assignment.Overridden || assignment.RuleOverride)
             {
-                failure?.Throw();
-                return assignment;
+                if (failure == null) return assignment;
+
+                // An earlier candidate's holdout logger threw (so this is not a peek): the winner
+                // and its holdouts are exposed here, as the caller would, before the first
+                // failure propagates.
+                try
+                {
+                    QueueExposure(assignment);
+                }
+                catch (Exception)
+                {
+                    // The first failure is the one rethrown.
+                }
+
+                failure.Throw();
             }
 
             // Every candidate visited was evaluated, so its holdouts fire (not on peek), as JS and
@@ -2115,13 +2130,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         foreach (var id in holdoutIds)
         {
             if (!holdoutsById.TryGetValue(id, out var holdout)) continue;
-            resolved ??= new List<Experiment>(holdoutIds.Length);
-            var at = resolved.FindIndex(h => h.Id >= id);
-            if (at < 0) resolved.Add(holdout);
-            else if (resolved[at].Id != id) resolved.Insert(at, holdout);
+            (resolved ??= new List<Experiment>(holdoutIds.Length)).Add(holdout);
         }
 
-        return resolved?.ToArray();
+        if (resolved == null) return null;
+
+        // Sorted once, then deduplicated in place: linear-logarithmic in the number of ids.
+        resolved.Sort((a, b) => a.Id.CompareTo(b.Id));
+        var count = 1;
+        for (var i = 1; i < resolved.Count; i++)
+            if (resolved[i].Id != resolved[count - 1].Id) resolved[count++] = resolved[i];
+        resolved.RemoveRange(count, resolved.Count - count);
+        return resolved.ToArray();
     }
 
     private void SetDataFailed(Exception error = null)
