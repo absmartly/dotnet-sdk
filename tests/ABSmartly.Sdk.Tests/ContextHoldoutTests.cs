@@ -1315,6 +1315,31 @@ public class ContextHoldoutTests
     }
 
     [Test]
+    public void SiblingHoldoutLoggerFailuresRethrowTheFirstAndQueueBothExposures()
+    {
+        var first = new InvalidOperationException("first");
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Throws(first);
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 12)))
+            .Throws(new InvalidOperationException("second"));
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, CoveredBy(NewExperiment(1, "exp_sibling_failures"), 12, 11)));
+
+        var act = () => context.GetTreatment("exp_sibling_failures");
+
+        act.Should().Throw<InvalidOperationException>().Which.Should().BeSameAs(first);
+        context.PendingCount.Should().Be(2);
+        _eventLogger.Reset();
+        context.GetTreatment("exp_sibling_failures").Should().Be(0);
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 1));
+    }
+
+    [Test]
     public void ThrowingLoggerDoesNotMakeExperimentOrHoldoutExposureRetryable()
     {
         ThrowOnExposure(e => e.Id == 1);
