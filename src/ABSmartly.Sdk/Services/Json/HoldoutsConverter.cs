@@ -52,6 +52,8 @@ internal sealed class HoldoutsConverter : JsonConverter<Experiment[]>
 
     private sealed class HoldoutData
     {
+        // Required: a holdout without an id is skipped, rather than read as id 0.
+        [JsonRequired]
         [JsonConverter(typeof(IntegralInt32Converter))]
         public int Id { get; set; }
         [JsonConverter(typeof(LenientStringConverter))]

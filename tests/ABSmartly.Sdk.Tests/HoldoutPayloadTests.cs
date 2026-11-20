@@ -231,6 +231,25 @@ public class HoldoutPayloadTests
         published.Single().Exposures.Select(e => (e.Id, e.Name, e.Variant)).Should().Equal((11, "holdout_a", 0));
     }
 
+    // A holdout without an id is skipped instead of being read as id 0 (in JS it matches no
+    // holdoutIds entry); an explicit id 0 still covers the experiment.
+    [TestCase("", 1)]
+    [TestCase("\"id\":0,", 0)]
+    public void HoldoutWithoutAnIdIsSkipped(string id, int treatment)
+    {
+        var json = "{\"holdouts\":[{" + id + "\"name\":\"holdout_a\",\"iteration\":1,\"seedHi\":13,\"seedLo\":111," +
+                   "\"split\":[1,0]}],\"experiments\":[" +
+                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[0]}]}";
+
+        var data = Deserialize(json);
+
+        (data.Holdouts?.Length ?? 0).Should().Be(1 - treatment);
+        var (publisher, _) = Publisher();
+        CreateContext(data, publisher).GetTreatment("exp_covered").Should().Be(treatment);
+    }
+
     [Test]
     public void HoldoutIdsSerializeBackAsAnArray()
     {

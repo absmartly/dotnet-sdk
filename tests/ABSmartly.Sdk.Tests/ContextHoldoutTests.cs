@@ -204,6 +204,9 @@ public class ContextHoldoutTests
         return published;
     }
 
+    private static object InstalledHoldouts(Context context) =>
+        typeof(Context).GetMethod("GetHoldoutsById", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(context, null)!;
+
     private static bool FlushScheduled(Context context) =>
         typeof(Context).GetField("_timeout", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context) != null;
 
@@ -1199,11 +1202,15 @@ public class ContextHoldoutTests
         (exposure.Id, exposure.Name, exposure.Variant).Should().Be((holdoutId, holdoutName, 0));
     }
 
+    // The unit participates (its experiment exposure is published, in any arm, control included)
+    // and its holdout arm 1 is exposed.
     private void AssertNotHeldOut(Context context, int holdoutId, string holdoutName)
     {
-        context.GetTreatment("verdict_vectors_experiment");
-        Publish(context).Exposures.Should()
-            .Contain(e => e.Id == holdoutId && e.Name == holdoutName && e.Variant == 1);
+        var variant = context.GetTreatment("verdict_vectors_experiment");
+        var exposures = Publish(context).Exposures;
+        exposures.Should().Contain(e => e.Id == 9 && e.Name == "verdict_vectors_experiment" && e.Assigned &&
+                                        e.Variant == variant);
+        exposures.Should().Contain(e => e.Id == holdoutId && e.Name == holdoutName && e.Variant == 1);
     }
 
     [Test]
@@ -1615,7 +1622,7 @@ public class ContextHoldoutTests
 
         var stale = NewHoldout(11, "holdout_h", HoldoutASeedHi, HoldoutASeedLo);
         var resolve = typeof(Context).GetMethod("GetHoldoutAssignment", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType })!;
+        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType, InstalledHoldouts(context) })!;
 
         resolved.Iteration.Should().Be(2);
         resolved.Variant.Should().Be(1);
@@ -1843,7 +1850,7 @@ public class ContextHoldoutTests
 
         var stale = NewHoldout(11, "holdout_stale", HoldoutASeedHi, HoldoutASeedLo);
         var resolve = typeof(Context).GetMethod("GetHoldoutAssignment", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType })!;
+        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType, InstalledHoldouts(context) })!;
 
         (resolved.Name, resolved.Iteration, resolved.Variant).Should().Be(("holdout_live", 2, 1));
     }

@@ -923,13 +923,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // Called with the context write lock held. The unit is hashed by the covered experiment's
     // unit type, not the holdout's own. Null when that unit is not set (never cached, so a unit
-    // set later is picked up). The cached arm is kept while the live holdout's iteration is
-    // unchanged, so a same-iteration seed or split edit does not move the unit to another arm.
-    private Assignment GetHoldoutAssignment(Experiment holdout, string unitType)
+    // set later is picked up). The live definition comes from holdoutsById, the installed index
+    // read once for all of an experiment's holdouts, so they are resolved from the same refresh.
+    // The cached arm is kept while the live holdout's iteration is unchanged, so a same-iteration
+    // seed or split edit does not move the unit to another arm.
+    private Assignment GetHoldoutAssignment(Experiment holdout, string unitType,
+        Dictionary<int, Experiment> holdoutsById)
     {
         if (unitType == null || !_units.TryGetValue(unitType, out var uid)) return null;
 
-        var live = GetHoldoutById(holdout.Id) ?? holdout;
+        var live = holdoutsById != null && holdoutsById.TryGetValue(holdout.Id, out var installed)
+            ? installed
+            : holdout;
         var key = (live.Id, unitType);
         if (_holdoutAssignments != null && _holdoutAssignments.TryGetValue(key, out var cached) &&
             cached.Iteration == live.Iteration)
@@ -951,12 +956,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return assignment;
     }
 
-    private Experiment GetHoldoutById(int id)
+    // The installed holdout index; SetData replaces it whole, never mutates it.
+    private Dictionary<int, Experiment> GetHoldoutsById()
     {
         try
         {
             _dataLock.EnterReadLock();
-            return _holdoutsById != null && _holdoutsById.TryGetValue(id, out var holdout) ? holdout : null;
+            return _holdoutsById;
         }
         finally
         {
@@ -1081,10 +1087,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (experiment?.Holdouts != null)
             {
                 var holdouts = experiment.Holdouts;
+                var holdoutsById = GetHoldoutsById();
                 var holdoutAssignments = new Assignment[holdouts.Length];
                 for (var i = 0; i < holdouts.Length; i++)
                 {
-                    var holdoutAssignment = GetHoldoutAssignment(holdouts[i], experiment.Data.UnitType);
+                    var holdoutAssignment = GetHoldoutAssignment(holdouts[i], experiment.Data.UnitType, holdoutsById);
                     holdoutAssignments[i] = holdoutAssignment;
                     if (holdoutAssignment != null && IsHeldOutBy(holdoutAssignment.Variant,
                             holdoutAssignment.HoldoutArmCount, experiment.Data.FullOnVariant))
