@@ -1839,6 +1839,35 @@ public class ContextHoldoutTests
             ("exp_rule_coverage", 1, true), ("exp_rule_coverage", 1, true), ("holdout_late", 0, false));
     }
 
+    // A refresh installed between two of an experiment's holdout resolutions does not mix payloads:
+    // every holdout of the decision comes from the index read when it started.
+    [Test]
+    public void ARefreshBetweenHoldoutResolutionsDoesNotMixPayloads()
+    {
+        var context = CreateContext(UidNotHeldOut, DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutASeedHi, HoldoutASeedLo)
+        }, CoveredBy(NewExperiment(1, "exp_mid_refresh"), 11, 12)));
+        var bumped = NewHoldout(12, "holdout_b_v2", HoldoutASeedHi, HoldoutASeedLo);
+        bumped.Iteration = 2;
+        bumped.Split = new[] { 1.0, 0.0 };
+        context.BetweenHoldoutResolutions = () =>
+        {
+            _dataProvider.Setup(x => x.GetContextDataAsync()).ReturnsAsync(DataOf(new[]
+            {
+                NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo), bumped
+            }, CoveredBy(NewExperiment(1, "exp_mid_refresh"), 11, 12)));
+            Task.Run(() => context.RefreshAsync()).Wait();
+        };
+
+        context.GetTreatment("exp_mid_refresh").Should().Be(0); // UidNotHeldOut's normal variant
+
+        context.BetweenHoldoutResolutions.Should().BeNull();
+        AssertPublished(context, UidNotHeldOut, Exposure(1, "exp_mid_refresh", 0),
+            HoldoutExposure(11, "holdout_a", 1), HoldoutExposure(12, "holdout_b", 1));
+    }
+
     // A stale holdout definition (here an older iteration under another name) resolves to the
     // live one: its iteration, arm and name.
     [Test]

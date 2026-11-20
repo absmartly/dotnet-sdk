@@ -70,6 +70,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // Test seam: runs once between a cache miss and the write lock, to force a concurrent rebuild.
     internal Action BeforeAssignmentRebuild;
 
+    // Test seam: runs once between an experiment's first and second holdout resolution, to force
+    // a concurrent refresh there.
+    internal Action BetweenHoldoutResolutions;
+
     private volatile bool _closed;
     private int _closing;
     private readonly object _closeLock = new();
@@ -1091,6 +1095,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 var holdoutAssignments = new Assignment[holdouts.Length];
                 for (var i = 0; i < holdouts.Length; i++)
                 {
+                    if (i == 1 && BetweenHoldoutResolutions != null)
+                        Interlocked.Exchange(ref BetweenHoldoutResolutions, null)?.Invoke();
                     var holdoutAssignment = GetHoldoutAssignment(holdouts[i], experiment.Data.UnitType, holdoutsById);
                     holdoutAssignments[i] = holdoutAssignment;
                     if (holdoutAssignment != null && IsHeldOutBy(holdoutAssignment.Variant,
