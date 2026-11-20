@@ -122,6 +122,7 @@ M = [
  ('replay: lookup trims as .NET', S+'Context.cs', 'string.Equals(name, SwitchbackAttributePath.JavaTrim(attribute.Name), StringComparison.Ordinal)', 'string.Equals(name, attribute.Name.Trim(), StringComparison.Ordinal)'),
  ('replay: rewind trims as .NET', S+'Context.cs', '_clusterRootNames.Contains(SwitchbackAttributePath.JavaTrim(name))', '_clusterRootNames.Contains(name.Trim())'),
  ('replay: java trim keeps U+0020', S+'Internal/SwitchbackAttributePath.cs', "while (start < end && s[start] <= ' ') start++;", "while (start < end && s[start] < ' ') start++;"),
+ ('replay: batch publishedAt from the first request', S+'Context.cs', 'var publishedAt = PublishedAt(exposures);', 'var publishedAt = PublishedAt(requests[0].Exposures);'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',

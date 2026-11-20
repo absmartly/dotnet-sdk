@@ -255,6 +255,28 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         Published[1].Event.Goals!.Single().AchievedAt.Should().BeLessThanOrEqualTo(Published[1].Event.PublishedAt);
     }
 
+    // The batch instant covers every request, not only the last: exp_a (served at +10 before a linked
+    // unit, so split off) and exp_b (served at +20, after it) published at +15 both get +20.
+    [Test]
+    public void SplitRequestsUseTheLatestExposureOfTheWholeBatch()
+    {
+        var a = NewSwitchback(1, "exp_a", 2, Hour); a.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "user_city");
+        var b = NewSwitchback(2, "exp_b", 2, Hour); b.SwitchbackClusters = Clusters(UnitType, "city");
+        var context = CreateContext(DataOf(a, b));
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_a");
+        context.SetUnit("user_id", "u1");
+        Clock.Now = Anchor + Hour + 20;
+        context.GetTreatment("exp_b");
+        Clock.Now = Anchor + Hour + 15;
+        context.Publish();
+        Published.Should().HaveCount(2);
+        Published.Select(p => p.Event.PublishedAt).Should().Equal(Anchor + Hour + 20, Anchor + Hour + 20);
+        foreach (var request in Published)
+            request.Event.Exposures!.Should().OnlyContain(e => e.ExposedAt <= request.Event.PublishedAt);
+    }
+
     // Round 5: names are trimmed as the Collector trims them (Java String.trim(): only characters at
     // or below U+0020). A name padded with U+00A0 is published as is and replays as a different name,
     // so it keys no cluster and is not re-dated; one padded with a tab or space keys "city".
