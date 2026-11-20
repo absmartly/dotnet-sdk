@@ -1052,7 +1052,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (assignment.Assigned || assignment.Overridden || assignment.RuleOverride)
                 return assignment;
         }
-        return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name) : null;
+        // No candidate is assigned (for example a strict audience mismatch or a missing
+        // unit): the caller returns the default and exposes nothing, as the Java SDK.
+        return null;
     }
 
     private ExperimentVariables GetExperiment(string experimentName)

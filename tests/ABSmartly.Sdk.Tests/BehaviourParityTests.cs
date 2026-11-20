@@ -354,6 +354,128 @@ public class BehaviourParityTests
         other.PeekVariableValue("color", "default").Should().Be("red");
     }
 
+    // The reported case: two experiments share a key and the lower id (#175) has a strict
+    // audience the unit fails. One-hot splits assign variant 1 whenever an experiment is
+    // assigned, so the control value can only come from a not-assigned candidate.
+    private const string SharedKey = "homePage.searchBar.button.text";
+    private const string CountryUs = "{\"filter\":[{\"eq\":[{\"var\":\"Country\"},{\"value\":\"US\"}]}]}";
+
+    private static Experiment SharedKeyExperiment(int id, string name, string control, string treatment,
+        bool? strict = null) =>
+        new()
+        {
+            Id = id, Name = name, UnitType = "session_id", Iteration = 1,
+            Split = new[] { 0.0, 1.0 }, TrafficSplit = new[] { 0.0, 1.0 },
+            Audience = strict.HasValue ? CountryUs : null, AudienceStrict = strict ?? false,
+            Variants = new[]
+            {
+                new ExperimentVariant { Name = "A", Config = $"{{\"{SharedKey}\":\"{control}\"}}" },
+                new ExperimentVariant { Name = "B", Config = $"{{\"{SharedKey}\":\"{treatment}\"}}" }
+            }
+        };
+
+    private static Experiment StrictSearch() => SharedKeyExperiment(175, "exp_strict", "Search food", "Find food", true);
+    private static Experiment AssignedSearch() => SharedKeyExperiment(176, "exp_assigned", "Search", "Search now");
+
+    private (Context Context, Func<List<Exposure>> Published) CreateRecordingContext(params Experiment[] experiments)
+    {
+        var publisher = new Mock<IContextPublisher>();
+        var published = new List<Exposure>();
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((_, e) => published.AddRange(e.Exposures ?? Array.Empty<Exposure>()))
+            .Returns(Task.CompletedTask);
+        _publisher = publisher.Object;
+        var context = CreateContext(new ContextData(experiments));
+        context.SetAttribute("Country", "IE");
+        return (context, () =>
+        {
+            context.Publish();
+            return published;
+        });
+    }
+
+    [Test]
+    public void StrictMismatchOnTheOnlyCandidateReturnsTheDefaultAndExposesNothing()
+    {
+        var (context, published) = CreateRecordingContext(StrictSearch());
+
+        context.PeekVariableValue(SharedKey, "default").Should().Be("default");
+        context.GetVariableValue(SharedKey, "default").Should().Be("default");
+        context.PendingCount.Should().Be(0, "no experiment won the key, so nothing is exposed for it");
+
+        context.GetTreatment("exp_strict").Should().Be(0);
+        var exposure = published().Should().ContainSingle().Subject;
+        exposure.Name.Should().Be("exp_strict");
+        exposure.Assigned.Should().BeFalse();
+        exposure.AudienceMismatch.Should().BeTrue();
+    }
+
+    [Test]
+    public void StrictMismatchOnTheFirstCandidateYieldsToTheAssignedSecond()
+    {
+        var (context, published) = CreateRecordingContext(StrictSearch(), AssignedSearch());
+
+        context.PeekVariableValue(SharedKey, "default").Should().Be("Search now");
+        context.GetVariableValue(SharedKey, "default").Should().Be("Search now");
+        context.GetVariableValue(SharedKey, "default").Should().Be("Search now");
+        published().Select(e => e.Name).Should().Equal("exp_assigned");
+    }
+
+    [Test]
+    public void NonStrictMismatchIsStillAssignedAndServesItsValue()
+    {
+        var loose = SharedKeyExperiment(175, "exp_loose", "Search food", "Find food", strict: false);
+        var (context, published) = CreateRecordingContext(loose, AssignedSearch());
+
+        context.PeekVariableValue(SharedKey, "default").Should().Be("Find food");
+        context.GetVariableValue(SharedKey, "default").Should().Be("Find food");
+        var exposure = published().Should().ContainSingle().Subject;
+        exposure.Name.Should().Be("exp_loose");
+        exposure.Assigned.Should().BeTrue();
+        exposure.AudienceMismatch.Should().BeTrue();
+    }
+
+    [Test]
+    public void VariableKeysStillListTheStrictMismatchedCandidate()
+    {
+        var (context, _) = CreateRecordingContext(StrictSearch(), AssignedSearch());
+
+        context.VariableKeys.Should().ContainKey(SharedKey)
+            .WhoseValue.Should().Equal("exp_strict", "exp_assigned");
+        context.PendingCount.Should().Be(0);
+    }
+
+    [TestCase(1, "Find food")]
+    [TestCase(0, "Search food")]
+    public void OverrideOnTheStrictMismatchedCandidateStillWins(int variant, string expected)
+    {
+        var (context, published) = CreateRecordingContext(StrictSearch(), AssignedSearch());
+        context.SetOverride("exp_strict", variant);
+
+        context.PeekVariableValue(SharedKey, "default").Should().Be(expected);
+        context.GetVariableValue(SharedKey, "default").Should().Be(expected);
+        var exposure = published().Should().ContainSingle().Subject;
+        exposure.Name.Should().Be("exp_strict");
+        exposure.Overridden.Should().BeTrue();
+    }
+
+    [Test]
+    public void NoCandidateAssignedReturnsTheDefaultWhateverTheReason()
+    {
+        // Both strict-mismatched, a missing unit, and a custom assignment on a strict
+        // mismatch (which does not make it assigned): none of them may leak control.
+        var otherUnit = SharedKeyExperiment(177, "exp_no_unit", "No unit", "No unit B");
+        otherUnit.UnitType = "user_id";
+        var (context, published) = CreateRecordingContext(StrictSearch(),
+            SharedKeyExperiment(176, "exp_strict_too", "Search", "Search now", true), otherUnit);
+        context.SetCustomAssignment("exp_strict", 1);
+
+        context.PeekVariableValue(SharedKey, "default").Should().Be("default");
+        context.GetVariableValue(SharedKey, "default").Should().Be("default");
+        context.PendingCount.Should().Be(0);
+        published().Should().BeEmpty();
+    }
+
     #endregion
 
     #region Publish and close
