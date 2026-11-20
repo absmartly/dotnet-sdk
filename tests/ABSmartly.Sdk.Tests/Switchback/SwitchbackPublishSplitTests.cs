@@ -16,7 +16,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     {
         var logger = new Mock<IContextEventLogger>();
         logger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), It.IsAny<EventType>(), It.IsAny<object>()))
-            .Callback<IContext, EventType, object>((_, t, e) => events.Add((t, e)));
+            .Callback<IContext, EventType, object>((_, t, e) => { lock (events) events.Add((t, e)); });
         var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
         config.SetUnit(UnitType, Uid);
         return Context.CreateWithData(config, data, Clock, DataProvider.Object, Publisher, logger.Object,
@@ -104,6 +104,19 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         published.PublishedAt.Should().Be(Anchor + Hour + 20);
         published.Exposures.Should().ContainSingle();
         published.Goals.Should().ContainSingle();
+    }
+
+    [Test]
+    public void GoalOneMillisecondAheadOfTheClockBoundsPublishedAt()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 16;
+        context.Track("purchase", null!);
+        Clock.Now = Anchor + Hour + 15;
+        PublishEvent(context).PublishedAt.Should().Be(Anchor + Hour + 16);
     }
 
     [Test]
@@ -265,6 +278,61 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         logged.Should().HaveCount(3);
         logged.Should().ContainSingle(p => p.Exposures != null && p.Units.Length == 1);
         logged.Should().ContainSingle(p => p.Goals != null && p.Goals.Any(g => g.Name == "purchase") && p.Units.Length == 2);
+    }
+
+    // A synchronous close on a UI thread publishes its own split batch, then finishes once an
+    // in-flight publication settles, retrying it if it failed: the Publish events are logged in the
+    // order the publisher completed them.
+    [Test]
+    [Timeout(20000)]
+    public async Task CloseLogsItsPublishesInOrder()
+    {
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failedOnce = 0;
+        var purchaseSent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var publisher = new Mock<IContextPublisher>();
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>(async (_, e) =>
+            {
+                if (e.Goals != null && e.Goals.Any(g => g.Name == "first") && Interlocked.Exchange(ref failedOnce, 1) == 0)
+                {
+                    entered.TrySetResult(true);
+                    await gate.Task;
+                    throw new InvalidOperationException("down");
+                }
+
+                if (e.Goals != null && e.Goals.Any(g => g.Name == "purchase")) purchaseSent.TrySetResult(true);
+            });
+        Publisher = publisher.Object;
+        var events = new List<(EventType, object)>();
+        var context = WithLogger(events, DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 1;
+        context.Track("first", null!);
+        var publish = context.PublishAsync();
+        (await Task.WhenAny(entered.Task, Task.Delay(5000))).Should().Be(entered.Task);
+
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("user_id", "u1");
+        context.Track("purchase", null!);
+        using (var ui = new UiThread())
+        {
+            var closed = ui.Run(() => context.Close());
+            (await Task.WhenAny(closed, Task.Delay(5000))).Should().Be(closed);
+            await closed;
+        }
+
+        purchaseSent.Task.IsCompleted.Should().BeTrue("the close publishes its own batch first");
+        gate.SetResult(true);
+        await FluentActions.Awaiting(() => publish).Should().ThrowAsync<InvalidOperationException>();
+        await context.FinalizeAsync();
+        context.IsClosed().Should().BeTrue();
+
+        List<PublishEvent> logged;
+        lock (events) logged = events.Where(e => e.Item1 == EventType.Publish).Select(e => (PublishEvent)e.Item2).ToList();
+        logged.Select(p => string.Join(",", (p.Exposures ?? Array.Empty<Exposure>()).Select(e => e.Name)
+            .Concat((p.Goals ?? Array.Empty<GoalAchievement>()).Select(g => g.Name)))).Should().Equal("exp_sb", "purchase", "first");
     }
 
     [Test]
