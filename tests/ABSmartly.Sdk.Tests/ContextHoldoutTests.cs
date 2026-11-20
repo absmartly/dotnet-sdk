@@ -841,6 +841,22 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(2);
     }
 
+    // With both units set, the arm is still hashed with the covered experiment's unit (held out),
+    // not the holdout's declared one (not held out), and its exposure carries that unit type.
+    [Test]
+    public void HoldoutArmIsHashedWithTheCoveredExperimentsUnitEvenWhenItsOwnUnitIsSet()
+    {
+        var context = CreateContext(new ContextConfig().SetUnit(UnitType, Uid).SetUnit("user_id", UidNotHeldOut),
+            DataOf(new[] { NewHoldout(11, "holdout_declares_user", "user_id", HoldoutASeedHi, HoldoutASeedLo, "full") },
+                CoveredBy(NewExperiment(1, "exp_session_covered"), 11)));
+
+        context.GetTreatment("exp_session_covered").Should().Be(0);
+
+        context.Publish();
+        var exposures = _published.Should().ContainSingle().Subject.Event.Exposures;
+        exposures.Should().Equal(HoldoutExposure(11, "holdout_declares_user", 0));
+    }
+
     // Recomputed as a whole, so a late holdout that holds the unit out flips the experiment to
     // control instead of publishing a held-out exposure beside a participating one.
     [Test]

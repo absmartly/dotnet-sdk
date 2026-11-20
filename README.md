@@ -337,7 +337,7 @@ A holdout keeps a share of units out of a group of experiments, so their combine
 - Each holdout publishes its own exposure (the holdout's id and name, the arm as the variant) the first time an experiment it covers is exposed, once per unit type.
 - `SetOverride()` and a matching assignment rule win over a holdout. The holdout's exposure is still published.
 - The arm is kept until the holdout's iteration changes, even if a refresh changes its seed or split.
-- A holdout that cannot be read (for example an `id`, `iteration`, `seedHi` or `seedLo` that is null, fractional (`11.5`) or outside the 32-bit range) is ignored; an integral decimal such as `11.0` is read as that integer, so the experiments it covers are assigned as if it did not exist.
+- A holdout that cannot be read (for example an `id`, `iteration`, `seedHi` or `seedLo` that is null, fractional (`11.5`) or outside the 32-bit range) is ignored, so the experiments it covers are assigned as if it did not exist. An integral decimal such as `11.0` is read as that integer.
 
 ### Tracking Goals
 
