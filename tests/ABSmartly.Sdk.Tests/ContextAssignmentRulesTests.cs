@@ -231,10 +231,11 @@ public class ContextAssignmentRulesTests
         PublishedExposures(context).Single().RuleOverride.Should().BeFalse();
     }
 
-    [Test]
-    public void AssignVariantBeyondIntRangeFallsBackWithoutTryingLaterRules()
+    [TestCase("2147483648")]
+    [TestCase("99999999999999999999")]
+    public void AssignVariantBeyondIntRangeFallsBackWithoutTryingLaterRules(string variant)
     {
-        var overflowing = "{\"type\":\"assign\",\"variant\":2147483648,\"conditions\":null}";
+        var overflowing = "{\"type\":\"assign\",\"variant\":" + variant + ",\"conditions\":null}";
         var context = CreateContext(Data(Rules(overflowing, Assign(1, conditions: null))));
 
         context.GetTreatment(Experiment).Should().Be(NormalVariant);
@@ -358,7 +359,29 @@ public class ContextAssignmentRulesTests
         PublishedExposures(context).Should().ContainSingle();
     }
 
-    // An attribute value that counts how often a rule condition reads it.
+    // Rules changed by a refresh are revalidated only under the write lock: the read-locked lookup
+    // must miss and fall through to the rebuild path, which then keeps the cached assignment.
+    [Test]
+    public void ChangedRulesAreRevalidatedOnlyUnderTheWriteLock()
+    {
+        var context = CreateContext(Data(Rules(Assign(1, conditions: null))));
+        context.GetTreatment(Experiment).Should().Be(1);
+
+        var renamed = Rules(Assign(1, conditions: null).Replace("\"name\":\"assign\"", "\"name\":\"renamed\""));
+        Mock.Get(_dataProvider).Setup(x => x.GetContextDataAsync()).ReturnsAsync(Data(renamed));
+        context.Refresh();
+
+        var rebuilds = 0;
+        context.BeforeAssignmentRebuild = () => ++rebuilds;
+        context.GetTreatment(Experiment).Should().Be(1);
+        rebuilds.Should().Be(1);
+
+        context.BeforeAssignmentRebuild = () => ++rebuilds;
+        context.GetTreatment(Experiment).Should().Be(1);
+        rebuilds.Should().Be(1);
+        PublishedExposures(context).Should().ContainSingle();
+    }
+
     private sealed class CountingAttribute : Dictionary<string, object>, IDictionary<string, object>
     {
         public int Lookups;
@@ -618,7 +641,6 @@ public class ContextAssignmentRulesTests
         exposures[0].Variant.Should().Be(0);
         exposures[0].RuleOverride.Should().BeTrue();
 
-        // The exposed no-unit split stays pinned once the unit arrives.
         context.SetUnit("session_id", SessionId);
         context.GetTreatment(Experiment).Should().Be(0);
         PublishedExposures(context).Should().ContainSingle();
