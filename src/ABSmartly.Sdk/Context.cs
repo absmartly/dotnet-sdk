@@ -1242,8 +1242,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
 
         failure?.Throw();
-        if (suppressedFallback != null) return suppressedFallback;
-        return experiments.Count > 0 ? GetAssignment(experiments[0].Data.Name) : null;
+        // No candidate is assigned (for example a strict audience mismatch or a missing unit):
+        // the first held-out one gives its control value, as JS; otherwise the caller returns
+        // the default and exposes nothing, as the Java SDK.
+        return suppressedFallback;
     }
 
     private ExperimentVariables GetExperiment(string experimentName)
