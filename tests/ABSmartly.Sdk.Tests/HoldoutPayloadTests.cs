@@ -181,6 +181,29 @@ public class HoldoutPayloadTests
             .Should().Equal((11, "holdout_a", 0));
     }
 
+    // A holdout's name or unitType that is not a string is read as null instead of dropping the
+    // holdout (the holdout is placed with the covered experiment's unit type), as JS.
+    [TestCase("\"name\":5,\"unitType\":\"session_id\"")]
+    [TestCase("\"name\":\"holdout_a\",\"unitType\":{\"x\":1}")]
+    public void WronglyTypedHoldoutNameOrUnitTypeDoesNotDropIt(string fields)
+    {
+        var json = "{\"holdouts\":[{\"id\":11," + fields + ",\"iteration\":1,\"seedHi\":13,\"seedLo\":111," +
+                   "\"split\":[1,0]}],\"experiments\":[" +
+                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11]}]}";
+
+        var data = Deserialize(json);
+
+        data.Holdouts.Should().ContainSingle().Which.Id.Should().Be(11);
+        var (publisher, published) = Publisher();
+        var context = CreateContext(data, publisher);
+        context.GetTreatment("exp_covered").Should().Be(0);
+        context.Publish();
+        published.Single().Exposures.Select(e => (e.Id, e.Unit, e.Variant))
+            .Should().Equal((11, "session_id", 0));
+    }
+
     [Test]
     public void HoldoutIdsSerializeBackAsAnArray()
     {
