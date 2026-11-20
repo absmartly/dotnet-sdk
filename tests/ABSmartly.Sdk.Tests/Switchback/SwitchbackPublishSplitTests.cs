@@ -282,6 +282,10 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     // so it keys no cluster and is not re-dated; one padded with a tab or space keys "city".
     [TestCase("\u00a0city\u00a0", false)]
     [TestCase("\u2003city", false)]
+    [TestCase("city\u00a0", false)]
+    [TestCase("\u00a0city", false)]
+    [TestCase("city\u0085", false)]
+    [TestCase("   ", false)]
     [TestCase("\tcity ", true)]
     [TestCase("\u0001city\u0000", true)]
     public void AttributeNamesAreTrimmedAsJavaTrims(string name, bool matches)

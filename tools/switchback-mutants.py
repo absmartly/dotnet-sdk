@@ -123,6 +123,9 @@ M = [
  ('replay: rewind trims as .NET', S+'Context.cs', '_clusterRootNames.Contains(SwitchbackAttributePath.JavaTrim(name))', '_clusterRootNames.Contains(name.Trim())'),
  ('replay: java trim keeps U+0020', S+'Internal/SwitchbackAttributePath.cs', "while (start < end && s[start] <= ' ') start++;", "while (start < end && s[start] < ' ') start++;"),
  ('replay: batch publishedAt from the first request', S+'Context.cs', 'var publishedAt = PublishedAt(exposures);', 'var publishedAt = PublishedAt(requests[0].Exposures);'),
+ ('replay: java trim end guard', S+'Internal/SwitchbackAttributePath.cs', "while (end > start && s[end - 1] <= ' ') end--;", "while (end > 0 && s[end - 1] <= ' ') end--;"),
+ ('replay: java trim strips leading U+00A0', S+'Internal/SwitchbackAttributePath.cs', "while (start < end && s[start] <= ' ') start++;", "while (start < end && (s[start] <= ' ' || s[start] == '\\u00a0')) start++;"),
+ ('replay: java trim then .NET TrimEnd', S+'Internal/SwitchbackAttributePath.cs', "return start == 0 && end == s.Length ? s : s.Substring(start, end - start);", "return (start == 0 && end == s.Length ? s : s.Substring(start, end - start)).TrimEnd();"),
 ]
 EQUIVALENT = {
     'wire: Half text via double',
