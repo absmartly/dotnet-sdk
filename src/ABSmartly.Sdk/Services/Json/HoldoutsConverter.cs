@@ -11,7 +11,8 @@ namespace ABSmartly.Services.Json;
 // so a malformed holdout only loses that holdout instead of failing the whole context.
 // Only the holdout fields (JS HoldoutData) are read: experiment-only keys such as variants or
 // trafficSplit are ignored like unknown keys, whatever their type, and a name, unitType or
-// holdoutType that is not a string is read as null.
+// holdoutType that is not a string is read as null. An integral float id, iteration or seed
+// (11.0) is read as that integer, as JS.
 internal sealed class HoldoutsConverter : JsonConverter<Experiment[]>
 {
     public override Experiment[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -51,13 +52,17 @@ internal sealed class HoldoutsConverter : JsonConverter<Experiment[]>
 
     private sealed class HoldoutData
     {
+        [JsonConverter(typeof(IntegralInt32Converter))]
         public int Id { get; set; }
         [JsonConverter(typeof(LenientStringConverter))]
         public string Name { get; set; }
         [JsonConverter(typeof(LenientStringConverter))]
         public string UnitType { get; set; }
+        [JsonConverter(typeof(IntegralInt32Converter))]
         public int Iteration { get; set; }
+        [JsonConverter(typeof(IntegralInt32Converter))]
         public int SeedHi { get; set; }
+        [JsonConverter(typeof(IntegralInt32Converter))]
         public int SeedLo { get; set; }
         public double[] Split { get; set; }
         [JsonConverter(typeof(LenientStringConverter))]
