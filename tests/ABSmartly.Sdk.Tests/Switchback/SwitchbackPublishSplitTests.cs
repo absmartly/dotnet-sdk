@@ -91,6 +91,55 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     }
 
     [Test]
+    public void MixedBatchPublishedAtIncludesTheLatestGoal()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 20;
+        context.Track("purchase", null!);
+        Clock.Now = Anchor + Hour + 15;
+        var published = PublishEvent(context);
+        published.PublishedAt.Should().Be(Anchor + Hour + 20);
+        published.Exposures.Should().ContainSingle();
+        published.Goals.Should().ContainSingle();
+    }
+
+    [Test]
+    public void FailureRestoresEveryUndeliveredSplitGroup()
+    {
+        var calls = 0;
+        var sent = new List<PublishEvent>();
+        var publisher = new Mock<IContextPublisher>();
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>((_, e) =>
+            {
+                if (++calls == 1) throw new InvalidOperationException("down");
+                sent.Add(e);
+                return Task.CompletedTask;
+            });
+        Publisher = publisher.Object;
+        var a = NewSwitchback(1, "exp_a", 2, Hour); a.SwitchbackClusters = Clusters(UnitType, "city", "device_id", "device_city");
+        var b = NewSwitchback(2, "exp_b", 2, Hour); b.SwitchbackClusters = Clusters(UnitType, "city", "device_id", "device_city");
+        var context = CreateContext(DataOf(a, b));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_a");
+        context.SetUnit("user_id", "u1");
+        context.GetTreatment("exp_b");
+        context.SetUnit("device_id", "d1");
+        context.Track("purchase", null!);
+        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
+        context.PendingCount.Should().Be(3);
+        context.Publish();
+        context.PendingCount.Should().Be(0);
+        sent.SelectMany(p => p.Exposures ?? Array.Empty<Exposure>()).Select(e => e.Name).Should().Equal("exp_a", "exp_b");
+        sent.SelectMany(p => p.Goals ?? Array.Empty<GoalAchievement>()).Select(g => g.Name).Should().Equal("purchase");
+        sent.Select(p => p.Units.Length).Should().Equal(1, 2, 3);
+    }
+
+    [Test]
     public void RewindClampUsesTheLatestReadNotTheLast()
     {
         var a = NewSwitchback(1, "exp_a", 2, Hour); var b = NewSwitchback(2, "exp_b", 2, Hour);

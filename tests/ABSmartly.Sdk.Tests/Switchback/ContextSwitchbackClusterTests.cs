@@ -498,6 +498,9 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         context.SetAttribute("city", "Faro");
         context.SetAttribute("reading", new Reading { Value = double.NaN, Ratio = float.PositiveInfinity });
         context.SetAttribute("plain", double.NaN);
+        context.SetAttribute("negativeDouble", double.NegativeInfinity);
+        context.SetAttribute("negativeFloat", float.NegativeInfinity);
+        context.SetAttribute("negativeHalf", Half.NegativeInfinity);
         context.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
         context.Track("goal", null!);
         var bytes = new DefaultContextEventSerializer().Serialize(PublishEvent(context));
@@ -506,6 +509,8 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         json.Should().Contain("{\"name\":\"reading\",\"value\":{\"value\":null,\"ratio\":null},");
         json.Should().Contain("{\"name\":\"plain\",\"value\":null,");
         json.Should().Contain("\"name\":\"exp_sb\"").And.Contain("\"name\":\"goal\"");
+        foreach (var name in new[] { "negativeDouble", "negativeFloat", "negativeHalf" })
+            json.Should().Contain($"{{\"name\":\"{name}\",\"value\":null,");
 
         var keyed = Create(DataOf(AttributeSwitchback("city")));
         keyed.SetAttribute("city", double.NaN);

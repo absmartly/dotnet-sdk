@@ -123,7 +123,7 @@ M = [
  ('replay: lookup trims as .NET', S+'Context.cs', 'string.Equals(name, SwitchbackAttributePath.JavaTrim(attribute.Name), StringComparison.Ordinal)', 'string.Equals(name, attribute.Name.Trim(), StringComparison.Ordinal)'),
  ('replay: rewind trims as .NET', S+'Context.cs', '_clusterRootNames.Contains(SwitchbackAttributePath.JavaTrim(name))', '_clusterRootNames.Contains(name.Trim())'),
  ('replay: java trim keeps U+0020', S+'Internal/SwitchbackAttributePath.cs', "while (start < end && s[start] <= ' ') start++;", "while (start < end && s[start] < ' ') start++;"),
- ('replay: batch publishedAt from the first request', S+'Context.cs', 'var publishedAt = PublishedAt(exposures, achievements);', 'var publishedAt = PublishedAt(requests[0].Exposures, requests[0].Goals);'),
+ ('replay: batch publishedAt from the first request', S+'Context.cs', 'var publishedAt = PublishedAt(exposures, achievements);', 'requests = SplitByServingUnits(exposures, achievements, units);\n                var publishedAt = PublishedAt(requests[0].Exposures, requests[0].Goals);'),
  ('replay: java trim end guard', S+'Internal/SwitchbackAttributePath.cs', "while (end > start && s[end - 1] <= ' ') end--;", "while (end > 0 && s[end - 1] <= ' ') end--;"),
  ('replay: java trim strips leading U+00A0', S+'Internal/SwitchbackAttributePath.cs', "while (start < end && s[start] <= ' ') start++;", "while (start < end && (s[start] <= ' ' || s[start] == '\\u00a0')) start++;"),
  ('replay: java trim then .NET TrimEnd', S+'Internal/SwitchbackAttributePath.cs', "return start == 0 && end == s.Length ? s : s.Substring(start, end - start);", "return (start == 0 && end == s.Length ? s : s.Substring(start, end - start)).TrimEnd();"),
@@ -132,6 +132,9 @@ M = [
  ('recovery: preparation outside the restoring handler', S+'Context.cs', '                var publishedAt = PublishedAt(exposures, achievements);\n', '', '        PublishRequest[] requests = null;\n', '        PublishRequest[] requests = null;\n        var publishedAt = PublishedAt(exposures, achievements);\n'),
  ('recovery: retried goal ignored by publishedAt', S+'Context.cs', '                if (goal.AchievedAt > publishedAt) publishedAt = goal.AchievedAt;', '                { }'),
  ('recovery: goals bound publishedAt without switchbacks', S+'Context.cs', '        var publishedAt = _clock.Millis();\n        if (!_hasSwitchbacks) return publishedAt;', '        var publishedAt = _clock.Millis();'),
+ ('recovery: mixed batch ignores goals', S+'Context.cs', 'if (goals != null)', 'if (goals != null && exposures == null)'),
+ ('recovery: only first pending exposure group restored', S+'Context.cs', 'pending.SelectMany(r => r.Exposures', 'pending.Take(1).SelectMany(r => r.Exposures'),
+ ('wire: negative infinity not null', S+'Internal/SwitchbackAttributePath.cs', 'text == numberFormat.NaNSymbol || text == numberFormat.PositiveInfinitySymbol ||\n                text == numberFormat.NegativeInfinitySymbol', 'text == numberFormat.NaNSymbol || text == numberFormat.PositiveInfinitySymbol'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',
