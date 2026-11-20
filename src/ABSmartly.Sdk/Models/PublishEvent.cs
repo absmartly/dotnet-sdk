@@ -14,6 +14,11 @@ public class PublishEvent
     public GoalAchievement[] Goals { get; set; }
     public Attribute[] Attributes { get; set; }
 
+    // Set by a context with switchback experiments installed: DefaultContextEventSerializer then
+    // writes attribute values as the cluster lookup read them (a whole floating-point number as
+    // 3.0), so the Collector re-resolves the same clusters. Not serialized; the values are untouched.
+    internal bool SwitchbackWireAttributes { get; set; }
+
     private string DebugView =>
         $"PublishEvent{{hashedUnits={Hashed}, units={Units.ToArrayString()}, publishedAt={PublishedAt}, exposures={Exposures.ToArrayString()}, goals={Goals.ToArrayString()}, attributes={Attributes.ToArrayString()}}}";
 

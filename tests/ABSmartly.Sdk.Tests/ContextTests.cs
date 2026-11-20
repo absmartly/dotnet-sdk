@@ -1,4 +1,5 @@
-﻿using ABSmartly.Models;
+﻿using System.Text;
+using ABSmartly.Models;
 using ABSmartly.Services;
 using ABSmartly.Time;
 using Microsoft.Extensions.Logging;
@@ -716,28 +717,50 @@ public class ContextTests
     }
 
     [Test]
-    public void
-        TestGetVariableValueQueuesExposureWithAudienceMismatchFalseAndControlVariantOnAudienceMismatchInStrictMode()
+    public void TestGetVariableValueDoesNotQueueExposureOnAudienceMismatchInStrictMode()
     {
         var context = CreateContext(_audienceStrictData);
 
         context.GetVariableValue("banner.size", "small").Should().Be("small");
-        context.PendingCount.Should().Be(1);
+        context.PendingCount.Should().Be(0);
+    }
 
-        var expectedEvent = new PublishEvent
-        {
-            Hashed = true,
-            PublishedAt = _clock.Millis(),
-            Units = _publishUnits,
-            Exposures = new[]
-            {
-                Exposure(1, "exp_test_ab", "session_id", 0, _clock.Millis(), false, true, false, false, false, true)
-            }
-        };
+    [Test]
+    public void TestVariableBeforeTheUnitIsSetReturnsTheDefault()
+    {
+        var data = new DefaultContextDataDeserializer().Deserialize(new MemoryStream(Encoding.UTF8.GetBytes(
+            "{\"experiments\":[{\"id\":1,\"name\":\"exp_absent\",\"unitType\":\"absent_unit\",\"iteration\":1," +
+            "\"seedHi\":1,\"seedLo\":2,\"split\":[0.5,0.5],\"trafficSeedHi\":3,\"trafficSeedLo\":4," +
+            "\"trafficSplit\":[0,1],\"fullOnVariant\":0,\"applications\":[{\"name\":\"website\"}]," +
+            "\"variants\":[{\"name\":\"A\",\"config\":\"{\\\"k\\\":\\\"control\\\"}\"}," +
+            "{\"name\":\"B\",\"config\":\"{\\\"k\\\":\\\"treatment\\\"}\"}]}]}")));
+        var context = CreateContext(data);
 
-        context.Publish();
+        context.PeekVariableValue("k", "default").Should().Be("default");
+        context.GetVariableValue("k", "default").Should().Be("default");
+        context.PendingCount.Should().Be(0);
+    }
 
-        VerifyPublishData(_eventHandler, context, expectedEvent);
+    [Test]
+    public void TestStrictMismatchOnASharedVariableKeyReturnsTheDefault()
+    {
+        var data = new DefaultContextDataDeserializer().Deserialize(new MemoryStream(Encoding.UTF8.GetBytes(
+            "{\"experiments\":[" +
+            Strict(1, "exp_a") + "," + Strict(2, "exp_b") + "]}")));
+        var context = CreateContext(data);
+
+        context.PeekVariableValue("shared.key", "default").Should().Be("default");
+        context.GetVariableValue("shared.key", "default").Should().Be("default");
+        context.PendingCount.Should().Be(0);
+
+        static string Strict(int id, string name) =>
+            "{\"id\":" + id + ",\"name\":\"" + name + "\",\"unitType\":\"session_id\",\"iteration\":1," +
+            "\"seedHi\":3603515,\"seedLo\":233373850,\"split\":[0.5,0.5],\"trafficSeedHi\":449867249," +
+            "\"trafficSeedLo\":455443629,\"trafficSplit\":[0,1],\"fullOnVariant\":0," +
+            "\"applications\":[{\"name\":\"website\"}],\"audienceStrict\":true," +
+            "\"audience\":\"{\\\"filter\\\":[{\\\"gte\\\":[{\\\"var\\\":\\\"age\\\"},{\\\"value\\\":200}]}]}\"," +
+            "\"variants\":[{\"name\":\"A\",\"config\":\"{\\\"shared.key\\\":\\\"control-" + name + "\\\"}\"}," +
+            "{\"name\":\"B\",\"config\":\"{\\\"shared.key\\\":\\\"treatment-" + name + "\\\"}\"}]}";
     }
 
     [Test]
