@@ -1339,6 +1339,27 @@ public class ContextHoldoutTests
         AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 1));
     }
 
+    // When both the experiment's exposure and its holdout's throw, the experiment's exception
+    // propagates (it is queued first, as JS _triggerExposures) and both stay queued.
+    [Test]
+    public void ExperimentLoggerFailureIsRethrownBeforeItsHoldoutsFailure()
+    {
+        var experimentFailure = new InvalidOperationException("experiment");
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 1)))
+            .Throws(experimentFailure);
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Throws(new InvalidOperationException("holdout"));
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo) },
+            CoveredBy(NewExperiment(1, "exp_both_fail"), 11)));
+
+        var act = () => context.GetTreatment("exp_both_fail");
+
+        act.Should().Throw<InvalidOperationException>().Which.Should().BeSameAs(experimentFailure);
+        context.PendingCount.Should().Be(2);
+    }
+
     [Test]
     public void ThrowingLoggerDoesNotMakeExperimentOrHoldoutExposureRetryable()
     {
