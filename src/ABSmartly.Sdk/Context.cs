@@ -5,7 +5,6 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ABSmartly.Concurrency;
@@ -1530,21 +1529,26 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return SwitchbackServing.Resolve(experiment.SwitchbackSources, experiment.Data.SwitchbackClusterValues, _units,
             path =>
             {
-                // A null value (C# or JSON) counts as unset, as the Collector's computeIfAbsent sees it.
+                // A value published as null (null, JSON null, NaN, an infinity) counts as unset, as
+                // the Collector's computeIfAbsent sees it.
                 var value = LatestAttribute(path.RootKey, now)?.Value;
-                if (value == null || value is JsonElement { ValueKind: JsonValueKind.Null })
-                    _collectorAttributes.TryGetValue(path.RootKey, out value);
+                if (_collectorAttributes.TryGetValue(path.RootKey, out var configured) &&
+                    SwitchbackAttributePath.IsWireNull(value))
+                    value = configured;
                 return path.ResolveAttribute(value);
             });
     }
 
     // The slot's serving resolution and the instant it was read: reused when this slot already read
-    // it (unless no linked unit was set then), otherwise read now.
+    // it, otherwise read now. A read with no linked unit set, or by a silent slot, is not reused: a
+    // silent slot published nothing and recorded no read (RecordClusterRead), so a rebuild that can
+    // publish (an override, a full-on refresh) reads again rather than stamp its exposure at a read
+    // whose attributes were never protected.
     private (SwitchbackServing Serving, long ReadAt, int UnitCount) SwitchbackServingFor(
         ExperimentVariables experiment, Assignment previous, long now)
     {
         var cached = previous?.Switchback;
-        return cached != null && cached.Serving.Status != SwitchbackServing.ServingStatus.Absent
+        return cached != null && !cached.Silent && cached.Serving.Status != SwitchbackServing.ServingStatus.Absent
             ? (cached.Serving, cached.ServingReadAt, cached.ServingUnitCount)
             : (ResolveSwitchbackServing(experiment, now), now, _unitOrder.Count);
     }

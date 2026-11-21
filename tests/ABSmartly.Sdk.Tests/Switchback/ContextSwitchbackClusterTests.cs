@@ -564,11 +564,16 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         nulled.SetAttribute("environment", null!);
         nulled.GetTreatment("exp_sb").Should().Be(0);
         nulled.PendingCount.Should().Be(0);
-        var jsonNull = Make("production");
-        jsonNull.SetAttribute("city", "Faro");
-        jsonNull.SetAttribute("environment", System.Text.Json.JsonDocument.Parse("null").RootElement);
-        jsonNull.GetTreatment("exp_sb").Should().Be(0);
-        jsonNull.PendingCount.Should().Be(0);
+        // Likewise any value published as null.
+        foreach (var wireNull in new object[]
+                 { System.Text.Json.JsonDocument.Parse("null").RootElement, double.NaN, double.PositiveInfinity, float.NaN })
+        {
+            var unset = Make("production");
+            unset.SetAttribute("city", "Faro");
+            unset.SetAttribute("environment", wireNull);
+            unset.GetTreatment("exp_sb").Should().Be(0, "{0}", wireNull);
+            unset.PendingCount.Should().Be(0, "{0}", wireNull);
+        }
 
         // Without user_id the environment source is not read; city alone serves.
         var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };

@@ -159,6 +159,23 @@ internal sealed class SwitchbackAttributePath
         return new SwitchbackAttributePath(keys.ToArray(), indices.ToArray());
     }
 
+    // Whether an attribute value is published as JSON null (WireOptions): null, a JSON null, or a
+    // NaN or infinite number. A value with no JSON encoding is not.
+    internal static bool IsWireNull(object value)
+    {
+        if (value == null) return true;
+        if (IsScalar(value) && !(value is double || value is float)) return false;
+        try
+        {
+            return JsonSerializer.SerializeToElement(value, WireOptions.Value).ValueKind == JsonValueKind.Null;
+        }
+        catch (Exception e) when (e is JsonException || e is NotSupportedException || e is InvalidOperationException ||
+                                  e is ArgumentException)
+        {
+            return false;
+        }
+    }
+
     // Java String.trim(), as the Collector trims attribute names: only characters at or below
     // U+0020 are removed from either end (.NET Trim() also removes Unicode white space, e.g. U+00A0).
     internal static string JavaTrim(string s)

@@ -571,6 +571,59 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         PublishEvent(context).Attributes!.Last().SetAt.Should().Be(Anchor + Hour + 10);
     }
 
+    // A silent read is not reused by a rebuild that can publish: after an ineligible read, a
+    // rewound cluster write and an override, the exposure is stamped at a new read, and the
+    // Collector's replay at exposedAt finds the cluster and unit that served.
+    [Test]
+    public void OverrideAfterASilentReadReplaysTheServedCluster()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        context.SetUnit("user_id", "u1");
+        context.SetAttribute("city", "Faro");
+        context.SetAttribute("user_city", "Lisboa");
+        Clock.Now = Anchor + Hour + 20;
+        context.PeekTreatment("exp_sb").Should().Be(0, "city and user_city disagree");
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute("user_city", "Faro");
+        context.SetOverride("exp_sb", 1);
+        Clock.Now = Anchor + Hour + 12;
+        context.GetTreatment("exp_sb").Should().Be(1);
+        var published = PublishEvent(context);
+        var exposure = published.Exposures!.Single();
+        exposure.Should().Match<Exposure>(e => e.Overridden && e.Eligible && e.Unit == UnitType);
+        exposure.ExposedAt.Should().Be(Anchor + Hour + 12);
+        published.Attributes!.Where(a => a.Name == "user_city" && a.SetAt <= exposure.ExposedAt)
+            .OrderBy(a => a.SetAt).Last().Value.Should().Be("Faro");
+    }
+
+    // The same after a pre-start silent read and a refresh that turns the experiment full-on.
+    [Test]
+    public void FullOnRefreshAfterASilentReadReplaysTheServedCluster()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city");
+        experiment.SwitchbackClusterValues = new[] { "Faro" };
+        var context = CreateContext(DataOf(experiment));
+        context.SetAttribute("city", "Faro");
+        Clock.Now = Anchor - 10;
+        context.PeekTreatment("exp_sb").Should().Be(0, "before the start");
+        Clock.Now = Anchor - 20;
+        context.SetAttribute("city", "Porto");
+        context.SetAttribute("city", "Faro");
+        var fullOn = NewSwitchback(2, Hour);
+        fullOn.SwitchbackClusters = Clusters(UnitType, "city");
+        fullOn.SwitchbackClusterValues = new[] { "Faro" };
+        fullOn.FullOnVariant = 1;
+        RefreshTo(context, fullOn);
+        Clock.Now = Anchor - 15;
+        context.GetTreatment("exp_sb").Should().Be(1);
+        var published = PublishEvent(context);
+        var exposure = published.Exposures!.Single();
+        exposure.Should().Match<Exposure>(e => e.FullOn && e.Eligible);
+        published.Attributes!.Where(a => a.Name == "city" && a.SetAt <= exposure.ExposedAt)
+            .OrderBy(a => a.SetAt).Last().Value.Should().Be("Faro");
+    }
+
     [Test]
     public void RefreshRetainsRootsWhoseExposuresCanStillBePending()
     {
