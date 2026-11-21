@@ -1933,6 +1933,26 @@ public class ContextHoldoutTests
         _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
     }
 
+    // A refresh that removes or adds a trailing holdout changes the coverage, so the unit is
+    // re-resolved against the new set: 12 holds Uid out, 11 does not.
+    [TestCase(new[] { 11, 12 }, new[] { 11 }, 0, NormalVariant)]
+    [TestCase(new[] { 11 }, new[] { 11, 12 }, NormalVariant, 0)]
+    public void RefreshChangingTheNumberOfHoldoutsReResolvesCoverage(int[] before, int[] after, int variantBefore,
+        int variantAfter)
+    {
+        var holdouts = new[]
+        {
+            NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo),
+            NewHoldout(12, "holdout_a", HoldoutASeedHi, HoldoutASeedLo)
+        };
+        var context = CreateContext(DataOf(holdouts, CoveredBy(NewExperiment(1, "exp_resized"), before)));
+        context.PeekTreatment("exp_resized").Should().Be(variantBefore);
+
+        Refresh(context, DataOf(holdouts, CoveredBy(NewExperiment(1, "exp_resized"), after)));
+
+        context.PeekTreatment("exp_resized").Should().Be(variantAfter);
+    }
+
     // A stale holdout definition (here an older iteration under another name) resolves to the
     // live one: its iteration, arm and name.
     [Test]
