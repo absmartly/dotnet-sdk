@@ -139,8 +139,6 @@ M = [
  ('replay: silent reads re-date their roots', S+'Context.cs', '        if (!state.Silent) RecordClusterRead(experiment, servingReadAt);', '        RecordClusterRead(experiment, servingReadAt);'),
  ('replay: unset linked units re-date their roots', S+'Context.cs', '            if (!_units.ContainsKey(source.Key)) continue;\n            var root = source.Value.RootKey;', '            var root = source.Value.RootKey;'),
  ('concurrency: refresh takes the context lock under the data lock', S+'Context.cs', '            if (hasSwitchbacks) _hasSwitchbacks = true;\n', '            if (hasSwitchbacks) _hasSwitchbacks = true;\n            _contextLock.EnterWriteLock(); _contextLock.ExitWriteLock();\n'),
- ('collector: cluster paths ignore collector attributes', S+'Context.cs', '                return _collectorAttributes.TryGetValue(path.RootKey, out var injected)', '                return false && _collectorAttributes.TryGetValue(path.RootKey, out var injected)'),
- ('collector: collector attribute overrides explicit', S+'Context.cs', '                if (attribute != null) return path.ResolveAttribute(attribute.Value);\n', ''),
  ('collector: version added without application', S+'Sdk.cs', '            if (version != 0) attributes["application_version"] = version;\n        }\n', '        }\n        attributes["application_version"] = 1004L;\n'),
  ('collector: zero version added', S+'Sdk.cs', 'if (version != 0) attributes["application_version"] = version;', 'attributes["application_version"] = version;'),
  ('collector: dotnet whitespace for blank', S+'Sdk.cs', '            if (!IsJavaWhitespace(c)) return false;', '            if (!char.IsWhiteSpace(c)) return false;'),
@@ -149,6 +147,10 @@ M = [
  ('path: whitespace accepted', S+'Internal/SwitchbackAttributePath.cs', 'NumberStyles.AllowLeadingSign, CultureInfo', 'NumberStyles.Integer, CultureInfo'),
  ('collector: pending contexts not given collector attributes', S+'Sdk.cs', '            _systemAttributes,\n            _collectorAttributes);\n    }\n\n    public IContext CreateContextWith', '            _systemAttributes,\n            null);\n    }\n\n    public IContext CreateContextWith'),
  ('collector: data contexts not given collector attributes', S+'Sdk.cs', '            _systemAttributes,\n            _collectorAttributes);\n\n        return context;', '            _systemAttributes,\n            null);\n\n        return context;'),
+ ('collector: cluster paths ignore collector attributes', S+'Context.cs', '                if (value == null) _collectorAttributes.TryGetValue(path.RootKey, out value);\n', ''),
+ ('collector: collector attribute overrides explicit', S+'Context.cs', '                if (value == null) _collectorAttributes.TryGetValue(path.RootKey, out value);', '                if (_collectorAttributes.TryGetValue(path.RootKey, out var injected)) value = injected;'),
+ ('collector: explicit null hides the configured value', S+'Context.cs', '                var value = LatestAttribute(path.RootKey, now)?.Value;\n                if (value == null) _collectorAttributes', '                var latest = LatestAttribute(path.RootKey, now);\n                var value = latest?.Value;\n                if (latest == null) _collectorAttributes'),
+ ('collector: configured values untrimmed', S+'Sdk.cs', "var environment = serviceConfiguration?.Environment?.Trim(' ', '\\t');", 'var environment = serviceConfiguration?.Environment;'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',

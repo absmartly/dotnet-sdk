@@ -557,6 +557,14 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         overridden.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
         overridden.PendingCount.Should().Be(1);
 
+        // An explicit null counts as unset: the configured value is read, as the Collector does, so
+        // here city=Faro and the configured production still disagree.
+        var nulled = Make("production");
+        nulled.SetAttribute("city", "Faro");
+        nulled.SetAttribute("environment", null!);
+        nulled.GetTreatment("exp_sb").Should().Be(0);
+        nulled.PendingCount.Should().Be(0);
+
         // Without user_id the environment source is not read; city alone serves.
         var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
         config.SetUnit(UnitType, Uid);
@@ -582,6 +590,9 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         // Java isBlank: whitespace-only is blank, a non-breaking space is not.
         ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { Application = " \t\u2003", Environment = "\u00a0" })
             .Should().BeEquivalentTo(new Dictionary<string, object> { ["environment"] = "\u00a0" });
+        // Surrounding spaces and tabs are not part of the header value the Collector reads.
+        ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { Application = " website\t", Environment = "\t production " })
+            .Should().BeEquivalentTo(new Dictionary<string, object> { ["application"] = "website", ["environment"] = "production" });
         ABsmartly.Sdk.BuildCollectorAttributes(null).Should().BeEmpty();
     }
 

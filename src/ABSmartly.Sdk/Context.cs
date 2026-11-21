@@ -1529,11 +1529,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return SwitchbackServing.Resolve(experiment.SwitchbackSources, experiment.Data.SwitchbackClusterValues, _units,
             path =>
             {
-                var attribute = LatestAttribute(path.RootKey, now);
-                if (attribute != null) return path.ResolveAttribute(attribute.Value);
-                return _collectorAttributes.TryGetValue(path.RootKey, out var injected)
-                    ? path.ResolveAttribute(injected)
-                    : null;
+                // A null value counts as unset, as the Collector's computeIfAbsent sees it.
+                var value = LatestAttribute(path.RootKey, now)?.Value;
+                if (value == null) _collectorAttributes.TryGetValue(path.RootKey, out value);
+                return path.ResolveAttribute(value);
             });
     }
 

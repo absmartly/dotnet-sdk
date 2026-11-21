@@ -114,16 +114,19 @@ public class Sdk
         ABSmartlyServiceConfiguration serviceConfiguration)
     {
         var attributes = new Dictionary<string, object>(3);
-        if (!IsJavaBlank(serviceConfiguration?.Application))
+        // Header values arrive without surrounding spaces and tabs (RFC 9110 field values).
+        var application = serviceConfiguration?.Application?.Trim(' ', '\t');
+        var environment = serviceConfiguration?.Environment?.Trim(' ', '\t');
+        if (!IsJavaBlank(application))
         {
-            attributes["application"] = serviceConfiguration.Application;
+            attributes["application"] = application;
             var version = long.Parse(ABSmartlyService.ApplicationVersionHeader(serviceConfiguration.ApplicationVersion),
                 System.Globalization.CultureInfo.InvariantCulture);
             if (version != 0) attributes["application_version"] = version;
         }
 
-        if (!IsJavaBlank(serviceConfiguration?.Environment))
-            attributes["environment"] = serviceConfiguration.Environment;
+        if (!IsJavaBlank(environment))
+            attributes["environment"] = environment;
 
         return attributes;
     }
