@@ -144,10 +144,11 @@ M = [
  ('collector: version added without application', S+'Sdk.cs', '            if (version != 0) attributes["application_version"] = version;\n        }\n', '        }\n        attributes["application_version"] = 1004L;\n'),
  ('collector: zero version added', S+'Sdk.cs', 'if (version != 0) attributes["application_version"] = version;', 'attributes["application_version"] = version;'),
  ('collector: dotnet whitespace for blank', S+'Sdk.cs', '            if (!IsJavaWhitespace(c)) return false;', '            if (!char.IsWhiteSpace(c)) return false;'),
- ('collector: contexts not given collector attributes', S+'Sdk.cs', '            _systemAttributes,\n            _collectorAttributes);', '            _systemAttributes,\n            null);', '            _systemAttributes,\n            _collectorAttributes);', '            _systemAttributes,\n            null);'),
  ('path: leading plus accepted', S+'Internal/SwitchbackAttributePath.cs', "s.Length > 0 && s[0] != '+' && s.IndexOf('\\0') < 0 &&", "s.Length > 0 && s.IndexOf('\\0') < 0 &&"),
  ('path: NUL accepted', S+'Internal/SwitchbackAttributePath.cs', "s.Length > 0 && s[0] != '+' && s.IndexOf('\\0') < 0 &&", "s.Length > 0 && s[0] != '+' &&"),
  ('path: whitespace accepted', S+'Internal/SwitchbackAttributePath.cs', 'NumberStyles.AllowLeadingSign, CultureInfo', 'NumberStyles.Integer, CultureInfo'),
+ ('collector: pending contexts not given collector attributes', S+'Sdk.cs', '            _systemAttributes,\n            _collectorAttributes);\n    }\n\n    public IContext CreateContextWith', '            _systemAttributes,\n            null);\n    }\n\n    public IContext CreateContextWith'),
+ ('collector: data contexts not given collector attributes', S+'Sdk.cs', '            _systemAttributes,\n            _collectorAttributes);\n\n        return context;', '            _systemAttributes,\n            null);\n\n        return context;'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',
