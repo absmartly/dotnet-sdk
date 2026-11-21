@@ -844,6 +844,20 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         json.Should().Contain("redacted").And.NotContain("private");
     }
 
+    // Redacting in place and assigning the same object back also reaches the default serializer.
+    [Test]
+    public void PublisherCanRedactInPlaceAndReassign()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        context.SetAttribute("profile", new Dictionary<string, object> { ["secret"] = "private" });
+        context.Track("g", null!);
+        var attribute = PublishEvent(context).Attributes!.Single(a => a.Name == "profile");
+        ((Dictionary<string, object>)attribute.Value)["secret"] = "redacted";
+        attribute.Value = attribute.Value;
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(Published[^1].Event));
+        json.Should().Contain("redacted").And.NotContain("private");
+    }
+
     [Test]
     public void ThrowingConfiguredRootDoesNotEscapeTheLookup()
     {

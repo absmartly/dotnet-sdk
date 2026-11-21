@@ -482,7 +482,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var guard = deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.None;
             if (assignment.HoldoutAssignments == null)
             {
-                EnqueueExposure(assignment, assignment.Name, guard);                return;
+                EnqueueExposure(assignment, assignment.Name, guard);
+                return;
             }
 
             ExceptionDispatchInfo failure = null;

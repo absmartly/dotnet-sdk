@@ -175,6 +175,7 @@ M = [
  ('wire: customer getter exception leaks', S+'Internal/SwitchbackAttributePath.cs', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value);\n        }\n        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&\n                                  !(e is System.Threading.ThreadAbortException))', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value);\n        }\n        catch (Exception e) when (e is System.Text.Json.JsonException)'),
  ('wire: redaction leaves frozen data', S+'Models/Attribute.cs', '            WireValue = null;\n', ''),
  ('wire: configured-root getter exception leaks', S+'Internal/SwitchbackAttributePath.cs', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value).ValueKind == JsonValueKind.Null;\n        }\n        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&\n                                  !(e is System.Threading.ThreadAbortException))', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value).ValueKind == JsonValueKind.Null;\n        }\n        catch (Exception e) when (e is System.Text.Json.JsonException)'),
+ ('wire: self-assignment keeps frozen data', S+'Models/Attribute.cs', '            _value = value;\n            WireValue = null;', '            if (!ReferenceEquals(_value, value)) WireValue = null;\n            _value = value;'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',
