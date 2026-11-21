@@ -427,27 +427,31 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // theirs. The holdouts fire even when the experiment's exposure throws (a throwing event
     // logger), since this assignment is already marked exposed and would never fire them again;
     // the first failure is rethrown once every holdout has fired.
-    private void QueueExposure(Assignment assignment)
+    // deferred: the exposure was deferred past an earlier logger failure, so nothing is queued
+    // once the context is closing or closed (checked under the event lock, where close sets
+    // _closing).
+    private void QueueExposure(Assignment assignment, bool deferred = false)
     {
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
             if (assignment.HoldoutAssignments == null)
             {
-                EnqueueExposure(assignment);
+                EnqueueExposure(assignment, assignment.Name, deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.None);
                 return;
             }
 
             ExceptionDispatchInfo failure = null;
             try
             {
-                if (!assignment.Suppressed) EnqueueExposure(assignment);
+                if (!assignment.Suppressed)
+                    EnqueueExposure(assignment, assignment.Name, deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.None);
             }
             catch (Exception e)
             {
                 failure = ExceptionDispatchInfo.Capture(e);
             }
 
-            var holdoutFailure = TriggerHoldoutExposures(assignment);
+            var holdoutFailure = TriggerHoldoutExposures(assignment, deferred);
             (failure ?? holdoutFailure)?.Throw();
         }
     }
@@ -455,7 +459,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // Fires the holdout decisions pinned when the assignment was resolved, in holdout id order,
     // each once per (holdout, unit type): a refresh after the decision cannot publish a holdout
     // exposure from another iteration. A null entry (the unit was missing) fires nothing.
-    private ExceptionDispatchInfo TriggerHoldoutExposures(Assignment assignment)
+    // They follow the experiment's own exposure, whose logger may have closed the context: a closed
+    // context has flushed for good, so they are not queued there.
+    private ExceptionDispatchInfo TriggerHoldoutExposures(Assignment assignment, bool deferred = false)
     {
         var holdoutAssignments = assignment.HoldoutAssignments;
         if (holdoutAssignments == null) return null;
@@ -471,7 +477,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
             try
             {
-                EnqueueExposure(holdoutAssignment, holdouts[i].Name);
+                EnqueueExposure(holdoutAssignment, holdouts[i].Name,
+                    deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.UnlessClosed);
             }
             catch (Exception e)
             {
@@ -484,7 +491,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     private void EnqueueExposure(Assignment assignment) => EnqueueExposure(assignment, assignment.Name);
 
-    private void EnqueueExposure(Assignment assignment, string name)
+    private enum EnqueueGuard
+    {
+        None,
+        UnlessClosed,
+        UnlessClosing
+    }
+
+    private void EnqueueExposure(Assignment assignment, string name, EnqueueGuard guard = EnqueueGuard.None)
     {
         var exposure = new Exposure
         {
@@ -505,6 +519,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         try
         {
             Monitor.Enter(_eventLock);
+            if (guard == EnqueueGuard.UnlessClosed && _closed || guard == EnqueueGuard.UnlessClosing && IsDisposing())
+                return;
             Interlocked.Increment(ref _pendingCount);
             _exposures.Add(exposure);
         }
@@ -1062,7 +1078,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var current = TryGetUpToDateAssignment(experimentName, true);
             if (current != null) return current;
 
-            // The experiment and the holdout index come from the same installed payload.
             var experiment = GetExperiment(experimentName, out var holdoutsById);
             if (AfterExperimentSnapshot != null) Interlocked.Exchange(ref AfterExperimentSnapshot, null)?.Invoke();
             var attrsSeqAtBuild = _attrsSeq;
@@ -1226,18 +1241,16 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
                 // An earlier candidate's holdout logger threw (so this is not a peek): the winner
                 // and its holdouts are exposed here, as the caller would, before the first
-                // failure propagates; unless that logger closed the context, which has already
-                // flushed and must not be left with a new pending exposure.
-                if (!IsDisposing())
+                // failure propagates; unless the context is closing or closed (by that logger or
+                // another thread), which has flushed and must not be left with a new pending
+                // exposure.
+                try
                 {
-                    try
-                    {
-                        QueueExposure(assignment);
-                    }
-                    catch (Exception)
-                    {
-                        // The first failure is the one rethrown.
-                    }
+                    QueueExposure(assignment, deferred: true);
+                }
+                catch (Exception)
+                {
+                    // The first failure is the one rethrown.
                 }
 
                 failure.Throw();
@@ -1249,7 +1262,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // is rethrown once the key is resolved.
             if (doExposure && assignment.HoldoutAssignments != null)
             {
-                var holdoutFailure = TriggerHoldoutExposures(assignment);
+                var holdoutFailure = TriggerHoldoutExposures(assignment, deferred: failure != null);
                 failure ??= holdoutFailure;
             }
 

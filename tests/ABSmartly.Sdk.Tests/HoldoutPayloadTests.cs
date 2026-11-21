@@ -250,7 +250,6 @@ public class HoldoutPayloadTests
         CreateContext(data, publisher).GetTreatment("exp_covered").Should().Be(treatment);
     }
 
-    // A fractional holdoutIds entry is not a reference to the holdout with the truncated id.
     [Test]
     public void FractionalHoldoutIdIsNotAReference()
     {
