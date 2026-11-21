@@ -1,6 +1,6 @@
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using ABSmartly.Internal;
 using ABSmartly.Models;
 using ABSmartly.Services;
 
@@ -12,11 +12,16 @@ namespace ABSmartly.Sdk.Tests.Switchback;
 [TestFixture]
 public class SwitchbackPublishSplitTests : SwitchbackTestBase
 {
-    private Context WithLogger(List<(EventType, object)> events, ContextData data)
+    private Context WithLogger(List<(EventType, object)> events, ContextData data,
+        TaskCompletionSource<bool>? closeLogged = null)
     {
         var logger = new Mock<IContextEventLogger>();
         logger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), It.IsAny<EventType>(), It.IsAny<object>()))
-            .Callback<IContext, EventType, object>((_, t, e) => { lock (events) events.Add((t, e)); });
+            .Callback<IContext, EventType, object>((_, t, e) =>
+            {
+                lock (events) events.Add((t, e));
+                if (t == EventType.Close) closeLogged?.TrySetResult(true);
+            });
         var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
         config.SetUnit(UnitType, Uid);
         return Context.CreateWithData(config, data, Clock, DataProvider.Object, Publisher, logger.Object,
@@ -306,7 +311,8 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
             });
         Publisher = publisher.Object;
         var events = new List<(EventType, object)>();
-        var context = WithLogger(events, DataOf(Linked()));
+        var closeLogged = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var context = WithLogger(events, DataOf(Linked()), closeLogged);
         Clock.Now = Anchor + Hour + 1;
         context.Track("first", null!);
         var publish = context.PublishAsync();
@@ -328,6 +334,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         await FluentActions.Awaiting(() => publish).Should().ThrowAsync<InvalidOperationException>();
         await context.FinalizeAsync();
         context.IsClosed().Should().BeTrue();
+        (await Task.WhenAny(closeLogged.Task, Task.Delay(5000))).Should().Be(closeLogged.Task, "the close is reported");
 
         List<PublishEvent> logged;
         lock (events) logged = events.Where(e => e.Item1 == EventType.Publish).Select(e => (PublishEvent)e.Item2).ToList();
@@ -439,7 +446,6 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         Published[0].Event.Goals!.Select(g => g.Name).Should().Equal("purchase", "refund");
     }
 
-    // The batch instant covers every request, not only the last.
     [Test]
     public void SplitRequestsUseTheLatestExposureOfTheWholeBatch()
     {
@@ -488,6 +494,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         served.PendingCount.Should().Be(matches ? 1 : 0);
 
         var rewound = CreateContext(DataOf(Linked()));
+        rewound.SetAttribute("city", "Lisboa");
         Clock.Now = Anchor + Hour + 20;
         rewound.PeekTreatment("exp_sb");
         Clock.Now = Anchor + Hour + 10;
@@ -502,6 +509,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     {
         var experiment = Linked();
         var context = CreateContext(DataOf(experiment));
+        context.SetAttribute("city", "Lisboa");
         Clock.Now = Anchor + Hour + 20;
         context.PeekTreatment("exp_sb");
         Clock.Now = Anchor + Hour + 10;
@@ -511,26 +519,63 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     }
 
     [Test]
-    public void EverySourceAndExperimentRegistersItsRoot()
+    public void OnlyRootsAPublishableReadUsedAreRedated()
     {
+        // exp_sb reads city (user_id is not set, so not user_city); exp_b is never read.
         var a = Linked();
         var b = NewSwitchback(2, "exp_b", 2, Hour);
         b.SwitchbackClusters = Clusters(UnitType, "other/value");
         var context = CreateContext(DataOf(a, b));
+        context.SetAttribute("city", "Lisboa");
         Clock.Now = Anchor + Hour + 20;
         context.PeekTreatment("exp_sb");
         Clock.Now = Anchor + Hour + 10;
         context.SetAttribute("user_city", "Porto");
         context.SetAttribute("other", new Dictionary<string, object> { ["value"] = "Faro" });
+        context.SetAttribute("city", "Faro");
         context.Track("g", null!);
-        PublishEvent(context).Attributes.TakeLast(2).Select(a => a.SetAt)
-            .Should().Equal(Anchor + Hour + 21, Anchor + Hour + 21);
+        PublishEvent(context).Attributes.TakeLast(3).Select(a => a.SetAt)
+            .Should().Equal(Anchor + Hour + 10, Anchor + Hour + 10, Anchor + Hour + 21);
+    }
+
+    // A read of one experiment does not hide a different cluster attribute set, after a rewind,
+    // before its own experiment's first lookup.
+    [Test]
+    public void ReadOfOneClusterDoesNotHideAnotherClustersFirstWrite()
+    {
+        var a = NewSwitchback(1, "exp_a", 2, Hour); a.SwitchbackClusters = Clusters(UnitType, "other_city");
+        var b = NewSwitchback(2, "exp_b", 2, Hour); b.SwitchbackClusters = Clusters(UnitType, "city");
+        var context = CreateContext(DataOf(a, b));
+        context.SetAttribute("other_city", "Lisboa");
+        Clock.Now = Anchor + Hour + 20;
+        context.GetTreatment("exp_a");
+        Clock.Now = Anchor + Hour + 15;
+        context.SetAttribute("city", "Faro");
+        Clock.Now = Anchor + Hour + 16;
+        context.GetTreatment("exp_b").Should().Be(SwitchbackAssigner.Assign("Faro", 1, Seed, 2));
+        var published = PublishEvent(context);
+        published.Exposures!.Select(e => e.Name).Should().Equal("exp_a", "exp_b");
+        published.Attributes!.Single(x => x.Name == "city").SetAt.Should().Be(Anchor + Hour + 15);
+    }
+
+    // A silent read (no usable cluster value) publishes nothing, so it does not re-date its root.
+    [Test]
+    public void SilentReadDoesNotRedateItsRoot()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 20;
+        context.PeekTreatment("exp_sb").Should().Be(0);
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute("city", "Faro");
+        context.Track("g", null!);
+        PublishEvent(context).Attributes!.Last().SetAt.Should().Be(Anchor + Hour + 10);
     }
 
     [Test]
     public void RefreshRetainsRootsWhoseExposuresCanStillBePending()
     {
         var context = CreateContext(DataOf(Linked()));
+        context.SetAttribute("city", "Lisboa");
         Clock.Now = Anchor + Hour + 20;
         context.PeekTreatment("exp_sb");
         var replacement = NewSwitchback(2, "replacement", 2, Hour);
@@ -542,7 +587,6 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         PublishEvent(context).Attributes.Last().SetAt.Should().Be(Anchor + Hour + 21);
     }
 
-    // Every request of a flush uses the units snapshotted when it started.
     [Test]
     public void UnitSetDuringASplitFlushDoesNotReachLaterRequests()
     {
@@ -572,30 +616,24 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         sent[1].Units.Select(u => u.Type).Should().Equal(UnitType, "device_id");
     }
 
-    // Refresh registers cluster roots outside the data lock. A lookup takes the context lock and
-    // then the data lock, so a refresh that took the data lock before the context lock would
-    // deadlock with it. While a setter holds the context lock, a refresh is left waiting for it; the
-    // data lock a lookup needs next must still be free.
+    // A lookup takes the context lock and then the data lock, so a refresh that took the context
+    // lock while holding the data lock could deadlock with it. Refresh takes no context lock: it
+    // completes while a setter holds it.
     [Test]
     [Timeout(20000)]
-    public void RefreshWaitingForTheContextLockHoldsNoDataLock()
+    public void RefreshCompletesWhileTheContextLockIsHeld()
     {
         var context = CreateContext(DataOf(Linked()));
         DataProvider.Setup(x => x.GetContextDataAsync()).ReturnsAsync(() => DataOf(Linked()));
-        var contextLock = (ReaderWriterLockSlim)typeof(Context)
-            .GetField("_contextLock", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(context)!;
-        Thread? refresh = null;
-        var dataLockFree = false;
+        var refreshed = false;
         context.InsideAttributeAppend = () =>
         {
-            refresh = new Thread(() => context.Refresh()) { IsBackground = true };
+            var refresh = new Thread(() => context.Refresh()) { IsBackground = true };
             refresh.Start();
-            SpinWait.SpinUntil(() => contextLock.WaitingWriteCount > 0, 5000).Should().BeTrue("the refresh waits for the context lock");
-            dataLockFree = Task.Run(() => context.GetContextData()).Wait(1000);
+            refreshed = refresh.Join(5000);
         };
         context.SetAttribute("city", "Faro");
-        refresh!.Join(5000).Should().BeTrue("the refresh completes");
-        dataLockFree.Should().BeTrue("a refresh waiting for the context lock must not hold the data lock");
+        refreshed.Should().BeTrue("a refresh must not wait for the context lock");
     }
 
     // The rewind decision and the attribute append are one write-locked step, so the appended value

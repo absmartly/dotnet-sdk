@@ -62,7 +62,7 @@ public class SwitchbackPayloadTests
             e.SwitchbackStartAt == null && e.SwitchbackPeriodMs == null && e.SwitchbackDesignType == null);
     }
 
-    // S4: the cluster map keeps the served key order, which is not alphabetical, nor the order a
+    // The cluster map keeps the served key order, which is not alphabetical, nor the order a
     // Dictionary of these keys would enumerate in; a repeated key keeps its first position and takes
     // the last value, as a LinkedHashMap.
     [Test]
@@ -103,7 +103,7 @@ public class SwitchbackPayloadTests
             "\"switchbackClusterValues\":[\"a\",1,null,\"b\"],\"switchbackStartAt\":3.6e6,\"switchbackPeriodMs\":-1");
         mixed.SwitchbackClusters.Should().Equal(new KeyValuePair<string, string>("store_id", "store"),
             new KeyValuePair<string, string>("user_id", null!));
-        // As Jackson reads a String[]: scalars as their JSON text, null as null.
+        // As Jackson reads a String[].
         mixed.SwitchbackClusterValues.Should().Equal("a", "1", null, "b");
         mixed.SwitchbackStartAt.Should().Be(3_600_000L);
         mixed.SwitchbackPeriodMs.Should().Be(-1);

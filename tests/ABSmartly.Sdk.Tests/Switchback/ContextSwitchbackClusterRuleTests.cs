@@ -234,7 +234,6 @@ public class ContextSwitchbackClusterRuleTests
         var attributes = Attrs("geo", Attrs("city", "Porto"), "geo.city", "Faro", "session_store", "s-1");
         // The declared unit (user_id) only identifies an ineligible control response.
         AssertIneligible(attributes, User, Unit(Session, "x1"), Unit(User, "u1"));
-        // Without a unit of the declared type, there is no response at all.
         Sbc(attributes, Unit(Session, "x1")).Should().BeNull();
     }
 
@@ -261,7 +260,6 @@ public class ContextSwitchbackClusterRuleTests
             assignment.Unit.Should().Be(Session);
             assignment.Eligible.Should().Be(servingEligible);
             assignment.Variant.Should().Be(servingEligible ? Scheduled(key) : 0);
-            // A traffic miss on an eligible cluster is still recorded, under the serving unit.
             assignment.Exposures.Should().ContainSingle();
             assignment.Exposures[0].Unit.Should().Be(Session);
             assignment.Exposures[0].Eligible.Should().Be(servingEligible);
@@ -536,8 +534,6 @@ public class ContextSwitchbackClusterRuleTests
                     var message = $"{cluster}/{anchor}/{periodMs}/{uid}/{key}/{now}";
                     context.GetTreatment("sbc").Should().Be(variant, message);
                     context.CachedAssignmentForTest("sbc")!.Eligible.Should().Be(oracleEligible, message);
-                    // Before the anchor nothing is recorded; from it, a keyed cluster records one exposure
-                    // whose eligibility is the oracle's (a traffic miss included).
                     var expectedExposures = oracleKey != null && now >= anchor ? 1 : 0;
                     _captured.Should().HaveCount(expectedExposures, message);
                     if (expectedExposures == 1) _captured[0].Eligible.Should().Be(oracleEligible, message);

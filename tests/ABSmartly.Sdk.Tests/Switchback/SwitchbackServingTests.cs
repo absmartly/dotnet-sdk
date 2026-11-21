@@ -165,7 +165,6 @@ public class SwitchbackServingTests
         SwitchbackServing.Allowed(new string[] { null! }, "42").Should().BeFalse();
         Resolve(sources, units, "{\"va\":\"x\"}", new string[] { null! }).Status
             .Should().Be(SwitchbackServing.ServingStatus.Ineligible);
-        // Compared ordinally: case and normalisation are significant.
         Resolve(sources, units, "{\"va\":\"K\"}", new[] { "k" }).Status.Should().Be(SwitchbackServing.ServingStatus.Ineligible);
     }
 

@@ -316,7 +316,7 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         ExpectedSchedule("Lisboa").Should().NotEqual(ExpectedSchedule("Porto"));
     }
 
-    // Review regression: a whole floating-point value is published as a float (3.0), so the
+    // A whole floating-point value is published as a float (3.0), so the
     // Collector, which re-resolves clusters from the published attributes, does not see an integer
     // key 3 there that would disagree with the served cluster and drop the exposure.
     [Test]
@@ -445,8 +445,6 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         json.Should().Contain("\"value\":{\"n\":3}");
     }
 
-    // Review regression: a dictionary keyed by an enum beside the cluster field neither hides the
-    // field nor changes its published key names; an enum value is published as its name.
     [Test]
     public void EnumKeyedSiblingsDoNotHideTheClusterValue()
     {
@@ -463,9 +461,8 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         json.Should().Contain("\"value\":{\"city\":\"Faro\",\"hours\":{\"monday\":9},\"day\":\"Friday\"}");
     }
 
-    // Review regression: an enum value is a cluster key by its name, in the lookup and on the wire,
-    // so the SDK and the Collector's replay agree. Two linked sources, "Faro" and an enum: both
-    // disagree, so neither serves; an enum alone serves under its name.
+    // An enum value is a cluster key by its name, in the lookup and on the wire,
+    // so the SDK and the Collector's replay agree.
     [Test]
     public void EnumValuesKeyByNameInTheLookupAndOnTheWire()
     {
@@ -487,7 +484,7 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         PeekSchedule(alone).Should().Equal(ExpectedSchedule("Friday"));
     }
 
-    // Review regression: a NaN or infinite number anywhere in the attributes (even one the caller's
+    // A NaN or infinite number anywhere in the attributes (even one the caller's
     // own number handling would write as "NaN") is published as null, so the default serializer
     // never fails the whole batch of exposures and goals; it never keys a cluster.
     [Test]
@@ -516,6 +513,76 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         keyed.SetAttribute("city", double.NaN);
         keyed.GetTreatment("exp_sb").Should().Be(0);
         keyed.PendingCount.Should().Be(0);
+    }
+
+    // The Collector adds application, application_version and environment to a request that lacks
+    // them and replays the cluster from that map, so a cluster path rooted at one of them reads the
+    // configured value here too: serving and replay agree on eligibility and serving unit.
+    [Test]
+    public void ClusterPathsRootedAtCollectorAttributesReadTheConfiguredValues()
+    {
+        var experiment = AttributeSwitchback("city");
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "environment");
+        Context Make(string environment)
+        {
+            var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
+            config.SetUnit(UnitType, Uid);
+            config.SetUnit("user_id", "u1");
+            return Context.CreateWithData(config, DataOf(experiment), Clock, DataProvider.Object, Publisher, null,
+                new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), null, null,
+                ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration
+                    { Application = "website", Environment = environment, ApplicationVersion = "1004" }));
+        }
+
+        // city=Faro and environment=production disagree: ineligible, nothing published.
+        var disagreeing = Make("production");
+        disagreeing.SetAttribute("city", "Faro");
+        Clock.Now = Anchor + 10;
+        disagreeing.GetTreatment("exp_sb").Should().Be(0);
+        disagreeing.PendingCount.Should().Be(0);
+
+        // Equal values agree: eligible, served by the first linked unit, and the payload carries no
+        // environment attribute (the Collector adds it).
+        var agreeing = Make("Faro");
+        agreeing.SetAttribute("city", "Faro");
+        agreeing.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
+        var published = PublishEvent(agreeing);
+        published.Exposures!.Single().Should().Match<Exposure>(e => e.Eligible && e.Unit == UnitType);
+        published.Attributes!.Select(a => a.Name).Should().Equal("city");
+
+        // An explicit attribute wins over the configured one, as computeIfAbsent does.
+        var overridden = Make("production");
+        overridden.SetAttribute("city", "Faro");
+        overridden.SetAttribute("environment", "Faro");
+        overridden.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
+        overridden.PendingCount.Should().Be(1);
+
+        // Without user_id the environment source is not read; city alone serves.
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
+        config.SetUnit(UnitType, Uid);
+        var single = Context.CreateWithData(config, DataOf(experiment), Clock, DataProvider.Object, Publisher, null,
+            new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), null, null,
+            ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { Environment = "production" }));
+        single.SetAttribute("city", "Faro");
+        single.GetTreatment("exp_sb").Should().Be(Expected("Faro", 0));
+    }
+
+    [Test]
+    public void CollectorAttributesFollowTheCollectorsRules()
+    {
+        ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration
+                { Application = "website", Environment = "production", ApplicationVersion = "1004" })
+            .Should().BeEquivalentTo(new Dictionary<string, object>
+                { ["application"] = "website", ["application_version"] = 1004L, ["environment"] = "production" });
+        // Version 0 (unset or not a whole number) is not added; nor anything without an application.
+        ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { Application = "website", ApplicationVersion = "2.4.1" })
+            .Should().BeEquivalentTo(new Dictionary<string, object> { ["application"] = "website" });
+        ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { ApplicationVersion = "7", Environment = "dev" })
+            .Should().BeEquivalentTo(new Dictionary<string, object> { ["environment"] = "dev" });
+        // Java isBlank: whitespace-only is blank, a non-breaking space is not.
+        ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { Application = " \t\u2003", Environment = "\u00a0" })
+            .Should().BeEquivalentTo(new Dictionary<string, object> { ["environment"] = "\u00a0" });
+        ABsmartly.Sdk.BuildCollectorAttributes(null).Should().BeEmpty();
     }
 
     private sealed class Reading

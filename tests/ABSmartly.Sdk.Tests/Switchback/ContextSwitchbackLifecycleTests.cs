@@ -275,7 +275,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
     [Test]
     public void VariableExposureIsStampedWithTheResolutionInstant()
     {
-        // Holdouts never fire through a switchback.
         var covered = NewSwitchback(2, Hour);
         covered.HoldoutIds = new[] { 11 };
         var context = CreateContext(new ContextData(new[] { covered }, new[] { Holdout(new[] { 0.0, 1.0 }) }));
@@ -300,9 +299,7 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", Expected2Arms[0], Anchor + 10, true, true));
     }
 
-    // Review regression (Peek -> SetAttribute -> GetTreatment -> Publish, same period): the exposure
-    // and the published attributes must let the Collector replay the cluster that served. At
-    // exposedAt, the latest published value of the cluster attribute is the one the slot read.
+    // The exposure and the published attributes must let the Collector replay the cluster that served.
     [Test]
     public void SamePeriodClusterChangeAfterAPeekReplaysTheServedCluster()
     {
@@ -321,8 +318,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         var published = PublishEvent(context);
         var exposure = published.Exposures.Should().ContainSingle().Subject;
         exposure.Should().Be(NewExposure(1, "exp_sb", served, Anchor + Hour + 1, true, true));
-        // The Collector's replay: the latest "city" set at or before exposedAt, through the
-        // published JSON, gives the allowed key Faro in the same period.
         var replayed = published.Attributes.Where(a => a.Name == "city" && a.SetAt <= exposure.ExposedAt)
             .OrderBy(a => a.SetAt).Last();
         replayed.Value.Should().Be("Faro");
@@ -351,7 +346,7 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
             .Should().Equal(Anchor + Hour + 1, Anchor + Hour + 1);
     }
 
-    // Review regression: a clock moved back after the cluster was read must not put the exposure after
+    // A clock moved back after the cluster was read must not put the exposure after
     // publishedAt, which the Collector rejects along with the whole request (goals included).
     [Test]
     public void ClockRollbackKeepsTheRequestValid()
@@ -388,7 +383,7 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         published.PublishedAt.Should().Be(Anchor + Hour + 20);
     }
 
-    // Review regression (round 3): the Collector replays the cluster at exposedAt from the published
+    // The Collector replays the cluster at exposedAt from the published
     // attributes, latest setAt at or before it. After a clock rewind, a later cluster change must not
     // be dated before the exposure it follows, or the replay would see it instead of the served value.
     [Test]
@@ -429,10 +424,9 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         PublishEvent(context).Attributes.Last().SetAt.Should().Be(Anchor + Hour + 30);
     }
 
-    // Review regression (round 3): a switchback exposure queued before another linked unit is set
+    // A switchback exposure queued before another linked unit is set
     // (a login) is published with the units present when its cluster was served, in a request of its
-    // own, so the Collector replays the cluster that served instead of a disagreement. Other events in
-    // the batch are published with every unit, as before.
+    // own, so the Collector replays the cluster that served instead of a disagreement.
     [Test]
     public void ExposureQueuedBeforeALinkedUnitIsAddedReplaysItsServingUnits()
     {
@@ -459,8 +453,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.PendingCount.Should().Be(0);
     }
 
-    // A batch whose switchback exposures were all served with every current unit is one request, as
-    // before.
     [Test]
     public void ExposureServedWithEveryUnitIsPublishedInOneRequest()
     {

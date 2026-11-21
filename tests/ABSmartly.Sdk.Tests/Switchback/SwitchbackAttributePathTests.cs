@@ -111,7 +111,7 @@ public class SwitchbackAttributePathTests
         SwitchbackAttributePath.TryParseInt("007").Should().Be(7);
         SwitchbackAttributePath.TryParseInt("2147483647").Should().Be(int.MaxValue);
         SwitchbackAttributePath.TryParseInt("-2147483648").Should().Be(int.MinValue);
-        foreach (var s in new[] { "", "-", "+1", "1a", " 1", "2147483648", "-2147483649", "99999999999999999999", "٠", "1.0" })
+        foreach (var s in new[] { "", "-", "+1", "1a", " 1", "2147483648", "-2147483649", "99999999999999999999", "٠", "1.0", "1\0", "\01", "1 ", "(1)", "1-", "+", "--1", "１" })
             SwitchbackAttributePath.TryParseInt(s).Should().BeNull(s);
     }
 

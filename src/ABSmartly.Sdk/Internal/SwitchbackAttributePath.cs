@@ -170,26 +170,13 @@ internal sealed class SwitchbackAttributePath
     }
 
     // Guava Ints.tryParse(String): optional '-', then one or more ASCII digits, within int range;
-    // otherwise null. "+1" and non-ASCII digits are not numbers; "-0" is 0.
-    internal static int? TryParseInt(string s)
-    {
-        var length = s.Length;
-        var negative = length > 0 && s[0] == '-';
-        var i = negative ? 1 : 0;
-        if (i == length) return null;
-
-        long magnitude = 0;
-        for (; i < length; ++i)
-        {
-            var c = s[i];
-            if (c < '0' || c > '9') return null;
-            magnitude = magnitude * 10 + (c - '0');
-            if (magnitude > 1L << 31) return null;
-        }
-
-        var value = negative ? -magnitude : magnitude;
-        return value > int.MaxValue ? null : (int)value;
-    }
+    // otherwise null. "+1" and non-ASCII digits are not numbers; "-0" is 0. (.NET parsing also
+    // accepts a leading '+' and trailing NULs, which Guava rejects.)
+    internal static int? TryParseInt(string s) =>
+        s.Length > 0 && s[0] != '+' && s.IndexOf('\0') < 0 &&
+        int.TryParse(s, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
 
     // The JSON a switchback context publishes its attributes as, and so the JSON both the cluster
     // lookup and the Collector read the cluster from: the publish serializer's options, except that

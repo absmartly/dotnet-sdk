@@ -490,7 +490,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         unit.RandomizationType = "unit";
         var absent = NewSwitchback(2, "exp_absent", 2, Hour);
         absent.RandomizationType = null;
-        // The comparison is ordinal.
         var cased = NewSwitchback(3, "exp_cased", 2, Hour);
         cased.RandomizationType = "Switchback";
 
@@ -526,7 +525,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
         context.PendingCount.Should().Be(1);
 
-        // Same period index 0 under both grids, so only the new refresh generation can invalidate.
         RefreshTo(context, NewSwitchback(2, 2 * Hour));
         context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
         context.PendingCount.Should().Be(2);
@@ -547,7 +545,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         context.GetTreatment("exp_sb");
         context.PendingCount.Should().Be(5);
 
-        // The cluster map (types, paths and their order) and the allow-list are identity.
         var pathChanged = NewSwitchback(2, 2 * Hour);
         pathChanged.SwitchbackClusters = Clusters(UnitType, "'store_key'");
         RefreshTo(context, pathChanged);

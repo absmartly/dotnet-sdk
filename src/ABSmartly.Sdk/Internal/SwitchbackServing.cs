@@ -83,16 +83,8 @@ internal sealed class SwitchbackServing
 
     // A null or empty allow-list admits every value: the Collector serves an experiment that has no
     // allow-list rows with this field absent, and builds its filter only when the list is non-empty.
-    internal static bool Allowed(string[] allowedValues, string key)
-    {
-        if (allowedValues == null || allowedValues.Length == 0) return true;
-        foreach (var allowed in allowedValues)
-        {
-            if (string.Equals(key, allowed, StringComparison.Ordinal)) return true;
-        }
-
-        return false;
-    }
+    internal static bool Allowed(string[] allowedValues, string key) =>
+        allowedValues == null || allowedValues.Length == 0 || Array.IndexOf(allowedValues, key) >= 0;
 
     // The linked unit types and their parsed paths, in declared order; null for a missing or empty
     // map, a null unit type, or any path that is not a supported attribute path (the legacy path).

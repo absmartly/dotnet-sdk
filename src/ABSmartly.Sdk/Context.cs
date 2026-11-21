@@ -65,6 +65,16 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         set => _systemAttributes = value ?? EmptySystemAttributes;
     }
 
+    // The attributes the Collector adds to a published request when it has none of that name
+    // (application, application_version, environment; ContextAPI.extractAttributes). A switchback
+    // cluster path rooted at one of them reads it, as the Collector's replay does.
+    private IReadOnlyDictionary<string, object> _collectorAttributes = EmptySystemAttributes;
+
+    internal IReadOnlyDictionary<string, object> CollectorAttributes
+    {
+        set => _collectorAttributes = value ?? EmptySystemAttributes;
+    }
+
     // Test seams, null in production (checked before the interlocked exchange, so they cost a plain
     // field read). Runs once between an assignment lookup and its exposure, to force a race there.
     internal Action AfterAssignmentLookup;
@@ -126,13 +136,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // after a refresh removes the switchbacks, since exposures they queued may still be pending,
     // and the wire form only writes a whole floating-point number as 3.0 instead of 3.
     private volatile bool _hasSwitchbacks;
-    // The latest instant a switchback slot read its cluster (and so the latest exposedAt it can
-    // publish); long.MinValue until one is read. Read and written under the context write lock.
-    // See SetAttribute.
-    private long _latestServingReadAt = long.MinValue;
-    // The attribute names switchback cluster paths start at, in any data installed so far (cluster
-    // reads of an earlier definition can still be pending). Guarded by the context write lock.
-    private readonly HashSet<string> _clusterRootNames = new(StringComparer.Ordinal);
+    // For each attribute name a switchback slot that can publish an exposure read its cluster from,
+    // the latest instant it read it (and so the latest exposedAt it can publish). Guarded by the
+    // context write lock. See SetAttribute.
+    private readonly Dictionary<string, long> _clusterRootReadAt = new(StringComparer.Ordinal);
 
     private volatile int _pendingCount;
     private int _refreshing;
@@ -192,12 +199,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         IVariableParser variableParser,
         AudienceMatcher audienceMatcher,
         ILoggerFactory loggerFactory,
-        IReadOnlyDictionary<string, object> systemAttributes = null)
+        IReadOnlyDictionary<string, object> systemAttributes = null,
+        IReadOnlyDictionary<string, object> collectorAttributes = null)
     {
         var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
             audienceMatcher, loggerFactory)
         {
-            SystemAttributes = systemAttributes
+            SystemAttributes = systemAttributes,
+            CollectorAttributes = collectorAttributes
         };
         context.SetInitialData(data, null);
         return context;
@@ -214,14 +223,16 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         IVariableParser variableParser,
         AudienceMatcher audienceMatcher,
         ILoggerFactory loggerFactory,
-        IReadOnlyDictionary<string, object> systemAttributes = null)
+        IReadOnlyDictionary<string, object> systemAttributes = null,
+        IReadOnlyDictionary<string, object> collectorAttributes = null)
     {
         if (dataTask == null) throw new ArgumentNullException(nameof(dataTask));
 
         var context = new Context(config, clock, dataProvider, eventHandler, eventLogger, variableParser,
             audienceMatcher, loggerFactory)
         {
-            SystemAttributes = systemAttributes
+            SystemAttributes = systemAttributes,
+            CollectorAttributes = collectorAttributes
         };
         context._readyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         context._loadSettledTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -459,17 +470,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
-            if (assignment.Switchback != null)
+            var switchback = assignment.Switchback;
+            if (switchback?.Silent == true) return;
+            if (switchback != null || assignment.HoldoutAssignments == null)
             {
-                if (!assignment.Switchback.Silent)
-                    EnqueueExposure(assignment, assignment.Name, assignment.Switchback.ServingReadAt,
-                        assignment.Switchback.ServingUnitCount, assignment.Switchback.LinkedUnitTypes);
-                return;
-            }
-
-            if (assignment.HoldoutAssignments == null)
-            {
-                EnqueueExposure(assignment);
+                EnqueueExposure(assignment, assignment.Name, switchback?.ServingReadAt ?? _clock.Millis(),
+                    switchback?.ServingUnitCount ?? 0, switchback?.LinkedUnitTypes);
                 return;
             }
 
@@ -581,8 +587,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             Error = error;
         }
 
-        // The requests the publisher completed, in order (a flush split by SplitByServingUnits
-        // sends more than one), then the error that stopped the flush, if any.
         public PublishEvent[] Delivered { get; }
         public Exception Error { get; }
     }
@@ -677,7 +681,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                     Type = kv.Key,
                     Uid = Encoding.ASCII.GetString(GetUnitHash(kv.Key, kv.Value))
                 }).ToArray();
-                // One instant for the whole batch, so a split keeps every request valid.
                 var publishedAt = PublishedAt(exposures, achievements);
                 requests = SplitByServingUnits(exposures, achievements, units);
 
@@ -707,8 +710,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
             catch (Exception e)
             {
-                // What was not delivered goes back to the front of the queue: the whole batch if the
-                // failure came before the first request, otherwise the failed request and the rest.
+                // Null requests: the failure came before the first one, so the whole batch goes back.
                 var pending = requests?.Skip(delivered.Count).ToArray();
                 var restoredExposures = pending == null ? exposures
                     : pending.SelectMany(r => r.Exposures ?? Array.Empty<Exposure>()).ToArray();
@@ -1528,7 +1530,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             path =>
             {
                 var attribute = LatestAttribute(path.RootKey, now);
-                return attribute == null ? null : path.ResolveAttribute(attribute.Value);
+                if (attribute != null) return path.ResolveAttribute(attribute.Value);
+                return _collectorAttributes.TryGetValue(path.RootKey, out var injected)
+                    ? path.ResolveAttribute(injected)
+                    : null;
             });
     }
 
@@ -1545,7 +1550,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // The attribute the Collector records with an exposure at `now` (ContextAPI.extractAttributes):
     // among attributes set at or before now whose trimmed name matches, the greatest setAt wins, and
-    // a tie goes to the one set last. Only attributes set on the context; never the system ones.
+    // a tie goes to the one set last. Only attributes set on the context (see CollectorAttributes).
     private Attribute LatestAttribute(string name, long now)
     {
         Attribute selected = null;
@@ -1577,7 +1582,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var data = experiment.Data;
         var custom = _customAssignments.TryGetValue(data.Name, out var c) ? c : null;
         var (serving, servingReadAt, servingUnitCount) = SwitchbackServingFor(experiment, previous, now);
-        if (servingReadAt > _latestServingReadAt) _latestServingReadAt = servingReadAt;
         var state = new SwitchbackState
         {
             Serving = serving,
@@ -1607,6 +1611,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         if (assignment.Variant >= 0 && assignment.Variant < data.Variants.Length)
             assignment.Variables = experiment.Variables[assignment.Variant];
         assignment.AttrsSeq = attrsSeqAtBuild;
+        if (!state.Silent) RecordClusterRead(experiment, servingReadAt);
 
         var reused = ReuseExposedRuleAssignment(experiment, previous, assignment);
         if (reused != null) return reused;
@@ -1614,6 +1619,20 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         _assignmentCache[cacheKey] = assignment;
         RetainSwitchbackPeriod(data.Name, experiment, periodIndex);
         return assignment;
+    }
+
+    // The roots this slot's exposure replays its cluster from: those of the linked units it can be
+    // published with. A silent slot publishes nothing, so its read needs no protection.
+    private void RecordClusterRead(ExperimentVariables experiment, long readAt)
+    {
+        if (experiment.SwitchbackSources == null) return;
+        foreach (var source in experiment.SwitchbackSources)
+        {
+            if (!_units.ContainsKey(source.Key)) continue;
+            var root = source.Value.RootKey;
+            if (!_clusterRootReadAt.TryGetValue(root, out var latest) || readAt > latest)
+                _clusterRootReadAt[root] = readAt;
+        }
     }
 
     private static void SilentControl(Assignment assignment, SwitchbackState state)
@@ -1628,7 +1647,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var data = experiment.Data;
         var serving = state.Serving;
         assignment.Variant = 0;
-        // Absent (no linked unit) is unassigned; ineligible (no usable cluster value) is assigned.
         if (serving.Status == SwitchbackServing.ServingStatus.Absent)
         {
             SilentControl(assignment, state);
@@ -1923,18 +1941,17 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         CheckNotClosed();
 
-        // A cluster attribute set after a switchback slot read its cluster is dated after that read
-        // when the clock says otherwise (it went back), so the Collector, which replays the cluster
-        // from the latest attribute set at or before exposedAt, still sees the value that served.
-        // Every other attribute, and any attribute on a clock that does not go back, keeps the clock
-        // reading, as before.
+        // An attribute a publishable switchback slot read its cluster from, set again while the clock
+        // reads earlier than that read (it went back), is dated just after the read, so the
+        // Collector, which replays the cluster from the latest attribute set at or before exposedAt,
+        // still sees the value that served. Every other attribute, including a cluster attribute no
+        // such slot has read, keeps the clock reading, as before.
         _contextLock.EnterWriteLock();
         try
         {
             var setAt = _clock.Millis();
-            var latestRead = _latestServingReadAt;
-            if (latestRead != long.MinValue && setAt < latestRead && name != null &&
-                _clusterRootNames.Contains(SwitchbackAttributePath.JavaTrim(name))) setAt = latestRead + 1;
+            if (name != null && _clusterRootReadAt.TryGetValue(SwitchbackAttributePath.JavaTrim(name), out var readAt) &&
+                setAt < readAt) setAt = readAt + 1;
             if (InsideAttributeAppend != null) Interlocked.Exchange(ref InsideAttributeAppend, null)?.Invoke();
             _attributes.Add(new Attribute { Name = name, Value = value, SetAt = setAt });
             Interlocked.Increment(ref _attrsSeq);
@@ -2488,7 +2505,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var index = new Dictionary<string, ExperimentVariables>();
         var indexVariables = new Dictionary<string, List<ExperimentVariables>>();
         var contextCustomFields = new Dictionary<string, Dictionary<string, ContextCustomFieldValue>>();
-        List<string> clusterRoots = null;
 
         Dictionary<int, Experiment> holdoutsById = null;
         if (data.Holdouts != null)
@@ -2510,9 +2526,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (IsSwitchback(experiment))
             {
                 experimentVariables.SwitchbackSources = SwitchbackServing.Sources(experiment.SwitchbackClusters);
-                if (experimentVariables.SwitchbackSources != null)
-                    (clusterRoots ??= new List<string>()).AddRange(
-                        experimentVariables.SwitchbackSources.Select(source => source.Value.RootKey));
             }
 
             foreach (var variant in experiment.Variants)
@@ -2628,14 +2641,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
 
             contextCustomFields[experiment.Name] = experimentCustomFields;
-        }
-
-        // Register roots before taking dataLock: lookups take contextLock then dataLock.
-        if (clusterRoots != null)
-        {
-            _contextLock.EnterWriteLock();
-            try { _clusterRootNames.UnionWith(clusterRoots); }
-            finally { _contextLock.ExitWriteLock(); }
         }
 
         try

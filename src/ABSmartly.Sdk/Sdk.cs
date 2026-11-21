@@ -38,6 +38,7 @@ public class Sdk
     // attaches both to every exposure server-side, so audiences can target them locally
     // without the SDK publishing anything extra. User-set attributes still overlay these.
     private IReadOnlyDictionary<string, object> _systemAttributes;
+    private IReadOnlyDictionary<string, object> _collectorAttributes;
 
     [ActivatorUtilitiesConstructor]
     public Sdk(IABsmartlyHttpClientFactory httpClientFactory,
@@ -85,6 +86,7 @@ public class Sdk
         _audienceDeserializer = config?.AudienceDeserializer ?? new DefaultAudienceDeserializer(_loggerFactory);
 
         _systemAttributes = BuildSystemAttributes(serviceConfiguration);
+        _collectorAttributes = BuildCollectorAttributes(serviceConfiguration);
     }
 
     // System attributes made available to every context's audience evaluation: the
@@ -102,6 +104,51 @@ public class Sdk
             systemAttributes["environment"] = serviceConfiguration.Environment;
 
         return systemAttributes;
+    }
+
+    // The attributes the Collector adds to every published request that lacks them, from the
+    // headers this SDK sends (ContextAPI.extractAttributes): application and environment unless
+    // blank, and application_version when application is set and the version header is not 0.
+    // Switchback cluster lookups read them, so serving matches the Collector's replay.
+    internal static IReadOnlyDictionary<string, object> BuildCollectorAttributes(
+        ABSmartlyServiceConfiguration serviceConfiguration)
+    {
+        var attributes = new Dictionary<string, object>(3);
+        if (!IsJavaBlank(serviceConfiguration?.Application))
+        {
+            attributes["application"] = serviceConfiguration.Application;
+            var version = long.Parse(ABSmartlyService.ApplicationVersionHeader(serviceConfiguration.ApplicationVersion),
+                System.Globalization.CultureInfo.InvariantCulture);
+            if (version != 0) attributes["application_version"] = version;
+        }
+
+        if (!IsJavaBlank(serviceConfiguration?.Environment))
+            attributes["environment"] = serviceConfiguration.Environment;
+
+        return attributes;
+    }
+
+    // Java String.isBlank(): empty or only Character.isWhitespace characters, that is a space, line
+    // or paragraph separator other than a non-breaking space, or one of U+0009-U+000D, U+001C-U+001F.
+    private static bool IsJavaBlank(string value)
+    {
+        if (value == null) return true;
+        foreach (var c in value)
+        {
+            if (!IsJavaWhitespace(c)) return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsJavaWhitespace(char c)
+    {
+        if (c >= '\u0009' && c <= '\u000d' || c >= '\u001c' && c <= '\u001f') return true;
+        if (c == '\u00a0' || c == '\u2007' || c == '\u202f') return false;
+        var category = char.GetUnicodeCategory(c);
+        return category == System.Globalization.UnicodeCategory.SpaceSeparator ||
+               category == System.Globalization.UnicodeCategory.LineSeparator ||
+               category == System.Globalization.UnicodeCategory.ParagraphSeparator;
     }
 
     public IContext CreateContext(ContextConfig config)
@@ -142,7 +189,8 @@ public class Sdk
             _variableParser,
             new AudienceMatcher(_audienceDeserializer),
             _loggerFactory,
-            _systemAttributes);
+            _systemAttributes,
+            _collectorAttributes);
     }
 
     public IContext CreateContextWith(ContextConfig config, ContextData data)
@@ -156,7 +204,8 @@ public class Sdk
             _variableParser,
             new AudienceMatcher(_audienceDeserializer),
             _loggerFactory,
-            _systemAttributes);
+            _systemAttributes,
+            _collectorAttributes);
 
         return context;
     }
