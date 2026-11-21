@@ -622,6 +622,60 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         PublishExposures(context).Should().BeEmpty();
     }
 
+    // Every linked unit's root that a publishable read used is protected, not only the first.
+    [Test]
+    public void RewoundWriteToTheSecondClusterRootIsRedated()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        context.SetUnit("user_id", "u1");
+        context.SetAttribute("city", "Faro");
+        context.SetAttribute("user_city", "Faro");
+        Clock.Now = Anchor + Hour + 20;
+        context.GetTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute("user_city", "Porto");
+        var published = PublishEvent(context);
+        var exposure = published.Exposures!.Single();
+        published.Attributes!.Last().SetAt.Should().Be(Anchor + Hour + 21);
+        published.Attributes!.Where(a => a.Name == "user_city" && a.SetAt <= exposure.ExposedAt)
+            .OrderBy(a => a.SetAt).Last().Value.Should().Be("Faro");
+    }
+
+    // The protection is dated at the read the exposure is stamped with, not at a later rebuild.
+    [Test]
+    public void RebuildKeepsTheReadInstantForRedating()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        context.SetAttribute("city", "Faro");
+        Clock.Now = Anchor + Hour + 20;
+        context.PeekTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 30;
+        context.SetOverride("exp_sb", 1);
+        context.GetTreatment("exp_sb").Should().Be(1);
+        Clock.Now = Anchor + Hour + 25;
+        context.SetAttribute("city", "Porto");
+        var published = PublishEvent(context);
+        published.Exposures!.Single().ExposedAt.Should().Be(Anchor + Hour + 20);
+        published.Attributes!.Last().SetAt.Should().Be(Anchor + Hour + 25);
+    }
+
+    // A read made with no linked unit set is not reused once one is: a rebuild reads again.
+    [Test]
+    public void ReadWithNoLinkedUnitIsNotReused()
+    {
+        var context = CreateContext(new Dictionary<string, string>(), DataOf(Linked()), clusterAttribute: false);
+        context.SetAttribute("user_city", "Faro");
+        context.SetOverride("exp_sb", 1);
+        Clock.Now = Anchor + Hour + 10;
+        context.GetTreatment("exp_sb").Should().Be(1);
+        context.SetUnit("user_id", "u1");
+        Clock.Now = Anchor + Hour + 20;
+        context.SetOverride("exp_sb", 0);
+        context.GetTreatment("exp_sb").Should().Be(0);
+        var exposures = PublishExposures(context);
+        exposures.Last().Should().Match<Exposure>(e => e.Unit == "user_id" && e.ExposedAt == Anchor + Hour + 20);
+    }
+
     [Test]
     public void RefreshRetainsRootsWhoseExposuresCanStillBePending()
     {

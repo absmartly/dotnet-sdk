@@ -603,6 +603,13 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         // Surrounding spaces and tabs are not part of the header value the Collector reads.
         ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { Application = " website\t", Environment = "\t production " })
             .Should().BeEquivalentTo(new Dictionary<string, object> { ["application"] = "website", ["environment"] = "production" });
+        // U+2007 and U+202F are not Java whitespace; U+001C-U+001F are. Only spaces and tabs trim.
+        ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { Application = "\u2007", Environment = "\u202f" })
+            .Should().BeEquivalentTo(new Dictionary<string, object> { ["application"] = "\u2007", ["environment"] = "\u202f" });
+        ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { Application = "\u001c\u001f", Environment = "\u001d" })
+            .Should().BeEmpty();
+        ABsmartly.Sdk.BuildCollectorAttributes(new ABSmartlyServiceConfiguration { Application = "website\u00a0", Environment = "\u00a0dev" })
+            .Should().BeEquivalentTo(new Dictionary<string, object> { ["application"] = "website\u00a0", ["environment"] = "\u00a0dev" });
         ABsmartly.Sdk.BuildCollectorAttributes(null).Should().BeEmpty();
     }
 

@@ -154,6 +154,12 @@ M = [
  ('collector: wire null only for C# null', S+'Internal/SwitchbackAttributePath.cs', '        if (IsScalar(value) && !(value is double || value is float)) return false;', '        return false;'),
  ('carryover: silent read reused by a publishing rebuild', S+'Context.cs', 'return cached != null && !cached.Silent && cached.Serving.Status', 'return cached != null && cached.Serving.Status'),
  ('carryover: eligible silent read reused', S+'Context.cs', 'return cached != null && !cached.Silent && cached.Serving.Status', 'return cached != null && (!cached.Silent || cached.Serving.Status == SwitchbackServing.ServingStatus.Eligible) && cached.Serving.Status'),
+ ('replay: only the first linked root recorded', S+'Context.cs', '                _clusterRootReadAt[root] = readAt;\n', '                _clusterRootReadAt[root] = readAt;\n            break;\n'),
+ ('replay: roots dated at the lookup, not the read', S+'Context.cs', '        if (!state.Silent) RecordClusterRead(experiment, servingReadAt);', '        if (!state.Silent) RecordClusterRead(experiment, now);'),
+ ('carryover: read with no linked unit reused', S+'Context.cs', 'return cached != null && !cached.Silent && cached.Serving.Status != SwitchbackServing.ServingStatus.Absent', 'return cached != null && !cached.Silent'),
+ ('collector: figure spaces counted as blank', S+'Sdk.cs', "        if (c == '\\u00a0' || c == '\\u2007' || c == '\\u202f') return false;\n", "        if (c == '\\u00a0') return false;\n"),
+ ('collector: separators not counted as blank', S+'Sdk.cs', "c >= '\\u0009' && c <= '\\u000d' || c >= '\\u001c' && c <= '\\u001f'", "c >= '\\u0009' && c <= '\\u000d'"),
+ ('collector: .NET trim on application', S+'Sdk.cs', "var application = serviceConfiguration?.Application?.Trim(' ', '\\t');", 'var application = serviceConfiguration?.Application?.Trim();'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',
