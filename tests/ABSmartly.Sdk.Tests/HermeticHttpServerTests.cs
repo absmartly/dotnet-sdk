@@ -40,6 +40,7 @@ public class HermeticHttpServerTests
     public void SetUp()
     {
         _requests.Clear();
+        _contextBody = "{\"experiments\":[]}";
         var port = GetFreePort();
         _baseUrl = $"http://127.0.0.1:{port}";
 
@@ -194,12 +195,32 @@ public class HermeticHttpServerTests
         ((JArray)body["exposures"]!).Should().ContainSingle();
     }
 
+    [Test]
+    public async Task CallerCredentialAndRotationsReachGetAndPut()
+    {
+        var sdk = BuildSdk(null, out var serviceConfig, "customer-secret-239");
+        var config = new ContextConfig();
+        config.SetUnit("session_id", "credential-test");
+        var context = await sdk.CreateContextAsync(config);
+        WaitForRequest(r => r.Method == "GET")!.Headers["X-API-Key"].Should().Be("customer-secret-239");
+        context.Track("first", null!);
+        await context.PublishAsync();
+        WaitForRequest(r => r.Method == "PUT")!.Headers["X-API-Key"].Should().Be("customer-secret-239");
+        _requests.Clear();
+        serviceConfig.ApiKey = "rotated-customer-secret-781";
+        await context.RefreshAsync();
+        WaitForRequest(r => r.Method == "GET")!.Headers["X-API-Key"].Should().Be("rotated-customer-secret-781");
+        context.Track("second", null!);
+        await context.PublishAsync();
+        WaitForRequest(r => r.Method == "PUT")!.Headers["X-API-Key"].Should().Be("rotated-customer-secret-781");
+    }
+
     // Builds the SDK using ONLY the public configuration surface, wiring the SDK's
     // REAL ABsmartlyHttpClientFactory over a REAL IHttpClientFactory so a genuine
     // System.Net.Http.HttpClient performs the requests.
     private ABsmartly.Sdk BuildSdk(string? applicationVersion = null) => BuildSdk(applicationVersion, out _);
 
-    private ABsmartly.Sdk BuildSdk(string? applicationVersion, out ABSmartlyServiceConfiguration serviceConfig)
+    private ABsmartly.Sdk BuildSdk(string? applicationVersion, out ABSmartlyServiceConfiguration serviceConfig, string apiKey = ApiKey)
     {
         var services = new ServiceCollection();
         services.AddHttpClient(ABsmartly.Sdk.HttpClientName);
@@ -211,7 +232,7 @@ public class HermeticHttpServerTests
         serviceConfig = new ABSmartlyServiceConfiguration
         {
             Endpoint = _baseUrl,
-            ApiKey = ApiKey,
+            ApiKey = apiKey,
             Application = Application,
             Environment = Environment,
             ApplicationVersion = applicationVersion!

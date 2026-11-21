@@ -67,8 +67,8 @@ internal sealed class SwitchbackAttributePath
         {
             element = JsonSerializer.SerializeToElement(rootValue, WireOptions.Value);
         }
-        catch (Exception e) when (e is JsonException || e is NotSupportedException || e is InvalidOperationException ||
-                                  e is ArgumentException)
+        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&
+                                  !(e is System.Threading.ThreadAbortException))
         {
             return null;
         }
@@ -169,8 +169,8 @@ internal sealed class SwitchbackAttributePath
         {
             return JsonSerializer.SerializeToElement(value, WireOptions.Value);
         }
-        catch (Exception e) when (e is JsonException || e is NotSupportedException || e is InvalidOperationException ||
-                                  e is ArgumentException)
+        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&
+                                  !(e is System.Threading.ThreadAbortException))
         {
             return null;
         }
@@ -186,8 +186,8 @@ internal sealed class SwitchbackAttributePath
         {
             return JsonSerializer.SerializeToElement(value, WireOptions.Value).ValueKind == JsonValueKind.Null;
         }
-        catch (Exception e) when (e is JsonException || e is NotSupportedException || e is InvalidOperationException ||
-                                  e is ArgumentException)
+        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&
+                                  !(e is System.Threading.ThreadAbortException))
         {
             return false;
         }

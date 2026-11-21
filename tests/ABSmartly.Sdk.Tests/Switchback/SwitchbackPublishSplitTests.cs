@@ -778,6 +778,61 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     }
 
     [Test]
+    public void ReusedListKeepsItsPublishedClusterValue()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "stores/0/region");
+        var context = CreateContext(DataOf(experiment));
+        var row = new Dictionary<string, object> { ["region"] = "Faro" };
+        var stores = new List<Dictionary<string, object>> { row };
+        context.SetAttribute("stores", stores);
+        Clock.Now = Anchor + Hour + 1;
+        context.GetTreatment("exp_sb");
+        row["region"] = "Porto";
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+        json.Should().Contain("\"value\":[{\"region\":\"Faro\"}]");
+    }
+
+    [Test]
+    public void AttributeBeforeSwitchbacksIsFrozenOnlyAtItsFirstClusterRead()
+    {
+        var context = CreateContext(DataOf(AsUnit(NewSwitchback(2, Hour))));
+        var store = new Dictionary<string, object> { ["region"] = "Faro" };
+        context.SetAttribute("store", store);
+        store["region"] = "Porto";
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "store/region");
+        experiment.SwitchbackClusterValues = new[] { "Porto" };
+        RefreshTo(context, experiment);
+        Clock.Now = Anchor + Hour + 1;
+        context.GetTreatment("exp_sb");
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+        json.Should().Contain("\"value\":{\"region\":\"Porto\"}");
+    }
+
+    private sealed class ThrowingProfile
+    {
+        public string Lazy => throw new NotImplementedException("customer getter");
+    }
+
+    [Test]
+    public void BestEffortFreezeDoesNotLeakCustomerGetterExceptions()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        var profile = new ThrowingProfile();
+        FluentActions.Invoking(() => context.SetAttribute("profile", profile)).Should().NotThrow();
+        // The first-read path also reaches Freeze when the value was set before switchbacks.
+        var ordinary = CreateContext(DataOf(AsUnit(NewSwitchback(2, Hour))));
+        ordinary.SetAttribute("profile", profile);
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "profile/city");
+        RefreshTo(ordinary, experiment);
+        Clock.Now = Anchor + Hour + 1;
+        FluentActions.Invoking(() => ordinary.GetTreatment("exp_sb")).Should().NotThrow();
+        ordinary.PendingCount.Should().Be(0);
+    }
+
+    [Test]
     public void RefreshRetainsRootsWhoseExposuresCanStillBePending()
     {
         var context = CreateContext(DataOf(Linked()));

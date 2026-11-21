@@ -74,13 +74,14 @@ public class Sdk
         // One copy for the service's requests and for the values switchback cluster lookups read
         // (BuildCollectorAttributes), so the headers the Collector replays from always match what
         // served, whatever the caller later does with its configuration object.
+        var credentials = serviceConfiguration;
         serviceConfiguration = Snapshot(serviceConfiguration);
         _client = new ABSmartlyService(
             serviceConfiguration,
             _httpClientFactory,
             _contextDataDeserializer,
             _contextEventSerializer,
-            _loggerFactory);
+            _loggerFactory) { ApiKeySource = () => credentials.ApiKey };
 
         _contextDataProvider = config?.ContextDataProvider ?? new DefaultContextDataProvider(_client);
         _contextEventHandler = config?.ContextPublisher ?? new DefaultContextPublisher(_client);

@@ -168,6 +168,11 @@ M = [
  ('wire: frozen value not used by the lookup', S+'Context.cs', '                var value = attribute?.WireValue ?? attribute?.Value;', '                var value = attribute?.Value;'),
  ('wire: frozen value not published', S+'Internal/SwitchbackAttributePath.cs', '                if (value.WireValue is JsonElement frozen) frozen.WriteTo(writer);\n                else JsonSerializer', '                JsonSerializer'),
  ('wire: serializer ignores the switchback flag', S+'Services/DefaultContextEventSerializer.cs', '                    ? SwitchbackAttributePath.PublishOptions.Value', '                    ? JsonOptionsProvider.Default.SerializerOptions'),
+ ('config: live credentials disabled', S+'Sdk.cs', ' { ApiKeySource = () => credentials.ApiKey };', ';'),
+ ('config: customer key replaced', S+'Sdk.cs', 'ApiKeySource = () => credentials.ApiKey', 'ApiKeySource = () => "test-api-key"'),
+ ('wire: list not frozen', S+'Internal/SwitchbackAttributePath.cs', 'if (value == null || value is char || IsScalar(value) || value is JsonElement) return null;', 'if (value == null || value is System.Collections.IList || value is char || IsScalar(value) || value is JsonElement) return null;'),
+ ('wire: pre-switchback values frozen too soon', S+'Context.cs', 'WireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null', 'WireValue = SwitchbackAttributePath.Freeze(value)'),
+ ('wire: customer getter exception leaks', S+'Internal/SwitchbackAttributePath.cs', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value);\n        }\n        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&\n                                  !(e is System.Threading.ThreadAbortException))', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value);\n        }\n        catch (Exception e) when (e is System.Text.Json.JsonException)'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',
