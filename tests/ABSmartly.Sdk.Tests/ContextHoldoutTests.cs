@@ -1864,6 +1864,45 @@ public class ContextHoldoutTests
             .Should().Equal((11, "holdout_a", 1, 1), (12, "holdout_b", 1, 1));
     }
 
+    // The same while the close is still in flight (its publish not yet settled): a closing context
+    // takes no deferred winner either.
+    [Test]
+    public void ALoggerThatStartsClosingTheContextLeavesNoDeferredWinnerExposure()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"closing_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"closing_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+        var publish = new TaskCompletionSource<bool>();
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(publish.Task);
+        Task finalizing = null!;
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                finalizing = context.FinalizeAsync();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetVariableValue("closing_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.IsClosing().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        publish.SetResult(true);
+        finalizing.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
+    }
+
     // A losing candidate's holdout logger that closes the context before throwing: the close has
     // flushed, so the later winner is not queued, and the logger's exception still propagates.
     [Test]
