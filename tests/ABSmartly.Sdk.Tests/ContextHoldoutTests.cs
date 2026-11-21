@@ -189,8 +189,6 @@ public class ContextHoldoutTests
         return _published.Where(p => ReferenceEquals(p.Context, context)).Should().ContainSingle().Subject.Event;
     }
 
-    // Publishes the context and checks the single published event: hashed units and the exposures,
-    // in order.
     private PublishEvent AssertPublished(Context context, string uid, params Exposure[] exposures) =>
         AssertPublished(context, UnitType, uid, exposures);
 
@@ -203,6 +201,9 @@ public class ContextHoldoutTests
         (published.Exposures ?? Array.Empty<Exposure>()).Should().Equal(exposures);
         return published;
     }
+
+    private static object InstalledHoldouts(Context context) =>
+        typeof(Context).GetField("_holdoutsById", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!;
 
     private static bool FlushScheduled(Context context) =>
         typeof(Context).GetField("_timeout", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context) != null;
@@ -841,6 +842,22 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(2);
     }
 
+    // With both units set, the arm is still hashed with the covered experiment's unit (held out),
+    // not the holdout's declared one (not held out), and its exposure carries that unit type.
+    [Test]
+    public void HoldoutArmIsHashedWithTheCoveredExperimentsUnitEvenWhenItsOwnUnitIsSet()
+    {
+        var context = CreateContext(new ContextConfig().SetUnit(UnitType, Uid).SetUnit("user_id", UidNotHeldOut),
+            DataOf(new[] { NewHoldout(11, "holdout_declares_user", "user_id", HoldoutASeedHi, HoldoutASeedLo, "full") },
+                CoveredBy(NewExperiment(1, "exp_session_covered"), 11)));
+
+        context.GetTreatment("exp_session_covered").Should().Be(0);
+
+        context.Publish();
+        var exposures = _published.Should().ContainSingle().Subject.Event.Exposures;
+        exposures.Should().Equal(HoldoutExposure(11, "holdout_declares_user", 0));
+    }
+
     // Recomputed as a whole, so a late holdout that holds the unit out flips the experiment to
     // control instead of publishing a held-out exposure beside a participating one.
     [Test]
@@ -947,7 +964,6 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(2);
     }
 
-    // Without a retirement, the read resolves the assignment exactly once.
     [Test]
     public void TreatmentWithoutRetirementResolvesOnce()
     {
@@ -1185,9 +1201,11 @@ public class ContextHoldoutTests
 
     private void AssertNotHeldOut(Context context, int holdoutId, string holdoutName)
     {
-        context.GetTreatment("verdict_vectors_experiment");
-        Publish(context).Exposures.Should()
-            .Contain(e => e.Id == holdoutId && e.Name == holdoutName && e.Variant == 1);
+        var variant = context.GetTreatment("verdict_vectors_experiment");
+        var exposures = Publish(context).Exposures;
+        exposures.Should().Contain(e => e.Id == 9 && e.Name == "verdict_vectors_experiment" && e.Assigned &&
+                                        e.Variant == variant);
+        exposures.Should().Contain(e => e.Id == holdoutId && e.Name == holdoutName && e.Variant == 1);
     }
 
     [Test]
@@ -1315,6 +1333,52 @@ public class ContextHoldoutTests
     }
 
     [Test]
+    public void SiblingHoldoutLoggerFailuresRethrowTheFirstAndQueueBothExposures()
+    {
+        var first = new InvalidOperationException("first");
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Throws(first);
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 12)))
+            .Throws(new InvalidOperationException("second"));
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, CoveredBy(NewExperiment(1, "exp_sibling_failures"), 12, 11)));
+
+        var act = () => context.GetTreatment("exp_sibling_failures");
+
+        act.Should().Throw<InvalidOperationException>().Which.Should().BeSameAs(first);
+        context.PendingCount.Should().Be(2);
+        _eventLogger.Reset();
+        context.GetTreatment("exp_sibling_failures").Should().Be(0);
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 1));
+    }
+
+    // When both the experiment's exposure and its holdout's throw, the experiment's exception
+    // propagates (it is queued first, as JS _triggerExposures) and both stay queued.
+    [Test]
+    public void ExperimentLoggerFailureIsRethrownBeforeItsHoldoutsFailure()
+    {
+        var experimentFailure = new InvalidOperationException("experiment");
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 1)))
+            .Throws(experimentFailure);
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Throws(new InvalidOperationException("holdout"));
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo) },
+            CoveredBy(NewExperiment(1, "exp_both_fail"), 11)));
+
+        var act = () => context.GetTreatment("exp_both_fail");
+
+        act.Should().Throw<InvalidOperationException>().Which.Should().BeSameAs(experimentFailure);
+        context.PendingCount.Should().Be(2);
+    }
+
+    [Test]
     public void ThrowingLoggerDoesNotMakeExperimentOrHoldoutExposureRetryable()
     {
         ThrowOnExposure(e => e.Id == 1);
@@ -1331,7 +1395,8 @@ public class ContextHoldoutTests
     }
 
     // On the variable path, a logger throwing on a losing candidate's holdout exposure still
-    // propagates (as Java) once the key is resolved, and the exposure stays queued.
+    // propagates (as Java) once the key is resolved; that exposure stays queued, and so does the
+    // winner's own.
     [Test]
     public void ThrowingLoggerOnAVariableCandidatesHoldoutPropagates()
     {
@@ -1346,7 +1411,10 @@ public class ContextHoldoutTests
         var act = () => context.GetVariableValue("throw_key", "default");
 
         act.Should().Throw<InvalidOperationException>().WithMessage("boom");
-        context.PendingCount.Should().Be(1);
+        context.PendingCount.Should().Be(2);
+        _eventLogger.Reset();
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0),
+            Exposure(2, "exp_var_throw_assigned", NormalVariant));
     }
 
     // Two losing candidates with distinct holdouts: the first holdout's logger throws, and the
@@ -1371,6 +1439,83 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(2);
         _eventLogger.Reset();
         AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 0));
+    }
+
+    [Test]
+    public void ThrowingLoggerOnALosingCandidateStillExposesTheWinnerAndItsHoldouts()
+    {
+        ThrowOnExposure(e => e.Id == 11);
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"winner_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"winner_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+
+        var act = () => context.GetVariableValue("winner_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.PendingCount.Should().Be(3);
+        _eventLogger.Reset();
+        context.GetVariableValue("winner_key", "default").Should().Be("b");
+        context.PendingCount.Should().Be(3);
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0),
+            Exposure(2, "exp_var_winner", NormalVariant), HoldoutExposure(12, "holdout_b", 1));
+    }
+
+    [Test]
+    public void UncoveredCachedReadsAllocateNoHoldoutState()
+    {
+        var context = CreateContext(DataOf(WithVariables(NewExperiment(1, "exp_cached_plain"), "plain_key")));
+        for (var i = 0; i < 1000; i++)
+        {
+            context.GetTreatment("exp_cached_plain");
+            context.PeekTreatment("exp_cached_plain");
+            context.GetVariableValue("plain_key", "default");
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++)
+        {
+            context.GetTreatment("exp_cached_plain");
+            context.PeekTreatment("exp_cached_plain");
+            context.GetVariableValue("plain_key", "default");
+        }
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0);
+    }
+
+    // A warmed covered read reuses the coverage resolved when the data was installed: no
+    // per-read resolving, sorting or allocation.
+    [Test]
+    public void CoveredCachedReadsDoNotResolveCoverageAgain()
+    {
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_cached_coverage"), 11)));
+        for (var i = 0; i < 1000; i++) context.GetTreatment("exp_cached_coverage");
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++) context.GetTreatment("exp_cached_coverage");
+
+        (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0);
+    }
+
+    [Test]
+    public void HoldoutDecisionStateIsCreatedOnlyOnTheFirstHoldoutDecision()
+    {
+        var field = typeof(Context).GetField("_holdoutAssignments", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var plain = CreateContext(DataOf(NewExperiment(1, "exp_no_holdouts")));
+        plain.GetTreatment("exp_no_holdouts");
+        field.GetValue(plain).Should().BeNull();
+
+        var covered = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_lazy_holdouts"), 11)));
+        field.GetValue(covered).Should().BeNull();
+        covered.GetTreatment("exp_lazy_holdouts").Should().Be(0);
+        field.GetValue(covered).Should().NotBeNull();
     }
 
     // When several candidates' holdout loggers throw, the first failure is the one rethrown.
@@ -1468,7 +1613,7 @@ public class ContextHoldoutTests
 
         var stale = NewHoldout(11, "holdout_h", HoldoutASeedHi, HoldoutASeedLo);
         var resolve = typeof(Context).GetMethod("GetHoldoutAssignment", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType })!;
+        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType, InstalledHoldouts(context) })!;
 
         resolved.Iteration.Should().Be(2);
         resolved.Variant.Should().Be(1);
@@ -1685,6 +1830,458 @@ public class ContextHoldoutTests
             ("exp_rule_coverage", 1, true), ("exp_rule_coverage", 1, true), ("holdout_late", 0, false));
     }
 
+    // A refresh installed after the rebuild read the experiment does not mix payloads: the
+    // holdouts come from the index installed with that experiment, not the refreshed one (which
+    // drops holdout 11 and bumps holdout 12 to an arm that holds the unit out).
+    [Test]
+    public void ARefreshAfterTheExperimentIsReadDoesNotMixPayloads()
+    {
+        var context = CreateContext(UidNotHeldOut, DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutASeedHi, HoldoutASeedLo)
+        }, CoveredBy(NewExperiment(1, "exp_mid_refresh"), 11, 12)));
+        var bumped = NewHoldout(12, "holdout_b_v2", HoldoutASeedHi, HoldoutASeedLo);
+        bumped.Iteration = 2;
+        bumped.Split = new[] { 1.0, 0.0 };
+        context.AfterExperimentSnapshot = () =>
+        {
+            _dataProvider.Setup(x => x.GetContextDataAsync())
+                .ReturnsAsync(DataOf(new[] { bumped }, CoveredBy(NewExperiment(1, "exp_mid_refresh"), 12)));
+            Task.Run(() => context.RefreshAsync()).Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        };
+
+        context.PeekTreatment("exp_mid_refresh").Should().Be(0); // UidNotHeldOut's normal variant
+
+        context.AfterExperimentSnapshot.Should().BeNull();
+        var decision = ((Dictionary<string, Context.Assignment>)typeof(Context)
+            .GetField("_assignmentCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!)["exp_mid_refresh"];
+        decision.Suppressed.Should().BeFalse();
+        decision.HoldoutAssignments!.Select(h => (h.Id, h.Name, h.Iteration, h.Variant))
+            .Should().Equal((11, "holdout_a", 1, 1), (12, "holdout_b", 1, 1));
+    }
+
+    [Test]
+    public void ALoggerThatStartsClosingTheContextLeavesNoDeferredWinnerExposure()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"closing_key\":\"a\"}";
+        var later = CoveredBy(NewExperiment(2, "exp_var_later_held_out"), 13);
+        later.Variants[1].Config = "{\"closing_key\":\"c\"}";
+        var winner = CoveredBy(NewExperiment(3, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"closing_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo),
+            NewHoldout(13, "holdout_c", HoldoutASeedHi, HoldoutASeedLo)
+        }, first, later, winner));
+        var publish = new TaskCompletionSource<bool>();
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(publish.Task);
+        Task finalizing = null!;
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                finalizing = context.FinalizeAsync();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetVariableValue("closing_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.IsClosing().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        publish.SetResult(true);
+        finalizing.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
+    }
+
+    // Pauses the next Millis() call on one thread until released, to interleave a close there.
+    private sealed class GateClock : Clock
+    {
+        private readonly long _millis;
+        private int _armedThread = -1;
+        public readonly ManualResetEventSlim Paused = new();
+        public readonly ManualResetEventSlim Resume = new();
+
+        public GateClock(long millis) => _millis = millis;
+
+        public void ArmCurrentThread() => Volatile.Write(ref _armedThread, Environment.CurrentManagedThreadId);
+
+        public override long Millis()
+        {
+            if (Interlocked.CompareExchange(ref _armedThread, -1, Environment.CurrentManagedThreadId) ==
+                Environment.CurrentManagedThreadId)
+            {
+                Paused.Set();
+                if (!Resume.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("GateClock was not released");
+            }
+
+            return _millis;
+        }
+    }
+
+    // Another thread closes the context after the deferred-winner path has started but before the
+    // winner is queued: the close has flushed and sealed, so the winner and its holdouts are not
+    // left pending, and the logger's exception still propagates.
+    [Test]
+    public void AConcurrentCloseLeavesNoDeferredWinnerExposure()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"race_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"race_key\":\"b\"}";
+        var clock = new GateClock(Now);
+        var config = new ContextConfig().SetUnit(UnitType, Uid);
+        config.PublishDelay = TimeSpan.FromMinutes(10);
+        var context = Context.CreateWithData(config, DataOf(new[]
+            {
+                NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+                NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+            }, first, winner), clock, _dataProvider.Object, _publisher, _eventLogger.Object,
+            new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), null,
+            new Dictionary<string, object> { ["application"] = "website", ["environment"] = "production" });
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                // The next exposure built on this thread is the deferred winner's.
+                clock.ArmCurrentThread();
+                throw new InvalidOperationException("boom");
+            });
+
+        var read = Task.Run(() => context.GetVariableValue("race_key", "default"));
+        clock.Paused.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        context.FinalizeAsync().Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        context.IsClosed().Should().BeTrue();
+        clock.Resume.Set();
+
+        var act = () => read.Wait(TimeSpan.FromSeconds(10));
+        act.Should().Throw<AggregateException>().WithInnerException<InvalidOperationException>().WithMessage("boom");
+        context.PendingCount.Should().Be(0);
+        _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
+    }
+
+    // An experiment's logger that closes the context (without throwing) has flushed it: the
+    // holdout exposures that follow are not left pending on the closed context.
+    [Test]
+    public void ALoggerThatClosesTheContextLeavesNoHoldoutExposurePending()
+    {
+        var context = CreateContext(UidNotHeldOut, DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_logger_closes"), 11)));
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 1)))
+            .Callback(() => context.Close());
+
+        context.GetTreatment("exp_logger_closes").Should().Be(0);
+
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(Exposure(1, "exp_logger_closes", 0));
+    }
+
+    // A read already past its checks when a close starts still has its exposures published by
+    // that close: the close waits for an earlier publication, the read then queues the experiment
+    // and holdout exposures, and the close's flush sends them.
+    [Test]
+    public void ExposuresQueuedWhileACloseWaitsAreStillPublishedByIt()
+    {
+        var clock = new GateClock(Now);
+        var config = new ContextConfig().SetUnit(UnitType, UidNotHeldOut);
+        config.PublishDelay = TimeSpan.FromMinutes(10);
+        var context = Context.CreateWithData(config,
+            DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+                CoveredBy(NewExperiment(1, "exp_closing_read"), 11)), clock, _dataProvider.Object, _publisher,
+            _eventLogger.Object, new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), null,
+            new Dictionary<string, object> { ["application"] = "website", ["environment"] = "production" });
+        var earlier = new TaskCompletionSource<bool>();
+        var publishes = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(() => Interlocked.Increment(ref publishes) == 1 ? earlier.Task : Task.CompletedTask);
+        context.Track("goal_before_close", null);
+        var earlierPublish = context.PublishAsync();
+
+        var read = Task.Run(() =>
+        {
+            clock.ArmCurrentThread();
+            return context.GetTreatment("exp_closing_read");
+        });
+        clock.Paused.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        var closing = context.FinalizeAsync();
+        context.IsClosing().Should().BeTrue();
+        clock.Resume.Set();
+        read.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        read.Result.Should().Be(0);
+        earlier.SetResult(true);
+        earlierPublish.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        closing.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        _published.Should().HaveCount(2);
+        _published[1].Event.Exposures.Should().Equal(Exposure(1, "exp_closing_read", 0), HoldoutExposure(11, "holdout_a", 1));
+    }
+
+    // The deferred winner's own exposure is queued and its logger starts a close that fails: the
+    // winner's holdout is still exposed (queued during the close, kept by its failure), as on an
+    // ordinary read, and the retry publishes all three once.
+    [Test]
+    public void ADeferredWinnersHoldoutSurvivesAFailedCloseStartedByTheWinnersLogger()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"winner_close_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"winner_close_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+        var publish = new TaskCompletionSource<bool>();
+        var publishes = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(() => Interlocked.Increment(ref publishes) == 1 ? publish.Task : Task.CompletedTask);
+        ThrowOnExposure(e => e.Id == 11);
+        Task finalizing = null!;
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 2)))
+            .Callback(() => finalizing = context.FinalizeAsync());
+
+        var act = () => context.GetVariableValue("winner_close_key", "default");
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        publish.SetException(new HttpRequestException("collector down"));
+        var settle = () => finalizing.Wait(TimeSpan.FromSeconds(10));
+        settle.Should().Throw<AggregateException>();
+        context.IsClosed().Should().BeFalse();
+        _eventLogger.Reset();
+        _published.Clear();
+
+        context.GetVariableValue("winner_close_key", "default").Should().Be("b");
+
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), Exposure(2, "exp_var_winner", NormalVariant),
+            HoldoutExposure(12, "holdout_b", 1));
+    }
+
+    // A later held-out candidate's holdout, skipped because the earlier logger started a close that
+    // then fails, is exposed by the next read.
+    [Test]
+    public void ALaterCandidatesHoldoutSkippedByAFailedCloseIsExposedByTheNextRead()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out_a"), 11);
+        first.Variants[1].Config = "{\"suppressed_close_key\":\"a\"}";
+        var second = CoveredBy(NewExperiment(2, "exp_var_held_out_b"), 12);
+        second.Variants[1].Config = "{\"suppressed_close_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutASeedHi, HoldoutASeedLo)
+        }, first, second));
+        var publish = new TaskCompletionSource<bool>();
+        var publishes = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(() => Interlocked.Increment(ref publishes) == 1 ? publish.Task : Task.CompletedTask);
+        Task finalizing = null!;
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                finalizing = context.FinalizeAsync();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetVariableValue("suppressed_close_key", "default");
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.PendingCount.Should().Be(0);
+        publish.SetException(new HttpRequestException("collector down"));
+        var settle = () => finalizing.Wait(TimeSpan.FromSeconds(10));
+        settle.Should().Throw<AggregateException>();
+        context.IsClosed().Should().BeFalse();
+        _eventLogger.Reset();
+        _published.Clear();
+
+        context.GetVariableValue("suppressed_close_key", "default").Should().Be("default"); // control has no key
+
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 0));
+    }
+
+    // Not every winner has holdouts: one no holdout covers is not queued on a closed context either.
+    [Test]
+    public void ALoggerThatClosesTheContextLeavesNoDeferredUncoveredWinnerExposure()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"uncovered_key\":\"a\"}";
+        var winner = NewExperiment(2, "exp_var_uncovered_winner");
+        winner.Variants[1].Config = "{\"uncovered_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            first, winner));
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                context.Close();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetVariableValue("uncovered_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+    }
+
+    // A deferred winner skipped because the context was closing is not lost when that close fails:
+    // the context stays open, and the next read exposes the winner and its holdout.
+    [Test]
+    public void ADeferredWinnerSkippedByAFailedCloseIsExposedByTheNextRead()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"retry_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"retry_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+        var publish = new TaskCompletionSource<bool>();
+        var publishes = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(() => Interlocked.Increment(ref publishes) == 1 ? publish.Task : Task.CompletedTask);
+        Task finalizing = null!;
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                finalizing = context.FinalizeAsync();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetVariableValue("retry_key", "default");
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        publish.SetException(new HttpRequestException("collector down"));
+        var settle = () => finalizing.Wait(TimeSpan.FromSeconds(10));
+        settle.Should().Throw<AggregateException>();
+        context.IsClosed().Should().BeFalse();
+        _eventLogger.Reset();
+        _published.Clear();
+
+        context.GetVariableValue("retry_key", "default").Should().Be("b");
+
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), Exposure(2, "exp_var_winner", NormalVariant),
+            HoldoutExposure(12, "holdout_b", 1));
+    }
+
+    // A losing candidate's holdout logger that closes the context before throwing: the close has
+    // flushed, so the later winner is not queued, and the logger's exception still propagates.
+    [Test]
+    public void ALoggerThatClosesTheContextLeavesNoDeferredWinnerExposure()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"close_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"close_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                context.Close();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetVariableValue("close_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
+    }
+
+    // A refresh that removes, adds or swaps a holdout changes the coverage, so the unit is
+    // re-resolved against the new set: 12 holds Uid out, 11 and 13 do not.
+    [TestCase(new[] { 11, 12 }, new[] { 11 }, 0, NormalVariant)]
+    [TestCase(new[] { 11 }, new[] { 11, 12 }, NormalVariant, 0)]
+    [TestCase(new[] { 11 }, new[] { 12 }, NormalVariant, 0)]
+    [TestCase(new[] { 12 }, new[] { 11 }, 0, NormalVariant)]
+    [TestCase(new[] { 11, 12 }, new[] { 11, 13 }, 0, NormalVariant)]
+    [TestCase(new[] { 11, 13 }, new[] { 11, 12 }, NormalVariant, 0)]
+    [TestCase(new[] { 12 }, new int[0], 0, NormalVariant)]
+    [TestCase(new int[0], new[] { 12 }, NormalVariant, 0)]
+    [TestCase(new[] { 12, 13 }, new[] { 11, 13 }, 0, NormalVariant)]
+    [TestCase(new[] { 11, 13 }, new[] { 12, 13 }, NormalVariant, 0)]
+    public void RefreshChangingTheHoldoutSetReResolvesCoverage(int[] before, int[] after, int variantBefore,
+        int variantAfter)
+    {
+        var holdouts = new[]
+        {
+            NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo),
+            NewHoldout(12, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(13, "holdout_c", HoldoutBSeedHi, HoldoutBSeedLo)
+        };
+        var context = CreateContext(DataOf(holdouts, CoveredBy(NewExperiment(1, "exp_resized"), before)));
+        context.PeekTreatment("exp_resized").Should().Be(variantBefore);
+
+        Refresh(context, DataOf(holdouts, CoveredBy(NewExperiment(1, "exp_resized"), after)));
+
+        context.PeekTreatment("exp_resized").Should().Be(variantAfter);
+    }
+
+    // A new iteration of the second of two holdouts re-resolves coverage: its new seeds hold Uid out.
+    [Test]
+    public void RefreshBumpingTheSecondHoldoutsIterationReResolvesCoverage()
+    {
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo),
+            NewHoldout(13, "holdout_c", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, CoveredBy(NewExperiment(1, "exp_second_bumped"), 11, 13)));
+        context.PeekTreatment("exp_second_bumped").Should().Be(NormalVariant);
+        var bumped = NewHoldout(13, "holdout_c", HoldoutASeedHi, HoldoutASeedLo);
+        bumped.Iteration = 2;
+
+        Refresh(context, DataOf(new[] { NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo), bumped },
+            CoveredBy(NewExperiment(1, "exp_second_bumped"), 11, 13)));
+
+        context.PeekTreatment("exp_second_bumped").Should().Be(0);
+    }
+
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 1, 12, 1 }, true)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 13, 1, 12, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 1, 13, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 2, 12, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 1, 12, 2 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1, 13, 1 }, new[] { 11, 1, 14, 1, 13, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1, 13, 1 }, new[] { 11, 1, 12, 2, 13, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 1 }, false)]
+    [TestCase(new[] { 11, 1 }, new[] { 11, 1, 12, 1 }, false)]
+    [TestCase(new[] { 11, 1 }, null, false)]
+    [TestCase(null, new[] { 11, 1 }, false)]
+    [TestCase(null, null, true)]
+    public void HoldoutSetMatchesComparesEveryIdAndIteration(int[]? current, int[]? pinned, bool matches)
+    {
+        static Experiment[]? Set(int[]? pairs) => pairs?.Chunk(2)
+            .Select(p => new Experiment { Id = p[0], Iteration = p[1], Name = "renamed_" + p[0], SeedHi = p[0] })
+            .ToArray();
+
+        var match = typeof(Context).GetMethod("HoldoutSetMatches", BindingFlags.Static | BindingFlags.NonPublic);
+        match.Should().NotBeNull();
+
+        ((bool)match!.Invoke(null, new object?[] { Set(current), Set(pinned) })!).Should().Be(matches);
+    }
+
     // A stale holdout definition (here an older iteration under another name) resolves to the
     // live one: its iteration, arm and name.
     [Test]
@@ -1696,7 +2293,7 @@ public class ContextHoldoutTests
 
         var stale = NewHoldout(11, "holdout_stale", HoldoutASeedHi, HoldoutASeedLo);
         var resolve = typeof(Context).GetMethod("GetHoldoutAssignment", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType })!;
+        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType, InstalledHoldouts(context) })!;
 
         (resolved.Name, resolved.Iteration, resolved.Variant).Should().Be(("holdout_live", 2, 1));
     }

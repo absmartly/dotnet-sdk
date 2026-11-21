@@ -127,6 +127,9 @@ public class AudienceMatcherRulesTests
         ShouldAssign(EvaluateUs(Assign(null, "[]", "1.5"), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "\"1\""), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "true"), Fallback), 2);
+        // Beyond the double range, as JavaScript's Infinity: not an integer.
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "1" + new string('0', 309)), Fallback), 2);
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "-1" + new string('0', 309)), Fallback), 2);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "1.0")), 1);
     }
 
@@ -140,6 +143,9 @@ public class AudienceMatcherRulesTests
         ShouldAssign(EvaluateUs(Assign(null, "[]", "1e100"), Fallback), int.MaxValue);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "-2147483649"), Fallback), int.MinValue);
         ShouldAssign(EvaluateUs(Assign(null, "[]", "2147483647"), Fallback), int.MaxValue);
+        // Beyond Int64, Json.NET reads a BigInteger.
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "99999999999999999999"), Fallback), int.MaxValue);
+        ShouldAssign(EvaluateUs(Assign(null, "[]", "-99999999999999999999"), Fallback), int.MinValue);
     }
 
     [Test]

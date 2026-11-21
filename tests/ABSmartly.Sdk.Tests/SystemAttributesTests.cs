@@ -303,7 +303,6 @@ public class SystemAttributesTests
         ruleData.Experiments[0].AssignmentRules =
             "{\"rules\":[{\"type\":\"assign\",\"variant\":0,\"conditions\":" + present + "}]}";
 
-        // Sanity: the same checks match once the user sets app_version themselves.
         var withUserValue = absmartly.CreateContextWith(
             new ContextConfig { PublishDelay = PublishDelay }.SetUnits(_units), audienceData);
         withUserValue.SetAttribute("app_version", "1004");

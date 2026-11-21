@@ -719,6 +719,8 @@ public class ContextTests
     [Test]
     public void TestGetVariableValueDoesNotQueueExposureOnAudienceMismatchInStrictMode()
     {
+        // As the Java SDK: a strict audience mismatch is not assigned, so the experiment does
+        // not win the key; the default is returned and nothing is exposed.
         var context = CreateContext(_audienceStrictData);
 
         context.GetVariableValue("banner.size", "small").Should().Be("small");

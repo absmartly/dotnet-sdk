@@ -119,13 +119,14 @@ public class HoldoutPayloadTests
     [TestCase("\"holdouts\":\"oops\"", "\"holdoutType\":\"full\"", 0)]
     [TestCase("\"holdouts\":[{\"id\":\"11\",\"name\":\"h\",\"split\":[0.1,0.9]},7,\"x\",null]", "\"holdoutType\":\"full\"", 0)]
     [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9],\"holdoutType\":3}]", "\"holdoutType\":{\"a\":1}", 1)]
-    // A null, decimal (11.0) or out-of-range id/iteration/seedHi/seedLo drops that holdout, so its
+    // A null, fractional or out-of-range id/iteration/seedHi/seedLo drops that holdout, so its
     // experiments are assigned normally (JS keeps it; the backend never sends these).
     [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"iteration\":1,\"seedHi\":null,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
     [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"iteration\":1,\"seedHi\":13,\"seedLo\":null,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
     [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"iteration\":null,\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
     [TestCase("\"holdouts\":[{\"id\":null,\"name\":\"h\",\"iteration\":1,\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
-    [TestCase("\"holdouts\":[{\"id\":11.0,\"name\":\"h\",\"iteration\":1,\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":[{\"id\":11.5,\"name\":\"h\",\"iteration\":1,\"seedHi\":13,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
+    [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"iteration\":1,\"seedHi\":13,\"seedLo\":4294967296.0,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
     [TestCase("\"holdouts\":[{\"id\":11,\"name\":\"h\",\"iteration\":1,\"seedHi\":1099511627776,\"seedLo\":111,\"split\":[0.1,0.9]}]", "\"holdoutType\":\"full\"", 0)]
     public void WronglyTypedHoldoutFieldsDoNotFailTheContext(string holdouts, string holdoutType, int validHoldouts)
     {
@@ -148,6 +149,121 @@ public class HoldoutPayloadTests
         context.GetTreatment("exp_free").Should().Be(1);
         // Held out (variant 0) only when the holdout decoded; otherwise assigned normally.
         context.GetTreatment("exp_covered").Should().Be(validHoldouts == 1 ? 0 : 1);
+    }
+
+    // A holdout is read as JS's HoldoutData (id, name, unitType, iteration, seeds, split,
+    // holdoutType): experiment-only keys on it are ignored like unknown keys, even when their
+    // type would not decode as an Experiment's, so the holdout still covers its experiment.
+    [TestCase("\"trafficSplit\":{\"future\":true}")]
+    [TestCase("\"audienceStrict\":\"future\"")]
+    [TestCase("\"variants\":{\"future\":true}")]
+    [TestCase("\"fullOnVariant\":\"x\",\"trafficSeedHi\":1.5,\"trafficSeedLo\":null")]
+    [TestCase("\"applications\":7,\"customFieldValues\":\"x\",\"audience\":{\"a\":1}")]
+    [TestCase("\"holdoutIds\":{\"a\":1},\"assignmentRules\":[1]")]
+    public void ExperimentOnlyKeysOnAHoldoutDoNotDropIt(string irrelevant)
+    {
+        var json = "{\"holdouts\":[{\"id\":11,\"name\":\"holdout_a\",\"unitType\":\"session_id\",\"iteration\":1," +
+                   "\"seedHi\":13,\"seedLo\":111,\"split\":[1,0]," + irrelevant + "}],\"experiments\":[" +
+                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11]}]}";
+
+        var data = Deserialize(json);
+
+        var holdout = data.Holdouts.Should().ContainSingle().Subject;
+        (holdout.Id, holdout.Name, holdout.UnitType, holdout.Iteration, holdout.SeedHi, holdout.SeedLo)
+            .Should().Be((11, "holdout_a", "session_id", 1, 13, 111));
+        holdout.Split.Should().Equal(1.0, 0.0);
+        var (publisher, published) = Publisher();
+        var context = CreateContext(data, publisher);
+        context.GetTreatment("exp_covered").Should().Be(0);
+        context.Publish();
+        published.Single().Exposures.Select(e => (e.Id, e.Name, e.Variant))
+            .Should().Equal((11, "holdout_a", 0));
+    }
+
+    // A holdout's name or unitType that is not a string is read as null instead of dropping the
+    // holdout (the holdout is placed with the covered experiment's unit type), as JS.
+    [TestCase("\"name\":5,\"unitType\":\"session_id\"", null, "session_id")]
+    [TestCase("\"name\":\"holdout_a\",\"unitType\":{\"x\":1}", "holdout_a", null)]
+    public void WronglyTypedHoldoutNameOrUnitTypeDoesNotDropIt(string fields, string? name, string? unitType)
+    {
+        var json = "{\"holdouts\":[{\"id\":11," + fields + ",\"iteration\":1,\"seedHi\":13,\"seedLo\":111," +
+                   "\"split\":[1,0]}],\"experiments\":[" +
+                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11]}]}";
+
+        var data = Deserialize(json);
+
+        var holdout = data.Holdouts.Should().ContainSingle().Subject;
+        (holdout.Id, holdout.Name, holdout.UnitType).Should().Be((11, name, unitType));
+        var (publisher, published) = Publisher();
+        var context = CreateContext(data, publisher);
+        context.GetTreatment("exp_covered").Should().Be(0);
+        context.Publish();
+        published.Single().Exposures.Select(e => (e.Id, e.Name, e.Unit, e.Variant))
+            .Should().Equal((11, name, "session_id", 0));
+    }
+
+    // An integral float id, iteration or seed (11.0) is the same integer, as JS: the holdout is
+    // kept and still holds the unit out.
+    [TestCase("\"id\":11.0,\"iteration\":1,\"seedHi\":13,\"seedLo\":111")]
+    [TestCase("\"id\":11,\"iteration\":1.0,\"seedHi\":13,\"seedLo\":111")]
+    [TestCase("\"id\":11,\"iteration\":1,\"seedHi\":13.0,\"seedLo\":111")]
+    [TestCase("\"id\":11,\"iteration\":1,\"seedHi\":13,\"seedLo\":111.0")]
+    [TestCase("\"id\":1.1e1,\"iteration\":1,\"seedHi\":13,\"seedLo\":111")]
+    public void IntegralFloatHoldoutNumbersKeepTheHoldout(string numbers)
+    {
+        var json = "{\"holdouts\":[{" + numbers + ",\"name\":\"holdout_a\",\"split\":[0.1,0.9]}],\"experiments\":[" +
+                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11]}]}";
+
+        var data = Deserialize(json);
+
+        var holdout = data.Holdouts.Should().ContainSingle().Subject;
+        (holdout.Id, holdout.Iteration, holdout.SeedHi, holdout.SeedLo).Should().Be((11, 1, 13, 111));
+        var (publisher, published) = Publisher();
+        var context = CreateContext(data, publisher);
+        context.GetTreatment("exp_covered").Should().Be(0);
+        context.Publish();
+        published.Single().Exposures.Select(e => (e.Id, e.Name, e.Variant)).Should().Equal((11, "holdout_a", 0));
+    }
+
+    // A holdout without an id is skipped instead of being read as id 0 (in JS it matches no
+    // holdoutIds entry); an explicit id 0 still covers the experiment.
+    [TestCase("", 1)]
+    [TestCase("\"id\":0,", 0)]
+    public void HoldoutWithoutAnIdIsSkipped(string id, int treatment)
+    {
+        var json = "{\"holdouts\":[{" + id + "\"name\":\"holdout_a\",\"iteration\":1,\"seedHi\":13,\"seedLo\":111," +
+                   "\"split\":[1,0]}],\"experiments\":[" +
+                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[0]}]}";
+
+        var data = Deserialize(json);
+
+        (data.Holdouts?.Length ?? 0).Should().Be(1 - treatment);
+        var (publisher, _) = Publisher();
+        CreateContext(data, publisher).GetTreatment("exp_covered").Should().Be(treatment);
+    }
+
+    [Test]
+    public void FractionalHoldoutIdIsNotAReference()
+    {
+        var json = "{\"holdouts\":[{\"id\":11,\"name\":\"holdout_a\",\"iteration\":1,\"seedHi\":13,\"seedLo\":111," +
+                   "\"split\":[1,0]}],\"experiments\":[" +
+                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11.5]}]}";
+
+        var data = Deserialize(json);
+
+        data.Experiments.Single().HoldoutIds.Should().BeEmpty();
+        var (publisher, _) = Publisher();
+        CreateContext(data, publisher).GetTreatment("exp_covered").Should().Be(1);
     }
 
     [Test]

@@ -86,6 +86,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // append, so a test can check that no serving read gets in between.
     internal Action InsideAttributeAppend;
 
+    // Test seam: runs once after an assignment rebuild has read the installed data, before it
+    // resolves the experiment's holdouts, to force a concurrent refresh there.
+    internal Action AfterExperimentSnapshot;
+
     private volatile bool _closed;
     private int _closing;
     private readonly object _closeLock = new();
@@ -125,8 +129,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // The installed holdouts by id (entries with a split only); null when the payload has none.
     private Dictionary<int, Experiment> _holdoutsById;
     // A holdout's own assignment per (holdout id, covered experiment's unit type), kept across
-    // refreshes while the holdout's iteration is unchanged. Guarded by the context write lock.
-    private readonly Dictionary<(int, string), Assignment> _holdoutAssignments = new();
+    // refreshes while the holdout's iteration is unchanged. Guarded by the context write lock;
+    // created on the first holdout decision, so a context without holdouts allocates none.
+    private Dictionary<(int, string), Assignment> _holdoutAssignments;
     // Each switchback experiment's cache slots (its period indices) under its current generation,
     // by experiment name. Guarded by the context write lock; empty without switchbacks.
     private readonly Dictionary<string, SwitchbackEpoch> _switchbackEpochs = new();
@@ -455,6 +460,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // theirs. The holdouts fire even when the experiment's exposure throws (a throwing event
     // logger), since this assignment is already marked exposed and would never fire them again;
     // the first failure is rethrown once every holdout has fired.
+    // deferred: the exposure was deferred past an earlier logger failure, so it is not queued
+    // while the context is closing or closed (checked under the event lock, where close sets
+    // _closing); it is left unexposed with its holdouts, so if that close fails and the context
+    // stays open, the next read exposes them.
     //
     // A switchback exposure is stamped with the instant its slot read the cluster (SwitchbackState.
     // ServingReadAt). The Collector re-resolves the cluster from the published attributes at
@@ -463,32 +472,32 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // same period after a peek or an earlier call read it. (java-sdk stamps the exposing call's own
     // clock reading instead; the difference is deliberate, as that reading can replay another
     // cluster. A change in the very millisecond of the read is the one remaining limit, see the
-    // README.) A switchback resolution the Collector
-    // records nothing for (no linked unit, an ineligible cluster, a pre-anchor or unservable draw)
-    // is marked exposed without an exposure.
-    private void QueueExposure(Assignment assignment)
+    // README.) A switchback resolution the Collector records nothing for (no linked unit, an
+    // ineligible cluster, a pre-anchor or unservable draw) is marked exposed without an exposure.
+    private void QueueExposure(Assignment assignment, bool deferred = false)
     {
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
-            var switchback = assignment.Switchback;
-            if (switchback?.Silent == true) return;
-            if (switchback != null || assignment.HoldoutAssignments == null)
+            if (assignment.Switchback?.Silent == true) return;
+            var guard = deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.None;
+            if (assignment.HoldoutAssignments == null)
             {
-                EnqueueExposure(assignment, assignment.Name, switchback?.ServingReadAt ?? _clock.Millis(),
-                    switchback?.ServingUnitCount ?? 0, switchback?.LinkedUnitTypes);
-                return;
+                EnqueueExposure(assignment, assignment.Name, guard);                return;
             }
 
             ExceptionDispatchInfo failure = null;
             try
             {
-                if (!assignment.Suppressed) EnqueueExposure(assignment);
+                // Skipped (and left unexposed): its holdouts follow it on the next read.
+                if (!assignment.Suppressed && !EnqueueExposure(assignment, assignment.Name, guard)) return;
             }
             catch (Exception e)
             {
                 failure = ExceptionDispatchInfo.Capture(e);
             }
 
+            // Once the experiment's own exposure is queued, its holdouts follow as on any read. (A
+            // deferred winner is assigned, so it is never suppressed.)
             var holdoutFailure = TriggerHoldoutExposures(assignment);
             (failure ?? holdoutFailure)?.Throw();
         }
@@ -497,7 +506,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // Fires the holdout decisions pinned when the assignment was resolved, in holdout id order,
     // each once per (holdout, unit type): a refresh after the decision cannot publish a holdout
     // exposure from another iteration. A null entry (the unit was missing) fires nothing.
-    private ExceptionDispatchInfo TriggerHoldoutExposures(Assignment assignment)
+    // They follow the experiment's own exposure, whose logger may have closed the context: a closed
+    // context has flushed for good, so they are not queued there.
+    private ExceptionDispatchInfo TriggerHoldoutExposures(Assignment assignment, bool deferred = false)
     {
         var holdoutAssignments = assignment.HoldoutAssignments;
         if (holdoutAssignments == null) return null;
@@ -513,7 +524,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
             try
             {
-                EnqueueExposure(holdoutAssignment, holdouts[i].Name);
+                EnqueueExposure(holdoutAssignment, holdouts[i].Name,
+                    deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.UnlessClosed);
             }
             catch (Exception e)
             {
@@ -526,19 +538,25 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     private void EnqueueExposure(Assignment assignment) => EnqueueExposure(assignment, assignment.Name);
 
-    private void EnqueueExposure(Assignment assignment, string name) =>
-        EnqueueExposure(assignment, name, _clock.Millis());
-
-    private void EnqueueExposure(Assignment assignment, string name, long exposedAt, int servingUnitCount = 0,
-        string[] linkedUnitTypes = null)
+    private enum EnqueueGuard
     {
+        None,
+        UnlessClosed,
+        UnlessClosing
+    }
+
+    // False when the guard skipped it (the assignment is then left unexposed). A switchback
+    // exposure carries its slot's cluster-read instant and serving units (see QueueExposure).
+    private bool EnqueueExposure(Assignment assignment, string name, EnqueueGuard guard = EnqueueGuard.None)
+    {
+        var switchback = assignment.Switchback;
         var exposure = new Exposure
         {
             Id = assignment.Id,
             Name = name,
             Unit = assignment.UnitType,
             Variant = assignment.Variant,
-            ExposedAt = exposedAt,
+            ExposedAt = switchback?.ServingReadAt ?? _clock.Millis(),
             Assigned = assignment.Assigned,
             Eligible = assignment.Eligible,
             Overridden = assignment.Overridden,
@@ -546,13 +564,19 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             Custom = assignment.Custom,
             AudienceMismatch = assignment.AudienceMismatch,
             RuleOverride = assignment.RuleOverride,
-            ServingUnitCount = servingUnitCount,
-            LinkedUnitTypes = linkedUnitTypes
+            ServingUnitCount = switchback?.ServingUnitCount ?? 0,
+            LinkedUnitTypes = switchback?.LinkedUnitTypes
         };
 
         try
         {
             Monitor.Enter(_eventLock);
+            if (guard == EnqueueGuard.UnlessClosed && _closed || guard == EnqueueGuard.UnlessClosing && IsDisposing())
+            {
+                // Not sent: a close that fails leaves the context open, and a later read exposes it.
+                Interlocked.Exchange(ref assignment.Exposed, 0);
+                return false;
+            }
             Interlocked.Increment(ref _pendingCount);
             _exposures.Add(exposure);
         }
@@ -570,6 +594,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // The exposure is already queued, so a throwing logger must not leave it unflushed.
             SetTimeout();
         }
+
+        return true;
     }
 
 
@@ -1073,15 +1099,21 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // Called with the context write lock held. The unit is hashed by the covered experiment's
     // unit type, not the holdout's own. Null when that unit is not set (never cached, so a unit
-    // set later is picked up). The cached arm is kept while the live holdout's iteration is
-    // unchanged, so a same-iteration seed or split edit does not move the unit to another arm.
-    private Assignment GetHoldoutAssignment(Experiment holdout, string unitType)
+    // set later is picked up). The live definition comes from holdoutsById, the index installed
+    // with the experiment's own data, so all its holdouts are resolved from the same payload.
+    // The cached arm is kept while the live holdout's iteration is unchanged, so a same-iteration
+    // seed or split edit does not move the unit to another arm.
+    private Assignment GetHoldoutAssignment(Experiment holdout, string unitType,
+        Dictionary<int, Experiment> holdoutsById)
     {
         if (unitType == null || !_units.TryGetValue(unitType, out var uid)) return null;
 
-        var live = GetHoldoutById(holdout.Id) ?? holdout;
+        var live = holdoutsById != null && holdoutsById.TryGetValue(holdout.Id, out var installed)
+            ? installed
+            : holdout;
         var key = (live.Id, unitType);
-        if (_holdoutAssignments.TryGetValue(key, out var cached) && cached.Iteration == live.Iteration)
+        if (_holdoutAssignments != null && _holdoutAssignments.TryGetValue(key, out var cached) &&
+            cached.Iteration == live.Iteration)
             return cached;
 
         var assigner = GetVariantAssigner(unitType, GetUnitHash(unitType, uid));
@@ -1096,21 +1128,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             Eligible = true,
             Holdout = new HoldoutState { ArmCount = live.Split.Length }
         };
-        _holdoutAssignments[key] = assignment;
+        (_holdoutAssignments ??= new Dictionary<(int, string), Assignment>())[key] = assignment;
         return assignment;
-    }
-
-    private Experiment GetHoldoutById(int id)
-    {
-        try
-        {
-            _dataLock.EnterReadLock();
-            return _holdoutsById != null && _holdoutsById.TryGetValue(id, out var holdout) ? holdout : null;
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
     }
 
     // The environment assignment rules are scoped to: the one configured on the service, the same
@@ -1231,7 +1250,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             _contextLock.EnterWriteLock();
 
-            var experiment = GetExperiment(experimentName);
+            var experiment = GetExperiment(experimentName, out var holdoutsById);
             var isSwitchback = experiment != null && IsSwitchback(experiment.Data);
             var periodIndex = isSwitchback ? CurrentSwitchbackPeriod(experiment, ReadClockOnce(ref now)) : null;
             var cacheKey = AssignmentCacheKey(experimentName, periodIndex);
@@ -1242,6 +1261,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var current = TryGetUpToDateAssignment(cacheKey, experimentName, experiment, true);
             if (current != null) return current;
 
+            if (AfterExperimentSnapshot != null) Interlocked.Exchange(ref AfterExperimentSnapshot, null)?.Invoke();
             var previous = _assignmentCache.TryGetValue(cacheKey, out var p) ? p : null;
             var attrsSeqAtBuild = _attrsSeq;
 
@@ -1264,7 +1284,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 var holdoutAssignments = new Assignment[holdouts.Length];
                 for (var i = 0; i < holdouts.Length; i++)
                 {
-                    var holdoutAssignment = GetHoldoutAssignment(holdouts[i], experiment.Data.UnitType);
+                    var holdoutAssignment = GetHoldoutAssignment(holdouts[i], experiment.Data.UnitType, holdoutsById);
                     holdoutAssignments[i] = holdoutAssignment;
                     if (holdoutAssignment != null && IsHeldOutBy(holdoutAssignment.Variant,
                             holdoutAssignment.HoldoutArmCount, experiment.Data.FullOnVariant))
@@ -1761,8 +1781,23 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // counted too.
             if (assignment.Assigned || assignment.Overridden || assignment.RuleOverride)
             {
-                failure?.Throw();
-                return assignment;
+                if (failure == null) return assignment;
+
+                // An earlier candidate's holdout logger threw (so this is not a peek): the winner
+                // and its holdouts are exposed here, as the caller would, before the first
+                // failure propagates; unless the context is closing or closed (by that logger or
+                // another thread), which has flushed and must not be left with a new pending
+                // exposure.
+                try
+                {
+                    QueueExposure(assignment, deferred: true);
+                }
+                catch (Exception)
+                {
+                    // The first failure is the one rethrown.
+                }
+
+                failure.Throw();
             }
 
             // Every candidate visited was evaluated, so its holdouts fire (not on peek), as JS and
@@ -1771,7 +1806,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // is rethrown once the key is resolved.
             if (doExposure && assignment.HoldoutAssignments != null)
             {
-                var holdoutFailure = TriggerHoldoutExposures(assignment);
+                var holdoutFailure = TriggerHoldoutExposures(assignment, deferred: failure != null);
                 failure ??= holdoutFailure;
             }
 
@@ -1792,6 +1827,22 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         try
         {
             _dataLock.EnterReadLock();
+            return _index.TryGetValue(experimentName, out var variables) ? variables : null;
+        }
+        finally
+        {
+            _dataLock.ExitReadLock();
+        }
+    }
+
+    // The experiment and the installed holdout index, read together so both come from the same
+    // payload. SetData replaces the index whole, never mutates it.
+    private ExperimentVariables GetExperiment(string experimentName, out Dictionary<int, Experiment> holdoutsById)
+    {
+        try
+        {
+            _dataLock.EnterReadLock();
+            holdoutsById = _holdoutsById;
             return _index.TryGetValue(experimentName, out var variables) ? variables : null;
         }
         finally
@@ -2704,13 +2755,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         foreach (var id in holdoutIds)
         {
             if (!holdoutsById.TryGetValue(id, out var holdout)) continue;
-            resolved ??= new List<Experiment>(holdoutIds.Length);
-            var at = resolved.FindIndex(h => h.Id >= id);
-            if (at < 0) resolved.Add(holdout);
-            else if (resolved[at].Id != id) resolved.Insert(at, holdout);
+            (resolved ??= new List<Experiment>(holdoutIds.Length)).Add(holdout);
         }
 
-        return resolved?.ToArray();
+        if (resolved == null) return null;
+
+        // Sorted once, then deduplicated in place: linear-logarithmic in the number of ids.
+        resolved.Sort((a, b) => a.Id.CompareTo(b.Id));
+        var count = 1;
+        for (var i = 1; i < resolved.Count; i++)
+            if (resolved[i].Id != resolved[count - 1].Id) resolved[count++] = resolved[i];
+        resolved.RemoveRange(count, resolved.Count - count);
+        return resolved.ToArray();
     }
 
     private void SetDataFailed(Exception error = null)
