@@ -2112,6 +2112,169 @@ public class ContextHoldoutTests
         AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 0));
     }
 
+    // The winner's logger starts a close whose publish then succeeds: the winner's holdout, queued
+    // after the close took its batch, is published by that close before it seals.
+    [Test]
+    public void ADeferredWinnersHoldoutQueuedDuringASuccessfulCloseIsPublishedByIt()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"close_ok_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"close_ok_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+        var publish = new TaskCompletionSource<bool>();
+        var publishes = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(() => Interlocked.Increment(ref publishes) == 1 ? publish.Task : Task.CompletedTask);
+        ThrowOnExposure(e => e.Id == 11);
+        Task finalizing = null!;
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 2)))
+            .Callback(() => finalizing = context.FinalizeAsync());
+
+        var act = () => context.GetVariableValue("close_ok_key", "default");
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        publish.SetResult(true);
+        finalizing.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        _published.SelectMany(p => p.Event.Exposures!).Select(e => e.Id).Should().Equal(11, 2, 12);
+        // Each batch the close published is reported, as a Publish event, before Close.
+        var events = _eventLogger.Invocations.Select(i => (EventType)i.Arguments[1])
+            .Where(t => t is EventType.Publish or EventType.Close).ToList();
+        events.Should().Equal(EventType.Publish, EventType.Publish, EventType.Close);
+    }
+
+    // A losing candidate's logger closes the context and returns normally: the read still returns
+    // the winner's value, but the winner is not queued on the sealed context.
+    [Test]
+    public void ALosingLoggerThatClosesAndReturnsLeavesNoWinnerExposurePending()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"closed_key\":\"a\"}";
+        var winner = NewExperiment(2, "exp_var_uncovered_winner");
+        winner.Variants[1].Config = "{\"closed_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            first, winner));
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() => context.Close());
+
+        context.GetVariableValue("closed_key", "default").Should().Be("b");
+
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
+    }
+
+    // A losing candidate's logger disposes the context and throws: that same exception propagates,
+    // without the scan touching the released locks or queuing the winner.
+    [Test]
+    public void ALosingLoggerThatDisposesAndThrowsPropagatesItsOwnException()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"disposed_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"disposed_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+        var sentinel = new InvalidOperationException("sentinel");
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                context.Dispose();
+                throw sentinel;
+            });
+
+        var act = () => context.GetVariableValue("disposed_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().Which.Should().BeSameAs(sentinel);
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+    }
+
+    // The same disposal without a throw: the read returns the default instead of a lock error.
+    [Test]
+    public void ALosingLoggerThatDisposesAndReturnsGivesTheDefault()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"disposed_ok_key\":\"a\"}";
+        var winner = NewExperiment(2, "exp_var_uncovered_winner");
+        winner.Variants[1].Config = "{\"disposed_ok_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            first, winner));
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() => context.Dispose());
+
+        context.GetVariableValue("disposed_ok_key", "default").Should().Be("default");
+
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+    }
+
+    private const string NoUnitSplit = "{\"rules\":[{\"name\":\"split\",\"type\":\"split\",\"percentages\":\"0/100\"," +
+                                       "\"conditions\":null,\"environments\":[]}]}";
+
+    private static Experiment SplitRuled(string rules = NoUnitSplit, int iteration = 1, params int[] holdoutIds)
+    {
+        var experiment = NewExperiment(1, "exp_pinned_split");
+        experiment.AssignmentRules = rules;
+        experiment.Iteration = iteration;
+        if (holdoutIds.Length > 0) experiment.HoldoutIds = holdoutIds;
+        return experiment;
+    }
+
+    // An exposed split rule resolved without its unit keeps its variant when a later refresh only
+    // adds holdout coverage (the unit having been set meanwhile), as the SetUnit path; the new
+    // holdout is exposed. Only the exposed decision is pinned, and only for the same experiment run
+    // and rules: an unexposed one, a rule change or a new iteration is resolved with the unit.
+    [TestCase(true, false, false, 0)]
+    [TestCase(false, false, false, 1)]
+    [TestCase(true, true, false, 1)]
+    [TestCase(true, false, true, 1)]
+    public void ANoUnitSplitIsPinnedAcrossACoverageRefreshOnlyWhileExposedForTheSameRunAndRules(bool exposed,
+        bool rulesChanged, bool newIteration, int variantAfter)
+    {
+        var holdouts = new[] { NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo) };
+        var context = CreateContextWithoutUnits(DataOf(holdouts, SplitRuled()));
+        if (exposed) context.GetTreatment("exp_pinned_split").Should().Be(0);
+        else context.PeekTreatment("exp_pinned_split").Should().Be(0);
+        context.SetUnit(UnitType, Uid);
+
+        var rules = rulesChanged ? NoUnitSplit.Replace("\"split\",\"type\"", "\"split_v2\",\"type\"") : NoUnitSplit;
+        Refresh(context, DataOf(holdouts, SplitRuled(rules, newIteration ? 2 : 1, 11)));
+
+        context.GetTreatment("exp_pinned_split").Should().Be(variantAfter);
+        var exposures = Publish(context).Exposures!.Select(e => (e.Id, e.Variant)).ToList();
+        exposures.Should().Contain((11, 1));
+        exposures.Should().Contain((1, variantAfter));
+        if (variantAfter == 0) exposures.Should().NotContain((1, 1));
+    }
+
+    // A split exposed with its unit is not pinned to the no-unit result by a coverage refresh.
+    [Test]
+    public void ASplitExposedWithItsUnitKeepsItsHashedVariantAcrossACoverageRefresh()
+    {
+        var holdouts = new[] { NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo) };
+        var context = CreateContext(DataOf(holdouts, SplitRuled()));
+        context.GetTreatment("exp_pinned_split").Should().Be(1);
+
+        Refresh(context, DataOf(holdouts, SplitRuled(NoUnitSplit, 1, 11)));
+
+        context.GetTreatment("exp_pinned_split").Should().Be(1);
+    }
+
     // Not every winner has holdouts: one no holdout covers is not queued on a closed context either.
     [Test]
     public void ALoggerThatClosesTheContextLeavesNoDeferredUncoveredWinnerExposure()
