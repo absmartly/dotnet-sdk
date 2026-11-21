@@ -596,7 +596,9 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
             .OrderBy(a => a.SetAt).Last().Value.Should().Be("Faro");
     }
 
-    // The same after a pre-start silent read and a refresh that turns the experiment full-on.
+    // The same after a pre-start silent read and a refresh that turns the experiment full-on: the
+    // rebuild reads the cluster again at its own lookup, so it serves the value set since (Porto,
+    // outside the allow-list) and publishes nothing the Collector would drop.
     [Test]
     public void FullOnRefreshAfterASilentReadReplaysTheServedCluster()
     {
@@ -604,24 +606,20 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         experiment.SwitchbackClusters = Clusters(UnitType, "city");
         experiment.SwitchbackClusterValues = new[] { "Faro" };
         var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor - 100;
         context.SetAttribute("city", "Faro");
         Clock.Now = Anchor - 10;
-        context.PeekTreatment("exp_sb").Should().Be(0, "before the start");
+        context.PeekTreatment("exp_sb").Should().Be(0, "before the start: an eligible cluster, silent");
         Clock.Now = Anchor - 20;
         context.SetAttribute("city", "Porto");
-        context.SetAttribute("city", "Faro");
         var fullOn = NewSwitchback(2, Hour);
         fullOn.SwitchbackClusters = Clusters(UnitType, "city");
         fullOn.SwitchbackClusterValues = new[] { "Faro" };
         fullOn.FullOnVariant = 1;
         RefreshTo(context, fullOn);
         Clock.Now = Anchor - 15;
-        context.GetTreatment("exp_sb").Should().Be(1);
-        var published = PublishEvent(context);
-        var exposure = published.Exposures!.Single();
-        exposure.Should().Match<Exposure>(e => e.FullOn && e.Eligible);
-        published.Attributes!.Where(a => a.Name == "city" && a.SetAt <= exposure.ExposedAt)
-            .OrderBy(a => a.SetAt).Last().Value.Should().Be("Faro");
+        context.GetTreatment("exp_sb").Should().Be(0, "Porto is outside the allow-list");
+        PublishExposures(context).Should().BeEmpty();
     }
 
     [Test]

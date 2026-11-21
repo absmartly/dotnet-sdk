@@ -153,6 +153,7 @@ M = [
  ('collector: explicit null hides the configured value', S+'Internal/SwitchbackAttributePath.cs', '        if (value == null) return true;\n        if (IsScalar(value)', '        if (value == null) return false;\n        if (IsScalar(value)'),
  ('collector: wire null only for C# null', S+'Internal/SwitchbackAttributePath.cs', '        if (IsScalar(value) && !(value is double || value is float)) return false;', '        return false;'),
  ('carryover: silent read reused by a publishing rebuild', S+'Context.cs', 'return cached != null && !cached.Silent && cached.Serving.Status', 'return cached != null && cached.Serving.Status'),
+ ('carryover: eligible silent read reused', S+'Context.cs', 'return cached != null && !cached.Silent && cached.Serving.Status', 'return cached != null && (!cached.Silent || cached.Serving.Status == SwitchbackServing.ServingStatus.Eligible) && cached.Serving.Status'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',
