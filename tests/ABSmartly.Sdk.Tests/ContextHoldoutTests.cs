@@ -1919,7 +1919,7 @@ public class ContextHoldoutTests
                 Environment.CurrentManagedThreadId)
             {
                 Paused.Set();
-                Resume.Wait(TimeSpan.FromSeconds(10));
+                if (!Resume.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("GateClock was not released");
             }
 
             return _millis;
@@ -2028,6 +2028,74 @@ public class ContextHoldoutTests
         _published[1].Event.Exposures.Should().Equal(Exposure(1, "exp_closing_read", 0), HoldoutExposure(11, "holdout_a", 1));
     }
 
+    // Not every winner has holdouts: one no holdout covers is not queued on a closed context either.
+    [Test]
+    public void ALoggerThatClosesTheContextLeavesNoDeferredUncoveredWinnerExposure()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"uncovered_key\":\"a\"}";
+        var winner = NewExperiment(2, "exp_var_uncovered_winner");
+        winner.Variants[1].Config = "{\"uncovered_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            first, winner));
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                context.Close();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetVariableValue("uncovered_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+    }
+
+    // A deferred winner skipped because the context was closing is not lost when that close fails:
+    // the context stays open, and the next read exposes the winner and its holdout.
+    [Test]
+    public void ADeferredWinnerSkippedByAFailedCloseIsExposedByTheNextRead()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"retry_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"retry_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+        var publish = new TaskCompletionSource<bool>();
+        var publishes = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(() => Interlocked.Increment(ref publishes) == 1 ? publish.Task : Task.CompletedTask);
+        Task finalizing = null!;
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                finalizing = context.FinalizeAsync();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetVariableValue("retry_key", "default");
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        publish.SetException(new HttpRequestException("collector down"));
+        var settle = () => finalizing.Wait(TimeSpan.FromSeconds(10));
+        settle.Should().Throw<AggregateException>();
+        context.IsClosed().Should().BeFalse();
+        _eventLogger.Reset();
+        _published.Clear();
+
+        context.GetVariableValue("retry_key", "default").Should().Be("b");
+
+        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), Exposure(2, "exp_var_winner", NormalVariant),
+            HoldoutExposure(12, "holdout_b", 1));
+    }
+
     // A losing candidate's holdout logger that closes the context before throwing: the close has
     // flushed, so the later winner is not queued, and the logger's exception still propagates.
     [Test]
@@ -2124,9 +2192,10 @@ public class ContextHoldoutTests
             .Select(p => new Experiment { Id = p[0], Iteration = p[1], Name = "renamed_" + p[0], SeedHi = p[0] })
             .ToArray();
 
-        var match = typeof(Context).GetMethod("HoldoutSetMatches", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var match = typeof(Context).GetMethod("HoldoutSetMatches", BindingFlags.Static | BindingFlags.NonPublic);
+        match.Should().NotBeNull();
 
-        ((bool)match.Invoke(null, new object?[] { Set(current), Set(pinned) })!).Should().Be(matches);
+        ((bool)match!.Invoke(null, new object?[] { Set(current), Set(pinned) })!).Should().Be(matches);
     }
 
     // A stale holdout definition (here an older iteration under another name) resolves to the

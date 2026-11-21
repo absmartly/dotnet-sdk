@@ -520,7 +520,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             Monitor.Enter(_eventLock);
             if (guard == EnqueueGuard.UnlessClosed && _closed || guard == EnqueueGuard.UnlessClosing && IsDisposing())
+            {
+                // Not sent: a close that fails leaves the context open, and a later read exposes it.
+                Interlocked.Exchange(ref assignment.Exposed, 0);
                 return;
+            }
             Interlocked.Increment(ref _pendingCount);
             _exposures.Add(exposure);
         }
