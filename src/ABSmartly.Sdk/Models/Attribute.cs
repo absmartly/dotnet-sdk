@@ -6,7 +6,16 @@ namespace ABSmartly.Models;
 public class Attribute
 {
     public string Name { get; set; }
-    public object Value { get; set; }
+    private object _value;
+    public object Value
+    {
+        get => _value;
+        set
+        {
+            _value = value;
+            WireValue = null;
+        }
+    }
     public long SetAt { get; set; }
 
     // A switchback context's wire encoding of a structured Value (a boxed JsonElement, so it is

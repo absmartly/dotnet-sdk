@@ -833,6 +833,31 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     }
 
     [Test]
+    public void PublisherCanReplaceAnAttributeValueForRedaction()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        context.SetAttribute("profile", new Dictionary<string, object> { ["secret"] = "private" });
+        context.Track("g", null!);
+        var published = PublishEvent(context);
+        published.Attributes!.Single(a => a.Name == "profile").Value = new Dictionary<string, object> { ["secret"] = "redacted" };
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(published));
+        json.Should().Contain("redacted").And.NotContain("private");
+    }
+
+    [Test]
+    public void ThrowingConfiguredRootDoesNotEscapeTheLookup()
+    {
+        var experiment = Linked();
+        experiment.SwitchbackClusters = Clusters(UnitType, "environment/city");
+        var context = CreateContext(DataOf(experiment));
+        context.CollectorAttributes = new Dictionary<string, object> { ["environment"] = "production" };
+        context.SetAttribute("environment", new ThrowingProfile());
+        Clock.Now = Anchor + Hour + 1;
+        FluentActions.Invoking(() => context.GetTreatment("exp_sb")).Should().NotThrow();
+        context.PendingCount.Should().Be(0);
+    }
+
+    [Test]
     public void RefreshRetainsRootsWhoseExposuresCanStillBePending()
     {
         var context = CreateContext(DataOf(Linked()));
