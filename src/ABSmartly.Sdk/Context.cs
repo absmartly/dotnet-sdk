@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ABSmartly.Concurrency;
@@ -1529,9 +1530,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return SwitchbackServing.Resolve(experiment.SwitchbackSources, experiment.Data.SwitchbackClusterValues, _units,
             path =>
             {
-                // A null value counts as unset, as the Collector's computeIfAbsent sees it.
+                // A null value (C# or JSON) counts as unset, as the Collector's computeIfAbsent sees it.
                 var value = LatestAttribute(path.RootKey, now)?.Value;
-                if (value == null) _collectorAttributes.TryGetValue(path.RootKey, out value);
+                if (value == null || value is JsonElement { ValueKind: JsonValueKind.Null })
+                    _collectorAttributes.TryGetValue(path.RootKey, out value);
                 return path.ResolveAttribute(value);
             });
     }

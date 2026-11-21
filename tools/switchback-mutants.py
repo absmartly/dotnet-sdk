@@ -149,8 +149,9 @@ M = [
  ('collector: data contexts not given collector attributes', S+'Sdk.cs', '            _systemAttributes,\n            _collectorAttributes);\n\n        return context;', '            _systemAttributes,\n            null);\n\n        return context;'),
  ('collector: cluster paths ignore collector attributes', S+'Context.cs', '                if (value == null) _collectorAttributes.TryGetValue(path.RootKey, out value);\n', ''),
  ('collector: collector attribute overrides explicit', S+'Context.cs', '                if (value == null) _collectorAttributes.TryGetValue(path.RootKey, out value);', '                if (_collectorAttributes.TryGetValue(path.RootKey, out var injected)) value = injected;'),
- ('collector: explicit null hides the configured value', S+'Context.cs', '                var value = LatestAttribute(path.RootKey, now)?.Value;\n                if (value == null) _collectorAttributes', '                var latest = LatestAttribute(path.RootKey, now);\n                var value = latest?.Value;\n                if (latest == null) _collectorAttributes'),
+ ('collector: explicit null hides the configured value', S+'Context.cs', '                var value = LatestAttribute(path.RootKey, now)?.Value;\n                if (value == null || value is JsonElement', '                var latest = LatestAttribute(path.RootKey, now);\n                var value = latest?.Value;\n                if (latest == null || value is JsonElement'),
  ('collector: configured values untrimmed', S+'Sdk.cs', "var environment = serviceConfiguration?.Environment?.Trim(' ', '\\t');", 'var environment = serviceConfiguration?.Environment;'),
+ ('collector: JSON null hides the configured value', S+'Context.cs', 'if (value == null || value is JsonElement { ValueKind: JsonValueKind.Null })', 'if (value == null)'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',
