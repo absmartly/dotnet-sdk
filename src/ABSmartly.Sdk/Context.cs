@@ -427,31 +427,35 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // theirs. The holdouts fire even when the experiment's exposure throws (a throwing event
     // logger), since this assignment is already marked exposed and would never fire them again;
     // the first failure is rethrown once every holdout has fired.
-    // deferred: the exposure was deferred past an earlier logger failure, so nothing is queued
-    // once the context is closing or closed (checked under the event lock, where close sets
-    // _closing).
+    // deferred: the exposure was deferred past an earlier logger failure, so it is not queued
+    // while the context is closing or closed (checked under the event lock, where close sets
+    // _closing); it is left unexposed with its holdouts, so if that close fails and the context
+    // stays open, the next read exposes them.
     private void QueueExposure(Assignment assignment, bool deferred = false)
     {
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
+            var guard = deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.None;
             if (assignment.HoldoutAssignments == null)
             {
-                EnqueueExposure(assignment, assignment.Name, deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.None);
+                EnqueueExposure(assignment, assignment.Name, guard);
                 return;
             }
 
             ExceptionDispatchInfo failure = null;
             try
             {
-                if (!assignment.Suppressed)
-                    EnqueueExposure(assignment, assignment.Name, deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.None);
+                // Skipped (and left unexposed): its holdouts follow it on the next read.
+                if (!assignment.Suppressed && !EnqueueExposure(assignment, assignment.Name, guard)) return;
             }
             catch (Exception e)
             {
                 failure = ExceptionDispatchInfo.Capture(e);
             }
 
-            var holdoutFailure = TriggerHoldoutExposures(assignment, deferred);
+            // Once the experiment's own exposure is queued, its holdouts follow as on any read. (A
+            // deferred winner is assigned, so it is never suppressed.)
+            var holdoutFailure = TriggerHoldoutExposures(assignment);
             (failure ?? holdoutFailure)?.Throw();
         }
     }
@@ -498,7 +502,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         UnlessClosing
     }
 
-    private void EnqueueExposure(Assignment assignment, string name, EnqueueGuard guard = EnqueueGuard.None)
+    // False when the guard skipped it (the assignment is then left unexposed).
+    private bool EnqueueExposure(Assignment assignment, string name, EnqueueGuard guard = EnqueueGuard.None)
     {
         var exposure = new Exposure
         {
@@ -523,7 +528,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             {
                 // Not sent: a close that fails leaves the context open, and a later read exposes it.
                 Interlocked.Exchange(ref assignment.Exposed, 0);
-                return;
+                return false;
             }
             Interlocked.Increment(ref _pendingCount);
             _exposures.Add(exposure);
@@ -542,6 +547,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // The exposure is already queued, so a throwing logger must not leave it unflushed.
             SetTimeout();
         }
+
+        return true;
     }
 
 
