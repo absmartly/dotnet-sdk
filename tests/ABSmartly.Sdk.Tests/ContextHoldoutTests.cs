@@ -205,7 +205,7 @@ public class ContextHoldoutTests
     }
 
     private static object InstalledHoldouts(Context context) =>
-        typeof(Context).GetMethod("GetHoldoutsById", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(context, null)!;
+        typeof(Context).GetField("_holdoutsById", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!;
 
     private static bool FlushScheduled(Context context) =>
         typeof(Context).GetField("_timeout", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context) != null;
@@ -1202,8 +1202,6 @@ public class ContextHoldoutTests
         (exposure.Id, exposure.Name, exposure.Variant).Should().Be((holdoutId, holdoutName, 0));
     }
 
-    // The unit participates (its experiment exposure is published, in any arm, control included)
-    // and its holdout arm 1 is exposed.
     private void AssertNotHeldOut(Context context, int holdoutId, string holdoutName)
     {
         var variant = context.GetTreatment("verdict_vectors_experiment");
@@ -1446,9 +1444,6 @@ public class ContextHoldoutTests
         AssertPublished(context, Uid, HoldoutExposure(11, "holdout_a", 0), HoldoutExposure(12, "holdout_b", 0));
     }
 
-    // A held-out first candidate's holdout logger throws, and a later candidate wins: the winner's
-    // own exposure and its holdout's are still queued, in the usual order, before the first
-    // failure propagates; a second read exposes nothing again.
     [Test]
     public void ThrowingLoggerOnALosingCandidateStillExposesTheWinnerAndItsHoldouts()
     {
@@ -1511,7 +1506,6 @@ public class ContextHoldoutTests
         (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0);
     }
 
-    // A context without holdouts allocates no holdout decision state; the first decision does.
     [Test]
     public void HoldoutDecisionStateIsCreatedOnlyOnTheFirstHoldoutDecision()
     {
@@ -1839,10 +1833,11 @@ public class ContextHoldoutTests
             ("exp_rule_coverage", 1, true), ("exp_rule_coverage", 1, true), ("holdout_late", 0, false));
     }
 
-    // A refresh installed between two of an experiment's holdout resolutions does not mix payloads:
-    // every holdout of the decision comes from the index read when it started.
+    // A refresh installed after the rebuild read the experiment does not mix payloads: the
+    // holdouts come from the index installed with that experiment, not the refreshed one (which
+    // drops holdout 11 and bumps holdout 12 to an arm that holds the unit out).
     [Test]
-    public void ARefreshBetweenHoldoutResolutionsDoesNotMixPayloads()
+    public void ARefreshAfterTheExperimentIsReadDoesNotMixPayloads()
     {
         var context = CreateContext(UidNotHeldOut, DataOf(new[]
         {
@@ -1852,20 +1847,51 @@ public class ContextHoldoutTests
         var bumped = NewHoldout(12, "holdout_b_v2", HoldoutASeedHi, HoldoutASeedLo);
         bumped.Iteration = 2;
         bumped.Split = new[] { 1.0, 0.0 };
-        context.BetweenHoldoutResolutions = () =>
+        context.AfterExperimentSnapshot = () =>
         {
-            _dataProvider.Setup(x => x.GetContextDataAsync()).ReturnsAsync(DataOf(new[]
-            {
-                NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo), bumped
-            }, CoveredBy(NewExperiment(1, "exp_mid_refresh"), 11, 12)));
+            _dataProvider.Setup(x => x.GetContextDataAsync())
+                .ReturnsAsync(DataOf(new[] { bumped }, CoveredBy(NewExperiment(1, "exp_mid_refresh"), 12)));
             Task.Run(() => context.RefreshAsync()).Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
         };
 
-        context.GetTreatment("exp_mid_refresh").Should().Be(0); // UidNotHeldOut's normal variant
+        context.PeekTreatment("exp_mid_refresh").Should().Be(0); // UidNotHeldOut's normal variant
 
-        context.BetweenHoldoutResolutions.Should().BeNull();
-        AssertPublished(context, UidNotHeldOut, Exposure(1, "exp_mid_refresh", 0),
-            HoldoutExposure(11, "holdout_a", 1), HoldoutExposure(12, "holdout_b", 1));
+        context.AfterExperimentSnapshot.Should().BeNull();
+        var decision = ((Dictionary<string, Context.Assignment>)typeof(Context)
+            .GetField("_assignmentCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!)["exp_mid_refresh"];
+        decision.Suppressed.Should().BeFalse();
+        decision.HoldoutAssignments!.Select(h => (h.Id, h.Name, h.Iteration, h.Variant))
+            .Should().Equal((11, "holdout_a", 1, 1), (12, "holdout_b", 1, 1));
+    }
+
+    // A losing candidate's holdout logger that closes the context before throwing: the close has
+    // flushed, so the later winner is not queued, and the logger's exception still propagates.
+    [Test]
+    public void ALoggerThatClosesTheContextLeavesNoDeferredWinnerExposure()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"close_key\":\"a\"}";
+        var winner = CoveredBy(NewExperiment(2, "exp_var_winner"), 12);
+        winner.Variants[1].Config = "{\"close_key\":\"b\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner));
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                context.Close();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetVariableValue("close_key", "default");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
     }
 
     // A stale holdout definition (here an older iteration under another name) resolves to the

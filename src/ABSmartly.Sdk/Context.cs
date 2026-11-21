@@ -70,9 +70,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // Test seam: runs once between a cache miss and the write lock, to force a concurrent rebuild.
     internal Action BeforeAssignmentRebuild;
 
-    // Test seam: runs once between an experiment's first and second holdout resolution, to force
-    // a concurrent refresh there.
-    internal Action BetweenHoldoutResolutions;
+    // Test seam: runs once after an assignment rebuild has read the installed data, before it
+    // resolves the experiment's holdouts, to force a concurrent refresh there.
+    internal Action AfterExperimentSnapshot;
 
     private volatile bool _closed;
     private int _closing;
@@ -927,8 +927,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // Called with the context write lock held. The unit is hashed by the covered experiment's
     // unit type, not the holdout's own. Null when that unit is not set (never cached, so a unit
-    // set later is picked up). The live definition comes from holdoutsById, the installed index
-    // read once for all of an experiment's holdouts, so they are resolved from the same refresh.
+    // set later is picked up). The live definition comes from holdoutsById, the index installed
+    // with the experiment's own data, so all its holdouts are resolved from the same payload.
     // The cached arm is kept while the live holdout's iteration is unchanged, so a same-iteration
     // seed or split edit does not move the unit to another arm.
     private Assignment GetHoldoutAssignment(Experiment holdout, string unitType,
@@ -958,20 +958,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         };
         (_holdoutAssignments ??= new Dictionary<(int, string), Assignment>())[key] = assignment;
         return assignment;
-    }
-
-    // The installed holdout index; SetData replaces it whole, never mutates it.
-    private Dictionary<int, Experiment> GetHoldoutsById()
-    {
-        try
-        {
-            _dataLock.EnterReadLock();
-            return _holdoutsById;
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
     }
 
     // The environment assignment rules are scoped to: the one configured on the service, the same
@@ -1076,7 +1062,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var current = TryGetUpToDateAssignment(experimentName, true);
             if (current != null) return current;
 
-            var experiment = GetExperiment(experimentName);
+            // The experiment and the holdout index come from the same installed payload.
+            var experiment = GetExperiment(experimentName, out var holdoutsById);
+            if (AfterExperimentSnapshot != null) Interlocked.Exchange(ref AfterExperimentSnapshot, null)?.Invoke();
             var attrsSeqAtBuild = _attrsSeq;
 
             var assignment = new Assignment
@@ -1091,12 +1079,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (experiment?.Holdouts != null)
             {
                 var holdouts = experiment.Holdouts;
-                var holdoutsById = GetHoldoutsById();
                 var holdoutAssignments = new Assignment[holdouts.Length];
                 for (var i = 0; i < holdouts.Length; i++)
                 {
-                    if (i == 1 && BetweenHoldoutResolutions != null)
-                        Interlocked.Exchange(ref BetweenHoldoutResolutions, null)?.Invoke();
                     var holdoutAssignment = GetHoldoutAssignment(holdouts[i], experiment.Data.UnitType, holdoutsById);
                     holdoutAssignments[i] = holdoutAssignment;
                     if (holdoutAssignment != null && IsHeldOutBy(holdoutAssignment.Variant,
@@ -1241,14 +1226,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
                 // An earlier candidate's holdout logger threw (so this is not a peek): the winner
                 // and its holdouts are exposed here, as the caller would, before the first
-                // failure propagates.
-                try
+                // failure propagates; unless that logger closed the context, which has already
+                // flushed and must not be left with a new pending exposure.
+                if (!IsDisposing())
                 {
-                    QueueExposure(assignment);
-                }
-                catch (Exception)
-                {
-                    // The first failure is the one rethrown.
+                    try
+                    {
+                        QueueExposure(assignment);
+                    }
+                    catch (Exception)
+                    {
+                        // The first failure is the one rethrown.
+                    }
                 }
 
                 failure.Throw();
@@ -1281,6 +1270,22 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         try
         {
             _dataLock.EnterReadLock();
+            return _index.TryGetValue(experimentName, out var variables) ? variables : null;
+        }
+        finally
+        {
+            _dataLock.ExitReadLock();
+        }
+    }
+
+    // The experiment and the installed holdout index, read together so both come from the same
+    // payload. SetData replaces the index whole, never mutates it.
+    private ExperimentVariables GetExperiment(string experimentName, out Dictionary<int, Experiment> holdoutsById)
+    {
+        try
+        {
+            _dataLock.EnterReadLock();
+            holdoutsById = _holdoutsById;
             return _index.TryGetValue(experimentName, out var variables) ? variables : null;
         }
         finally

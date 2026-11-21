@@ -250,6 +250,23 @@ public class HoldoutPayloadTests
         CreateContext(data, publisher).GetTreatment("exp_covered").Should().Be(treatment);
     }
 
+    // A fractional holdoutIds entry is not a reference to the holdout with the truncated id.
+    [Test]
+    public void FractionalHoldoutIdIsNotAReference()
+    {
+        var json = "{\"holdouts\":[{\"id\":11,\"name\":\"holdout_a\",\"iteration\":1,\"seedHi\":13,\"seedLo\":111," +
+                   "\"split\":[1,0]}],\"experiments\":[" +
+                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11.5]}]}";
+
+        var data = Deserialize(json);
+
+        data.Experiments.Single().HoldoutIds.Should().BeEmpty();
+        var (publisher, _) = Publisher();
+        CreateContext(data, publisher).GetTreatment("exp_covered").Should().Be(1);
+    }
+
     [Test]
     public void HoldoutIdsSerializeBackAsAnArray()
     {

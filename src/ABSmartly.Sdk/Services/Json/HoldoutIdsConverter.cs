@@ -21,27 +21,13 @@ internal sealed class HoldoutIdsConverter : JsonConverter<int[]>
         var ids = new List<int>();
         while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
         {
-            if (reader.TokenType == JsonTokenType.Number && TryGetId(ref reader, out var id))
+            if (IntegralInt32Converter.TryRead(ref reader, out var id))
                 ids.Add(id);
             else
                 reader.Skip();
         }
 
         return ids.ToArray();
-    }
-
-    // An integral float such as 3.0 is the same id, as in JavaScript.
-    private static bool TryGetId(ref Utf8JsonReader reader, out int id)
-    {
-        if (reader.TryGetInt32(out id)) return true;
-        if (reader.TryGetDouble(out var value) && value == Math.Floor(value) &&
-            value >= int.MinValue && value <= int.MaxValue)
-        {
-            id = (int)value;
-            return true;
-        }
-
-        return false;
     }
 
     public override void Write(Utf8JsonWriter writer, int[] value, JsonSerializerOptions options)

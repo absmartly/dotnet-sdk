@@ -11,15 +11,25 @@ internal sealed class IntegralInt32Converter : JsonConverter<int>
 {
     public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Number)
+        if (TryRead(ref reader, out var value)) return value;
+        throw new JsonException("Expected a 32-bit integer.");
+    }
+
+    // A number token that is a whole 32-bit integer, written as an integer or an integral float.
+    // Shared with HoldoutIdsConverter, which skips what this rejects instead of throwing.
+    internal static bool TryRead(ref Utf8JsonReader reader, out int value)
+    {
+        value = 0;
+        if (reader.TokenType != JsonTokenType.Number) return false;
+        if (reader.TryGetInt32(out value)) return true;
+        if (reader.TryGetDouble(out var number) && number == Math.Floor(number) &&
+            number >= int.MinValue && number <= int.MaxValue)
         {
-            if (reader.TryGetInt32(out var value)) return value;
-            if (reader.TryGetDouble(out var number) && number == Math.Floor(number) &&
-                number >= int.MinValue && number <= int.MaxValue)
-                return (int)number;
+            value = (int)number;
+            return true;
         }
 
-        throw new JsonException("Expected a 32-bit integer.");
+        return false;
     }
 
     public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
