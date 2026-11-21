@@ -1943,6 +1943,8 @@ public class ContextHoldoutTests
     [TestCase(new[] { 11, 13 }, new[] { 11, 12 }, NormalVariant, 0)]
     [TestCase(new[] { 12 }, new int[0], 0, NormalVariant)]
     [TestCase(new int[0], new[] { 12 }, NormalVariant, 0)]
+    [TestCase(new[] { 12, 13 }, new[] { 11, 13 }, 0, NormalVariant)]
+    [TestCase(new[] { 11, 13 }, new[] { 12, 13 }, NormalVariant, 0)]
     public void RefreshChangingTheHoldoutSetReResolvesCoverage(int[] before, int[] after, int variantBefore,
         int variantAfter)
     {
@@ -1958,6 +1960,49 @@ public class ContextHoldoutTests
         Refresh(context, DataOf(holdouts, CoveredBy(NewExperiment(1, "exp_resized"), after)));
 
         context.PeekTreatment("exp_resized").Should().Be(variantAfter);
+    }
+
+    // A new iteration of the second of two holdouts re-resolves coverage: its new seeds hold Uid out.
+    [Test]
+    public void RefreshBumpingTheSecondHoldoutsIterationReResolvesCoverage()
+    {
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo),
+            NewHoldout(13, "holdout_c", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, CoveredBy(NewExperiment(1, "exp_second_bumped"), 11, 13)));
+        context.PeekTreatment("exp_second_bumped").Should().Be(NormalVariant);
+        var bumped = NewHoldout(13, "holdout_c", HoldoutASeedHi, HoldoutASeedLo);
+        bumped.Iteration = 2;
+
+        Refresh(context, DataOf(new[] { NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo), bumped },
+            CoveredBy(NewExperiment(1, "exp_second_bumped"), 11, 13)));
+
+        context.PeekTreatment("exp_second_bumped").Should().Be(0);
+    }
+
+    // The coverage identity compares every position's id and iteration: (id, iteration) pairs.
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 1, 12, 1 }, true)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 13, 1, 12, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 1, 13, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 2, 12, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 1, 12, 2 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1, 13, 1 }, new[] { 11, 1, 14, 1, 13, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1, 13, 1 }, new[] { 11, 1, 12, 2, 13, 1 }, false)]
+    [TestCase(new[] { 11, 1, 12, 1 }, new[] { 11, 1 }, false)]
+    [TestCase(new[] { 11, 1 }, new[] { 11, 1, 12, 1 }, false)]
+    [TestCase(new[] { 11, 1 }, null, false)]
+    [TestCase(null, new[] { 11, 1 }, false)]
+    [TestCase(null, null, true)]
+    public void HoldoutSetMatchesComparesEveryIdAndIteration(int[]? current, int[]? pinned, bool matches)
+    {
+        static Experiment[]? Set(int[]? pairs) => pairs?.Chunk(2)
+            .Select(p => new Experiment { Id = p[0], Iteration = p[1], Name = "renamed_" + p[0], SeedHi = p[0] })
+            .ToArray();
+
+        var match = typeof(Context).GetMethod("HoldoutSetMatches", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+        ((bool)match.Invoke(null, new object?[] { Set(current), Set(pinned) })!).Should().Be(matches);
     }
 
     // A stale holdout definition (here an older iteration under another name) resolves to the
