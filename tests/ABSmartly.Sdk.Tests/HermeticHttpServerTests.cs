@@ -34,6 +34,7 @@ public class HermeticHttpServerTests
     private Task _serverLoop = null!;
 
     private readonly ConcurrentQueue<RecordedRequest> _requests = new();
+    private string _contextBody = "{\"experiments\":[]}";
 
     [SetUp]
     public void SetUp()
@@ -162,10 +163,43 @@ public class HermeticHttpServerTests
         put!.Headers.Should().ContainKey("X-Application-Version").WhoseValue.Should().Be(expected);
     }
 
+    // A switchback context over real HTTP: the PUT body carries a whole floating-point cluster value
+    // as 3.0 (the Collector reads 3 as the integer key "3"), and the headers it replays the
+    // configured application version from match the version that served, even if the caller
+    // changes its configuration object after building the SDK.
+    [Test]
+    public async Task SwitchbackPublishCarriesTheWireEncodingAndTheServingHeaders()
+    {
+        using (var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!)
+        using (var reader = new StreamReader(stream))
+            _contextBody = await reader.ReadToEndAsync();
+        var sdk = BuildSdk("1004", out var serviceConfig);
+        serviceConfig.ApplicationVersion = "1005";
+
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        config.SetUnit("device_id", "d-1");
+        config.SetAttribute("store", new Dictionary<string, object> { ["key"] = "porto" });
+        config.SetAttribute("geo", new Dictionary<string, object> { ["city"] = 3.0 });
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+        context.GetTreatment("exp_test_switchback");
+        await context.PublishAsync();
+
+        var put = WaitForRequest(r => r.Method == "PUT");
+        put.Should().NotBeNull();
+        put!.Headers.Should().ContainKey("X-Application-Version").WhoseValue.Should().Be("1004");
+        put.Body.Should().Contain("\"value\":{\"city\":3.0}");
+        var body = JObject.Parse(put.Body);
+        ((JArray)body["exposures"]!).Should().ContainSingle();
+    }
+
     // Builds the SDK using ONLY the public configuration surface, wiring the SDK's
     // REAL ABsmartlyHttpClientFactory over a REAL IHttpClientFactory so a genuine
     // System.Net.Http.HttpClient performs the requests.
-    private ABsmartly.Sdk BuildSdk(string? applicationVersion = null)
+    private ABsmartly.Sdk BuildSdk(string? applicationVersion = null) => BuildSdk(applicationVersion, out _);
+
+    private ABsmartly.Sdk BuildSdk(string? applicationVersion, out ABSmartlyServiceConfiguration serviceConfig)
     {
         var services = new ServiceCollection();
         services.AddHttpClient(ABsmartly.Sdk.HttpClientName);
@@ -174,7 +208,7 @@ public class HermeticHttpServerTests
 
         var httpClientFactory = provider.GetRequiredService<IABsmartlyHttpClientFactory>();
 
-        var serviceConfig = new ABSmartlyServiceConfiguration
+        serviceConfig = new ABSmartlyServiceConfiguration
         {
             Endpoint = _baseUrl,
             ApiKey = ApiKey,
@@ -230,7 +264,7 @@ public class HermeticHttpServerTests
 
             byte[] payload;
             if (req.HttpMethod == "GET")
-                payload = Encoding.UTF8.GetBytes("{\"experiments\":[]}");
+                payload = Encoding.UTF8.GetBytes(_contextBody);
             else
                 payload = Encoding.UTF8.GetBytes("{}");
 

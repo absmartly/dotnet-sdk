@@ -91,7 +91,7 @@ public class ContextSwitchbackClusterRuleTests
         RefreshLinks();
     }
 
-    // switchbackClusters in declared (unit type id ascending) order: session_id (1) before user_id (2).
+    // Declared order is unit type id ascending: session_id (1) before user_id (2).
     private void RefreshLinks()
     {
         var clusters = new List<KeyValuePair<string, string>>();
@@ -135,7 +135,7 @@ public class ContextSwitchbackClusterRuleTests
         return context;
     }
 
-    // The Collector's ExperimentAssignment for "sbc", or null when it lists none (not applicable).
+    // Mirrors the Collector's ExperimentAssignment for "sbc".
     private sealed class Assigned
     {
         public string Unit = null!;

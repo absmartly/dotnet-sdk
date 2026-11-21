@@ -161,9 +161,19 @@ M = [
  ('collector: separators not counted as blank', S+'Sdk.cs', "c >= '\\u0009' && c <= '\\u000d' || c >= '\\u001c' && c <= '\\u001f'", "c >= '\\u0009' && c <= '\\u000d'"),
  ('collector: .NET trim on application', S+'Sdk.cs', "var application = serviceConfiguration?.Application?.Trim(' ', '\\t');", 'var application = serviceConfiguration?.Application?.Trim();'),
  ('replay: overridden reads not recorded', S+'Context.cs', '        if (!state.Silent) RecordClusterRead(experiment, servingReadAt);', '        if (!state.Silent && !assignment.Overridden) RecordClusterRead(experiment, servingReadAt);'),
+ ('replay: cached rebuild protects roots it never read', S+'Context.cs', '            if (index < 0 || index >= unitCount) continue;', '            if (index < 0) continue;'),
+ ('collector: serving reads the caller config, HTTP a copy', S+'Sdk.cs', '        _collectorAttributes = BuildCollectorAttributes(serviceConfiguration);', '        _collectorAttributes = BuildCollectorAttributes(original);', '        serviceConfiguration = Snapshot(serviceConfiguration);', '        var original = serviceConfiguration;\n        serviceConfiguration = Snapshot(serviceConfiguration);'),
+ ('collector: HTTP reads the caller config', S+'Sdk.cs', '        serviceConfiguration = Snapshot(serviceConfiguration);\n', ''),
+ ('wire: structured values not frozen at set', S+'Context.cs', '                WireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null', '                WireValue = null'),
+ ('wire: frozen value not used by the lookup', S+'Context.cs', '                var value = attribute?.WireValue ?? attribute?.Value;', '                var value = attribute?.Value;'),
+ ('wire: frozen value not published', S+'Internal/SwitchbackAttributePath.cs', '                if (value.WireValue is JsonElement frozen) frozen.WriteTo(writer);\n                else JsonSerializer', '                JsonSerializer'),
+ ('wire: serializer ignores the switchback flag', S+'Services/DefaultContextEventSerializer.cs', '                    ? SwitchbackAttributePath.PublishOptions.Value', '                    ? JsonOptionsProvider.Default.SerializerOptions'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',
+    # Collector attributes are built at construction from either object, before the caller can
+    # change its configuration, so serving cannot see a later change either way.
+    'collector: serving reads the caller config, HTTP a copy',
 }
 only = sys.argv[1:]
 results = []
@@ -182,10 +192,14 @@ for name, path, old, new, *more in M:
         r = subprocess.run(['dotnet', 'test', 'tests/ABSmartly.Sdk.Tests', '-f', 'net9.0'],
                            env=env, capture_output=True, text=True, timeout=900)
         out = r.stdout + r.stderr
+        failed = [l.strip() for l in out.splitlines() if l.strip().startswith('Failed ')][:3]
         if 'error CS' in out: status = 'killed (compile error)'
-        elif r.returncode != 0:
-            failed = [l.strip() for l in out.splitlines() if l.strip().startswith('Failed ')][:3]
+        elif r.returncode != 0 and failed:
             status = 'killed: ' + '; '.join(failed)
+        elif r.returncode != 0:
+            # The run failed before any test failed (no SDK for the target, restore error, ...):
+            # not evidence the mutant is caught.
+            status = 'ERROR (no test ran): ' + ' '.join(out.split()[-12:])
         else: status = 'SURVIVED'
     finally:
         p.write_text(src)

@@ -521,7 +521,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     [Test]
     public void OnlyRootsAPublishableReadUsedAreRedated()
     {
-        // exp_sb reads city (user_id is not set, so not user_city); exp_b is never read.
+        // user_id is not set, so exp_sb reads city, not user_city.
         var a = Linked();
         var b = NewSwitchback(2, "exp_b", 2, Hour);
         b.SwitchbackClusters = Clusters(UnitType, "other/value");
@@ -538,8 +538,6 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
             .Should().Equal(Anchor + Hour + 10, Anchor + Hour + 10, Anchor + Hour + 21);
     }
 
-    // A read of one experiment does not hide a different cluster attribute set, after a rewind,
-    // before its own experiment's first lookup.
     [Test]
     public void ReadOfOneClusterDoesNotHideAnotherClustersFirstWrite()
     {
@@ -558,7 +556,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         published.Attributes!.Single(x => x.Name == "city").SetAt.Should().Be(Anchor + Hour + 15);
     }
 
-    // A silent read (no usable cluster value) publishes nothing, so it does not re-date its root.
+    // A silent read (no usable cluster value) publishes nothing.
     [Test]
     public void SilentReadDoesNotRedateItsRoot()
     {
@@ -622,7 +620,6 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         PublishExposures(context).Should().BeEmpty();
     }
 
-    // Every linked unit's root that a publishable read used is protected, not only the first.
     [Test]
     public void RewoundWriteToTheSecondClusterRootIsRedated()
     {
@@ -641,7 +638,6 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
             .OrderBy(a => a.SetAt).Last().Value.Should().Be("Faro");
     }
 
-    // The protection is dated at the read the exposure is stamped with, not at a later rebuild.
     [Test]
     public void RebuildKeepsTheReadInstantForRedating()
     {
@@ -659,7 +655,6 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         published.Attributes!.Last().SetAt.Should().Be(Anchor + Hour + 25);
     }
 
-    // A read made with no linked unit set is not reused once one is: a rebuild reads again.
     [Test]
     public void ReadWithNoLinkedUnitIsNotReused()
     {
@@ -676,7 +671,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         exposures.Last().Should().Match<Exposure>(e => e.Unit == "user_id" && e.ExposedAt == Anchor + Hour + 20);
     }
 
-    // An overridden exposure is replayed from its cluster too, so its read protects the root.
+    // The Collector replays an overridden exposure from its cluster too.
     [Test]
     public void OverriddenExposureProtectsItsClusterRoot()
     {
@@ -694,6 +689,92 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         published.Attributes!.Last().SetAt.Should().Be(Anchor + Hour + 21);
         published.Attributes!.Where(a => a.Name == "city" && a.SetAt <= exposure.ExposedAt)
             .OrderBy(a => a.SetAt).Last().Value.Should().Be("Faro");
+    }
+
+    // A rebuild that reuses a read made before a linked unit was set protects only the roots that
+    // read used, so another experiment's first value for the new unit's root stays visible.
+    [Test]
+    public void CachedRebuildProtectsOnlyTheRootsItsReadUsed()
+    {
+        var a = NewSwitchback(1, "exp_a", 2, Hour); a.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "user_city");
+        var b = NewSwitchback(2, "exp_b", 2, Hour); b.SwitchbackClusters = Clusters("user_id", "user_city"); b.FullOnVariant = 1;
+        var context = CreateContext(DataOf(a, b));
+        context.SetAttribute("city", "Faro");
+        Clock.Now = Anchor + Hour + 20;
+        context.GetTreatment("exp_a");
+        context.SetUnit("user_id", "u1");
+        Clock.Now = Anchor + Hour + 30;
+        context.SetOverride("exp_a", 1);
+        context.GetTreatment("exp_a");
+        Clock.Now = Anchor + Hour + 15;
+        context.SetAttribute("user_city", "Faro");
+        Clock.Now = Anchor + Hour + 16;
+        context.GetTreatment("exp_b").Should().Be(1);
+        context.Publish();
+        Published.Last().Event.Attributes!.Single(x => x.Name == "user_city").SetAt.Should().Be(Anchor + Hour + 15);
+        Published.SelectMany(p => p.Event.Exposures ?? Array.Empty<Exposure>()).Should().Contain(e => e.Name == "exp_b");
+    }
+
+    // A structured attribute is published, and read by later lookups, as it was when first read:
+    // reusing the same dictionary next period cannot rewrite the earlier exposure's replay.
+    [Test]
+    public void ReusedAttributeObjectKeepsTheEarlierPeriodsValue()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "store/region");
+        experiment.SwitchbackClusterValues = new[] { "Faro" };
+        var context = CreateContext(DataOf(experiment));
+        var store = new Dictionary<string, object> { ["region"] = "Faro" };
+        context.SetAttribute("store", store);
+        Clock.Now = Anchor + 2 * Hour - 1;
+        context.GetTreatment("exp_sb");
+        store["region"] = "Porto";
+        Clock.Now = Anchor + 2 * Hour + 1;
+        context.SetAttribute("store", store);
+        context.GetTreatment("exp_sb").Should().Be(0, "Porto is outside the allow-list");
+        var published = PublishEvent(context);
+        var exposure = published.Exposures!.Single();
+        exposure.ExposedAt.Should().Be(Anchor + 2 * Hour - 1);
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(published));
+        json.Should().Contain("{\"name\":\"store\",\"value\":{\"region\":\"Faro\"},\"setAt\":" + Anchor + "}");
+        json.Should().Contain("{\"name\":\"store\",\"value\":{\"region\":\"Porto\"},\"setAt\":" + (Anchor + 2 * Hour + 1) + "}");
+        published.Attributes!.First(x => x.Name == "store").Value.Should().BeSameAs(store, "PublishEvent consumers still see the caller's object");
+    }
+
+    // A structured value is frozen when set: mutating the object afterwards, without setting it
+    // again, changes neither the cluster a lookup reads nor what is published.
+    [Test]
+    public void MutatingASetObjectDoesNotChangeItsCluster()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "store/region");
+        var context = CreateContext(DataOf(experiment));
+        var store = new Dictionary<string, object> { ["region"] = "Faro" };
+        context.SetAttribute("store", store);
+        store["region"] = "Porto";
+        Clock.Now = Anchor + Hour + 1;
+        context.GetTreatment("exp_sb").Should().Be(SwitchbackAssigner.Assign("Faro", 1, Seed, 2));
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+        json.Should().Contain("{\"name\":\"store\",\"value\":{\"region\":\"Faro\"},");
+    }
+
+    // A lookup reads the frozen value even when the published object was mutated after it was set
+    // before the switchback data arrived (frozen at the first read instead).
+    [Test]
+    public void LookupReadsTheValueFrozenAtTheFirstRead()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "store/region");
+        var context = CreateContext(DataOf(AsUnit(NewSwitchback(2, Hour))));
+        var store = new Dictionary<string, object> { ["region"] = "Faro" };
+        context.SetAttribute("store", store);
+        RefreshTo(context, experiment);
+        Clock.Now = Anchor + Hour + 1;
+        var served = context.GetTreatment("exp_sb");
+        served.Should().Be(SwitchbackAssigner.Assign("Faro", 1, Seed, 2));
+        store["region"] = "Porto";
+        Clock.Now = Anchor + 2 * Hour + 1;
+        context.GetTreatment("exp_sb").Should().Be(SwitchbackAssigner.Assign("Faro", 2, Seed, 2));
     }
 
     [Test]

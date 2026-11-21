@@ -159,6 +159,23 @@ internal sealed class SwitchbackAttributePath
         return new SwitchbackAttributePath(keys.ToArray(), indices.ToArray());
     }
 
+    // The wire encoding of a structured attribute value, frozen as a boxed JsonElement (see
+    // Attribute.WireValue); null for a scalar or a JsonElement, which cannot change, and for a value
+    // with no JSON encoding.
+    internal static object Freeze(object value)
+    {
+        if (value == null || value is char || IsScalar(value) || value is JsonElement) return null;
+        try
+        {
+            return JsonSerializer.SerializeToElement(value, WireOptions.Value);
+        }
+        catch (Exception e) when (e is JsonException || e is NotSupportedException || e is InvalidOperationException ||
+                                  e is ArgumentException)
+        {
+            return null;
+        }
+    }
+
     // Whether an attribute value is published as JSON null (WireOptions): null, a JSON null, or a
     // NaN or infinite number. A value with no JSON encoding is not.
     internal static bool IsWireNull(object value)
@@ -257,7 +274,8 @@ internal sealed class SwitchbackAttributePath
             if (value.Value != null)
             {
                 writer.WritePropertyName(naming.ConvertName(nameof(Models.Attribute.Value)));
-                JsonSerializer.Serialize(writer, value.Value, WireOptions.Value);
+                if (value.WireValue is JsonElement frozen) frozen.WriteTo(writer);
+                else JsonSerializer.Serialize(writer, value.Value, WireOptions.Value);
             }
 
             writer.WriteNumber(naming.ConvertName(nameof(Models.Attribute.SetAt)), value.SetAt);

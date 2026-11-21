@@ -434,7 +434,6 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         PeekSchedule(keyed).Should().Equal(ExpectedSchedule("Faro"));
     }
 
-    // Without switchbacks attributes are published exactly as before (a whole double as 3).
     [Test]
     public void AttributesWithoutSwitchbacksArePublishedAsBefore()
     {
@@ -534,7 +533,6 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
                     { Application = "website", Environment = environment, ApplicationVersion = "1004" }));
         }
 
-        // city=Faro and environment=production disagree: ineligible, nothing published.
         var disagreeing = Make("production");
         disagreeing.SetAttribute("city", "Faro");
         Clock.Now = Anchor + 10;
@@ -575,7 +573,7 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
             unset.PendingCount.Should().Be(0, "{0}", wireNull);
         }
 
-        // Without user_id the environment source is not read; city alone serves.
+        // Without user_id the environment source is not read.
         var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
         config.SetUnit(UnitType, Uid);
         var single = Context.CreateWithData(config, DataOf(experiment), Clock, DataProvider.Object, Publisher, null,
@@ -815,8 +813,6 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         unkeyed.GetTreatment("exp_sb").Should().Be(0);
     }
 
-    // Inertness: a unit experiment ("unit" or absent) carrying every switchback field serves and
-    // publishes exactly what the same experiment without them does.
     [TestCase("unit")]
     [TestCase(null)]
     public void UnitExperimentsIgnoreClusterFields(string? type)

@@ -1531,7 +1531,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             {
                 // A value published as null (null, JSON null, NaN, an infinity) counts as unset, as
                 // the Collector's computeIfAbsent sees it.
-                var value = LatestAttribute(path.RootKey, now)?.Value;
+                // A structured value is read (and published) as it was when first read here, so
+                // the caller mutating the object later cannot change an earlier exposure's replay.
+                var attribute = LatestAttribute(path.RootKey, now);
+                if (attribute is { WireValue: null, Value: not null })
+                    attribute.WireValue = SwitchbackAttributePath.Freeze(attribute.Value);
+                var value = attribute?.WireValue ?? attribute?.Value;
                 if (_collectorAttributes.TryGetValue(path.RootKey, out var configured) &&
                     SwitchbackAttributePath.IsWireNull(value))
                     value = configured;
@@ -1616,7 +1621,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         if (assignment.Variant >= 0 && assignment.Variant < data.Variants.Length)
             assignment.Variables = experiment.Variables[assignment.Variant];
         assignment.AttrsSeq = attrsSeqAtBuild;
-        if (!state.Silent) RecordClusterRead(experiment, servingReadAt);
+        if (!state.Silent) RecordClusterRead(experiment, servingReadAt, servingUnitCount);
 
         var reused = ReuseExposedRuleAssignment(experiment, previous, assignment);
         if (reused != null) return reused;
@@ -1626,14 +1631,16 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return assignment;
     }
 
-    // The roots this slot's exposure replays its cluster from: those of the linked units it can be
-    // published with. A silent slot publishes nothing, so its read needs no protection.
-    private void RecordClusterRead(ExperimentVariables experiment, long readAt)
+    // The roots this slot's exposure replays its cluster from: those of the linked units among the
+    // first unitCount set (the units it is published with). A silent slot publishes nothing, so its
+    // read needs no protection.
+    private void RecordClusterRead(ExperimentVariables experiment, long readAt, int unitCount)
     {
         if (experiment.SwitchbackSources == null) return;
         foreach (var source in experiment.SwitchbackSources)
         {
-            if (!_units.ContainsKey(source.Key)) continue;
+            var index = _unitOrder.IndexOf(source.Key);
+            if (index < 0 || index >= unitCount) continue;
             var root = source.Value.RootKey;
             if (!_clusterRootReadAt.TryGetValue(root, out var latest) || readAt > latest)
                 _clusterRootReadAt[root] = readAt;
@@ -1958,7 +1965,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (name != null && _clusterRootReadAt.TryGetValue(SwitchbackAttributePath.JavaTrim(name), out var readAt) &&
                 setAt < readAt) setAt = readAt + 1;
             if (InsideAttributeAppend != null) Interlocked.Exchange(ref InsideAttributeAppend, null)?.Invoke();
-            _attributes.Add(new Attribute { Name = name, Value = value, SetAt = setAt });
+            _attributes.Add(new Attribute
+            {
+                Name = name, Value = value, SetAt = setAt,
+                WireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null
+            });
             Interlocked.Increment(ref _attrsSeq);
         }
         finally { _contextLock.ExitWriteLock(); }

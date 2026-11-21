@@ -71,6 +71,10 @@ public class Sdk
             config?.ContextDataDeserializer ?? new DefaultContextDataDeserializer(_loggerFactory);
         _contextEventSerializer = config?.ContextEventSerializer ?? new DefaultContextEventSerializer(_loggerFactory);
 
+        // One copy for the service's requests and for the values switchback cluster lookups read
+        // (BuildCollectorAttributes), so the headers the Collector replays from always match what
+        // served, whatever the caller later does with its configuration object.
+        serviceConfiguration = Snapshot(serviceConfiguration);
         _client = new ABSmartlyService(
             serviceConfiguration,
             _httpClientFactory,
@@ -105,6 +109,18 @@ public class Sdk
 
         return systemAttributes;
     }
+
+    private static ABSmartlyServiceConfiguration Snapshot(ABSmartlyServiceConfiguration configuration) =>
+        configuration == null
+            ? null
+            : new ABSmartlyServiceConfiguration
+            {
+                Environment = configuration.Environment,
+                Application = configuration.Application,
+                Endpoint = configuration.Endpoint,
+                ApiKey = configuration.ApiKey,
+                ApplicationVersion = configuration.ApplicationVersion
+            };
 
     // The attributes the Collector adds to every published request that lacks them, from the
     // headers this SDK sends (ContextAPI.extractAttributes): application and environment unless

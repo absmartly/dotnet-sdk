@@ -299,7 +299,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", Expected2Arms[0], Anchor + 10, true, true));
     }
 
-    // The exposure and the published attributes must let the Collector replay the cluster that served.
     [Test]
     public void SamePeriodClusterChangeAfterAPeekReplaysTheServedCluster()
     {
@@ -506,10 +505,7 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.PendingCount.Should().Be(0);
     }
 
-    // Owner decision (php-sdk#13 Q2): changing a cluster attribute mid-period, before the exposure is
-    // published or while it waits for a retry, is not supported. The arm cached at the period's first
-    // read stays for the period, the requeued exposure is sent unchanged, and the change takes effect
-    // in the next period.
+    // Owner decision (php-sdk#13 Q2): mid-period cluster attribute changes are not supported.
     [Test]
     public void MidPeriodClusterChangeBeforeARequeueKeepsTheCachedArm()
     {
@@ -548,7 +544,7 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         context.GetTreatment("exp_sb").Should().Be(porto.Arm, "the change takes effect in the next period");
     }
 
-    // The Collector's attribute replay: the latest setAt at or before `at`, the last set on a tie.
+    // Mirrors the Collector's attribute replay.
     private static object? Replay(PublishEvent published, string name, long at)
     {
         ABSmartly.Models.Attribute? selected = null;
@@ -558,8 +554,6 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         return selected?.Value;
     }
 
-    // A context that never had switchback data publishes the clock reading as publishedAt, even
-    // after a rollback, exactly as before switchbacks existed.
     [Test]
     public void PublishedAtIsTheClockReadingWithoutSwitchbacks()
     {

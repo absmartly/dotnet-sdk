@@ -175,7 +175,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         {
             Clock.Now = Anchor + i * Hour;
             context.GetTreatment("exp_sb").Should().Be(0);
-            // Variant 0's own config, like any ineligible assignment.
             context.GetVariableValue("sb.arm", -1).Should().Be(0);
         }
 
@@ -408,7 +407,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         }
     }
 
-    // No cost without switchbacks: lookups of unit experiments never read the clock, cached or not.
     [Test]
     public void LookupsWithoutSwitchbacksDoNotReadTheClock()
     {
@@ -570,7 +568,7 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
         context.PendingCount.Should().Be(9);
 
-        // An unrelated unitType edit is not identity: switchbacks never read it.
+        // unitType is not identity: switchbacks never read it.
         var unitTypeChanged = NewSwitchback(2, 2 * Hour);
         unitTypeChanged.SwitchbackClusters = valuesSet.SwitchbackClusters;
         unitTypeChanged.SwitchbackClusterValues = valuesSet.SwitchbackClusterValues;
@@ -579,7 +577,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         context.GetTreatment("exp_sb").Should().Be(Expected2Arms[0]);
         context.PendingCount.Should().Be(9);
 
-        // Nor are seed or split edits: the cached slot is kept.
         var reseeded = NewSwitchback(2, 2 * Hour);
         reseeded.SwitchbackClusters = valuesSet.SwitchbackClusters;
         reseeded.SwitchbackClusterValues = valuesSet.SwitchbackClusterValues;
