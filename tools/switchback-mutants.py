@@ -160,6 +160,7 @@ M = [
  ('collector: figure spaces counted as blank', S+'Sdk.cs', "        if (c == '\\u00a0' || c == '\\u2007' || c == '\\u202f') return false;\n", "        if (c == '\\u00a0') return false;\n"),
  ('collector: separators not counted as blank', S+'Sdk.cs', "c >= '\\u0009' && c <= '\\u000d' || c >= '\\u001c' && c <= '\\u001f'", "c >= '\\u0009' && c <= '\\u000d'"),
  ('collector: .NET trim on application', S+'Sdk.cs', "var application = serviceConfiguration?.Application?.Trim(' ', '\\t');", 'var application = serviceConfiguration?.Application?.Trim();'),
+ ('replay: overridden reads not recorded', S+'Context.cs', '        if (!state.Silent) RecordClusterRead(experiment, servingReadAt);', '        if (!state.Silent && !assignment.Overridden) RecordClusterRead(experiment, servingReadAt);'),
 ]
 EQUIVALENT = {
     'wire: Half text via double',

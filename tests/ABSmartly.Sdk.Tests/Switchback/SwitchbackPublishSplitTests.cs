@@ -676,6 +676,26 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         exposures.Last().Should().Match<Exposure>(e => e.Unit == "user_id" && e.ExposedAt == Anchor + Hour + 20);
     }
 
+    // An overridden exposure is replayed from its cluster too, so its read protects the root.
+    [Test]
+    public void OverriddenExposureProtectsItsClusterRoot()
+    {
+        var experiment = Linked();
+        experiment.SwitchbackClusterValues = new[] { "Faro" };
+        var context = CreateContext(DataOf(experiment));
+        context.SetAttribute("city", "Faro");
+        context.SetOverride("exp_sb", 1);
+        Clock.Now = Anchor + Hour + 20;
+        context.GetTreatment("exp_sb").Should().Be(1);
+        Clock.Now = Anchor + Hour + 10;
+        context.SetAttribute("city", "Porto");
+        var published = PublishEvent(context);
+        var exposure = published.Exposures!.Single();
+        published.Attributes!.Last().SetAt.Should().Be(Anchor + Hour + 21);
+        published.Attributes!.Where(a => a.Name == "city" && a.SetAt <= exposure.ExposedAt)
+            .OrderBy(a => a.SetAt).Last().Value.Should().Be("Faro");
+    }
+
     [Test]
     public void RefreshRetainsRootsWhoseExposuresCanStillBePending()
     {
