@@ -2146,9 +2146,11 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(0);
         _published.SelectMany(p => p.Event.Exposures!).Select(e => e.Id).Should().Equal(11, 2, 12);
         // Each batch the close published is reported, as a Publish event, before Close.
-        var events = _eventLogger.Invocations.Select(i => (EventType)i.Arguments[1])
-            .Where(t => t is EventType.Publish or EventType.Close).ToList();
-        events.Should().Equal(EventType.Publish, EventType.Publish, EventType.Close);
+        var events = _eventLogger.Invocations.Select(i => ((EventType)i.Arguments[1], i.Arguments[2]))
+            .Where(e => e.Item1 is EventType.Publish or EventType.Close).ToList();
+        events.Select(e => e.Item1).Should().Equal(EventType.Publish, EventType.Publish, EventType.Close);
+        events.Take(2).Select(e => string.Join(",", ((PublishEvent)e.Item2!).Exposures!.Select(x => x.Id)))
+            .Should().Equal("11,2", "12");
     }
 
     // A losing candidate's logger closes the context and returns normally: the read still returns
