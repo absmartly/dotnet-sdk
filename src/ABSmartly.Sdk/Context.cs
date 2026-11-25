@@ -74,6 +74,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // resolves the experiment's holdouts, to force a concurrent refresh there.
     internal Action AfterExperimentSnapshot;
 
+    // Test seam: called (every time) after the read path re-resolves a cached assignment's rules.
+    internal Action AfterRuleRevalidation;
+
     private volatile bool _closed;
     private int _closing;
     private readonly object _closeLock = new();
@@ -821,6 +824,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // missing, so a unit set afterwards cannot switch the variant the user already saw.
         var unitPinnedMissing = assignment.RuleMissingUnit && assignment.Exposed != 0;
         var rule = ResolveRule(experiment, unitPinnedMissing, false);
+        if (AfterRuleRevalidation != null) AfterRuleRevalidation();
         int? cachedRuleVariant = assignment.RuleOverride ? assignment.Variant : null;
         if (rule?.Variant != cachedRuleVariant) return false;
 
@@ -1004,11 +1008,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             else if (experiment == null)
             {
                 // A rule-won assignment is not "assigned" either, but its variant came from
-                // the experiment's rules, so it is rebuilt once the experiment is gone. So is an
-                // unexposed one carrying holdout decisions (a held-out experiment peeked before its
-                // removal), which would otherwise fire the removed coverage's holdouts.
-                if (!assignment.Assigned && !assignment.RuleOverride &&
-                    (assignment.Holdout == null || Volatile.Read(ref assignment.Exposed) != 0))
+                // the experiment's rules, so it is rebuilt once the experiment is gone. A held-out one
+                // is kept, with its holdouts, as JS and Java.
+                if (!assignment.Assigned && !assignment.RuleOverride)
                     // previously not-running experiment
                     return assignment;
             }
@@ -1848,7 +1850,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // read), so it starts no publish timer.
     private void SetTimeout()
     {
-        if (!IsReady() || _closed) return;
+        if (!IsReady()) return;
         if (_timeout != null) return;
 
         try

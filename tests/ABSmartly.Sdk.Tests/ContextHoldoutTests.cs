@@ -2355,10 +2355,10 @@ public class ContextHoldoutTests
         FlushScheduled(context).Should().BeFalse();
     }
 
-    // A held-out experiment peeked before a refresh removes it: the next GetTreatment gives the
-    // default variant and publishes no holdout exposure for the removed coverage.
+    // A held-out experiment peeked before a refresh removes it keeps its cached decision, as JS
+    // and Java: the next GetTreatment gives control and fires the holdout, which is still running.
     [Test]
-    public void APeekedHeldOutExperimentRemovedByARefreshFiresNoHoldoutExposure()
+    public void APeekedHeldOutExperimentRemovedByARefreshStillFiresItsHoldoutAsJs()
     {
         var holdouts = new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) };
         var context = CreateContext(DataOf(holdouts, CoveredBy(NewExperiment(1, "exp_removed"), 11),
@@ -2368,7 +2368,48 @@ public class ContextHoldoutTests
         Refresh(context, DataOf(holdouts, NewExperiment(2, "exp_kept")));
 
         context.GetTreatment("exp_removed").Should().Be(0);
-        Publish(context).Exposures!.Select(e => (e.Id, e.Name)).Should().Equal((0, "exp_removed"));
+        Publish(context).Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
+    }
+
+    // An exposed assignment is not exposed again after a refresh removes its experiment.
+    [Test]
+    public void AnExposedAssignmentRemovedByARefreshIsNotExposedAgain()
+    {
+        var holdouts = new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) };
+        var context = CreateContext(DataOf(holdouts, CoveredBy(NewExperiment(1, "exp_removed"), 11),
+            NewExperiment(2, "exp_kept")));
+        context.GetTreatment("exp_removed").Should().Be(0);
+        Publish(context).Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
+
+        Refresh(context, DataOf(holdouts, NewExperiment(2, "exp_kept")));
+
+        context.GetTreatment("exp_removed").Should().Be(0);
+        context.PendingCount.Should().Be(0);
+    }
+
+    // The cached read re-resolves a no-unit split's rules only while it is unexposed and its unit is
+    // set: an exposed split, and an unexposed one with no unit, are not re-evaluated on every read.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ANoUnitSplitIsNotReEvaluatedOnEveryRead(bool exposedThenUnitSet)
+    {
+        var context = CreateContextWithoutUnits(DataOf(Array.Empty<Experiment>(), SplitRuled()));
+        if (exposedThenUnitSet)
+        {
+            context.GetTreatment("exp_pinned_split").Should().Be(0);
+            context.SetUnit(UnitType, Uid);
+        }
+        else
+        {
+            context.PeekTreatment("exp_pinned_split").Should().Be(0);
+        }
+
+        context.PeekTreatment("exp_pinned_split").Should().Be(0);
+        var revalidations = 0;
+        context.AfterRuleRevalidation = () => revalidations++;
+        for (var i = 0; i < 10; i++) context.PeekTreatment("exp_pinned_split").Should().Be(0);
+
+        revalidations.Should().Be(0);
     }
 
     // The deferred winner ends the scan: a later covered candidate is not visited, so its holdout
