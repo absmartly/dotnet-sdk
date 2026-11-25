@@ -110,8 +110,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private Dictionary<string, Dictionary<string, ContextCustomFieldValue>> _contextCustomFields;
     
     private DictionaryLockableAdapter<string, List<ExperimentVariables>> _indexVariables;
-    // The installed holdouts by id (entries with a split only); null when the payload has none.
-    private Dictionary<int, Experiment> _holdoutsById;
     // A holdout's own assignment per (holdout id, covered experiment's unit type), kept across
     // refreshes while the holdout's iteration is unchanged. Guarded by the context write lock;
     // created on the first holdout decision, so a context without holdouts allocates none.
@@ -444,7 +442,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             ExceptionDispatchInfo failure = null;
             try
             {
-                // Skipped (and left unexposed): its holdouts follow it on the next read.
                 if (!assignment.Suppressed && !EnqueueExposure(assignment, assignment.Name, deferred)) return;
             }
             catch (Exception e)
@@ -489,12 +486,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return failure;
     }
 
-    private void EnqueueExposure(Assignment assignment) => EnqueueExposure(assignment, assignment.Name);
-
     // False when it was not queued (the assignment is then left unexposed): never on a closed
     // context, which has flushed for good (an event logger can close it during a read), and, for
     // an exposure deferred past an earlier logger failure, not while a close is in progress either.
-    private bool EnqueueExposure(Assignment assignment, string name, bool deferred = false)
+    private bool EnqueueExposure(Assignment assignment, string name, bool deferred)
     {
         var exposure = new Exposure
         {
@@ -945,34 +940,30 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // Called with the context write lock held. The unit is hashed by the covered experiment's
     // unit type, not the holdout's own. Null when that unit is not set (never cached, so a unit
-    // set later is picked up). The live definition comes from holdoutsById, the index installed
-    // with the experiment's own data, so all its holdouts are resolved from the same payload.
-    // The cached arm is kept while the live holdout's iteration is unchanged, so a same-iteration
-    // seed or split edit does not move the unit to another arm.
-    private Assignment GetHoldoutAssignment(Experiment holdout, string unitType,
-        Dictionary<int, Experiment> holdoutsById)
+    // set later is picked up). The holdout is the one installed with the experiment's own data
+    // (SetData resolves both from the same payload). The cached arm is kept while the holdout's
+    // iteration is unchanged, so a same-iteration seed or split edit does not move the unit to
+    // another arm.
+    private Assignment GetHoldoutAssignment(Experiment holdout, string unitType)
     {
         if (unitType == null || !_units.TryGetValue(unitType, out var uid)) return null;
 
-        var live = holdoutsById != null && holdoutsById.TryGetValue(holdout.Id, out var installed)
-            ? installed
-            : holdout;
-        var key = (live.Id, unitType);
+        var key = (holdout.Id, unitType);
         if (_holdoutAssignments != null && _holdoutAssignments.TryGetValue(key, out var cached) &&
-            cached.Iteration == live.Iteration)
+            cached.Iteration == holdout.Iteration)
             return cached;
 
         var assigner = GetVariantAssigner(unitType, GetUnitHash(unitType, uid));
         var assignment = new Assignment
         {
-            Id = live.Id,
-            Name = live.Name,
-            Iteration = live.Iteration,
+            Id = holdout.Id,
+            Name = holdout.Name,
+            Iteration = holdout.Iteration,
             UnitType = unitType,
-            Variant = assigner.Assign(live.Split, live.SeedHi, live.SeedLo),
+            Variant = assigner.Assign(holdout.Split, holdout.SeedHi, holdout.SeedLo),
             Assigned = true,
             Eligible = true,
-            Holdout = new HoldoutState { ArmCount = live.Split.Length }
+            Holdout = new HoldoutState { ArmCount = holdout.Split.Length }
         };
         (_holdoutAssignments ??= new Dictionary<(int, string), Assignment>())[key] = assignment;
         return assignment;
@@ -1080,7 +1071,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var current = TryGetUpToDateAssignment(experimentName, true);
             if (current != null) return current;
 
-            var experiment = GetExperiment(experimentName, out var holdoutsById);
+            var experiment = GetExperiment(experimentName);
             if (AfterExperimentSnapshot != null) Interlocked.Exchange(ref AfterExperimentSnapshot, null)?.Invoke();
             var attrsSeqAtBuild = _attrsSeq;
 
@@ -1099,7 +1090,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 var holdoutAssignments = new Assignment[holdouts.Length];
                 for (var i = 0; i < holdouts.Length; i++)
                 {
-                    var holdoutAssignment = GetHoldoutAssignment(holdouts[i], experiment.Data.UnitType, holdoutsById);
+                    var holdoutAssignment = GetHoldoutAssignment(holdouts[i], experiment.Data.UnitType);
                     holdoutAssignments[i] = holdoutAssignment;
                     if (holdoutAssignment != null && IsHeldOutBy(holdoutAssignment.Variant,
                             holdoutAssignment.HoldoutArmCount, experiment.Data.FullOnVariant))
@@ -1130,10 +1121,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                     // only re-resolves after a refresh changes the rules or an attribute is set.
                     assignment.RuleKey = experiment.Data.AssignmentRules;
                     // An exposed split resolved without its unit stays so for the same experiment run
-                    // and rules, as RuleMatches, also when the rebuild is for a coverage change. (An
-                    // unexposed one is no longer cached: SetUnit evicted it.)
+                    // and rules, as RuleMatches, also when the rebuild is for a coverage change. One
+                    // still cached unexposed (its exposure was skipped by a close, after SetUnit saw
+                    // it reserved) was never seen, so it is resolved with the unit.
                     var unitPinnedMissing = _assignmentCache.TryGetValue(experimentName, out var exposedRule) &&
                                             exposedRule.RuleMissingUnit &&
+                                            Volatile.Read(ref exposedRule.Exposed) == 1 &&
                                             ExperimentMatches(experiment.Data, exposedRule) &&
                                             string.Equals(exposedRule.RuleKey, experiment.Data.AssignmentRules,
                                                 StringComparison.Ordinal);
@@ -1240,7 +1233,17 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         ExceptionDispatchInfo failure = null;
         foreach (var experiment in experiments)
         {
-            var assignment = GetAssignment(experiment.Data.Name);
+            Assignment assignment;
+            try
+            {
+                assignment = GetAssignment(experiment.Data.Name);
+            }
+            catch (Exception) when (failure != null)
+            {
+                // An earlier candidate's logger failure is the one the caller gets.
+                failure.Throw();
+                throw;
+            }
             // As the Java SDK: the first assigned (or overridden) experiment by id wins, even
             // if its selected variant does not define the key (the caller then returns the
             // default). It is the experiment exposed, so units in its control arm are
@@ -1304,21 +1307,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
     }
 
-    // The experiment and the installed holdout index, read together so both come from the same
-    // payload. SetData replaces the index whole, never mutates it.
-    private ExperimentVariables GetExperiment(string experimentName, out Dictionary<int, Experiment> holdoutsById)
-    {
-        try
-        {
-            _dataLock.EnterReadLock();
-            holdoutsById = _holdoutsById;
-            return _index.TryGetValue(experimentName, out var variables) ? variables : null;
-        }
-        finally
-        {
-            _dataLock.ExitReadLock();
-        }
-    }
     
     // Custom-field reads stay available after close, as in 1.3.0 and the Java SDK
     // (checkReady(false)).
@@ -1865,9 +1853,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     #region Timeout
 
+    // A closed context has flushed for good (an event logger may have closed or disposed it during a
+    // read), so it starts no publish timer.
     private void SetTimeout()
     {
-        if (!IsReady()) return;
+        if (!IsReady() || _closed) return;
         if (_timeout != null) return;
 
         try
@@ -2149,7 +2139,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             _dataLock.EnterWriteLock();
 
             _index = index;
-            _holdoutsById = holdoutsById;
             _contextCustomFields = contextCustomFields;
             _indexVariables =
                 new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock),
@@ -2194,7 +2183,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             _dataLock.EnterWriteLock();
             _index = new Dictionary<string, ExperimentVariables>();
-            _holdoutsById = null;
             _indexVariables =
                 new DictionaryLockableAdapter<string, List<ExperimentVariables>>(new LockableCollectionSlimLock(_dataLock));
             // Empty, not null, experiments: reads on a failed context (Experiments,
@@ -2435,7 +2423,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             return false;
         }
 
-        // Sealed (_closed set) by TrySealDrained, atomically with the event queue.
         bool disposeLocks;
         lock (_closeLock)
         {

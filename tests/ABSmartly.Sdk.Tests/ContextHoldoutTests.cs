@@ -202,9 +202,6 @@ public class ContextHoldoutTests
         return published;
     }
 
-    private static object InstalledHoldouts(Context context) =>
-        typeof(Context).GetField("_holdoutsById", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!;
-
     private static bool FlushScheduled(Context context) =>
         typeof(Context).GetField("_timeout", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context) != null;
 
@@ -1592,37 +1589,6 @@ public class ContextHoldoutTests
         AssertPublished(context, Uid, Exposure(1, "exp_empty_split_holdout", NormalVariant));
     }
 
-    // A stale holdout definition (an older iteration) reaching the holdout resolution must resolve
-    // the live one by id and reuse its exposed decision, not overwrite it.
-    [Test]
-    public void StaleHoldoutReferenceNeverOverwritesNewerPinnedCacheEntry()
-    {
-        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_h", HoldoutASeedHi, HoldoutASeedLo) },
-            CoveredBy(NewExperiment(1, "exp_f"), 11)));
-
-        context.GetTreatment("exp_f").Should().Be(0);
-        context.PendingCount.Should().Be(1);
-
-        var iteration2 = NewHoldout(11, "holdout_h", HoldoutBSeedHi, HoldoutBSeedLo);
-        iteration2.Iteration = 2;
-        Refresh(context, DataOf(new[] { iteration2 }, CoveredBy(NewExperiment(1, "exp_f"), 11),
-            CoveredBy(NewExperiment(2, "exp_g"), 11)));
-
-        context.GetTreatment("exp_g").Should().Be(NormalVariant);
-        context.PendingCount.Should().Be(3);
-
-        var stale = NewHoldout(11, "holdout_h", HoldoutASeedHi, HoldoutASeedLo);
-        var resolve = typeof(Context).GetMethod("GetHoldoutAssignment", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType, InstalledHoldouts(context) })!;
-
-        resolved.Iteration.Should().Be(2);
-        resolved.Variant.Should().Be(1);
-        resolved.Exposed.Should().Be(1);
-        context.PendingCount.Should().Be(3);
-        AssertPublished(context, Uid, HoldoutExposure(11, "holdout_h", 0), Exposure(2, "exp_g", NormalVariant),
-            HoldoutExposure(11, "holdout_h", 1));
-    }
-
     // An override is rebuilt when a refresh changes its holdout coverage, so a newly applicable
     // holdout still fires (and the override is exposed again, like any rebuilt assignment).
     [Test]
@@ -2264,6 +2230,71 @@ public class ContextHoldoutTests
         if (variantAfter == 0) exposures.Should().NotContain((1, 1));
     }
 
+    // A no-unit split whose deferred exposure was reserved (so SetUnit kept it cached) and then
+    // skipped by a close that failed was never seen: a coverage-only refresh resolves it with the
+    // unit, so the first successful read and its exposure give the split's variant 1.
+    [Test]
+    public void ANoUnitSplitWhoseExposureACloseSkippedIsResolvedWithItsUnitAfterACoverageRefresh()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"skipped_split_key\":\"a\"}";
+        ContextData Data(params int[] winnerHoldouts)
+        {
+            var winner = NewExperiment(2, "exp_skipped_split", "device_id", 0);
+            winner.AssignmentRules = NoUnitSplit;
+            winner.Variants[1].Config = "{\"skipped_split_key\":\"b\"}";
+            if (winnerHoldouts.Length > 0) winner.HoldoutIds = winnerHoldouts;
+            return DataOf(new[]
+            {
+                NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+                NewHoldout(12, "holdout_b", "device_id", HoldoutBSeedHi, HoldoutBSeedLo, "full")
+            }, first, winner);
+        }
+
+        var clock = new GateClock(Now);
+        var config = new ContextConfig().SetUnit(UnitType, Uid);
+        config.PublishDelay = TimeSpan.FromMinutes(10);
+        var context = Context.CreateWithData(config, Data(), clock, _dataProvider.Object, _publisher,
+            _eventLogger.Object, new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), null,
+            new Dictionary<string, object> { ["application"] = "website", ["environment"] = "production" });
+        var publish = new TaskCompletionSource<bool>();
+        var publishes = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(() => Interlocked.Increment(ref publishes) == 1 ? publish.Task : Task.CompletedTask);
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                // The next exposure built on this thread is the deferred winner's.
+                clock.ArmCurrentThread();
+                throw new InvalidOperationException("boom");
+            });
+
+        var read = Task.Run(() => context.GetVariableValue("skipped_split_key", "default"));
+        clock.Paused.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        context.SetUnit("device_id", "device-1"); // sees the reservation: the no-unit split stays cached
+        var finalizing = context.FinalizeAsync();
+        context.IsClosing().Should().BeTrue();
+        clock.Resume.Set();
+        var act = () => read.Wait(TimeSpan.FromSeconds(10));
+        act.Should().Throw<AggregateException>().WithInnerException<InvalidOperationException>().WithMessage("boom");
+        publish.SetException(new HttpRequestException("collector down"));
+        var settle = () => finalizing.Wait(TimeSpan.FromSeconds(10));
+        settle.Should().Throw<AggregateException>();
+        context.IsClosed().Should().BeFalse();
+        _published.Single().Event.Exposures!.Select(e => e.Id).Should().Equal(11);
+        _eventLogger.Reset();
+        _published.Clear();
+
+        Refresh(context, Data(12));
+
+        context.GetTreatment("exp_skipped_split").Should().Be(1);
+        var exposures = Publish(context).Exposures!.Select(e => (e.Id, e.Variant)).ToList();
+        exposures.Should().Contain((2, 1));
+        exposures.Should().NotContain((2, 0));
+    }
+
     // A split exposed with its unit is not pinned to the no-unit result by a coverage refresh.
     [Test]
     public void ASplitExposedWithItsUnitKeepsItsHashedVariantAcrossACoverageRefresh()
@@ -2275,6 +2306,66 @@ public class ContextHoldoutTests
         Refresh(context, DataOf(holdouts, SplitRuled(NoUnitSplit, 1, 11)));
 
         context.GetTreatment("exp_pinned_split").Should().Be(1);
+    }
+
+    // An exposure logger that closes or disposes the context and then throws: the context has
+    // flushed for good, so no publish timer is started after the exception.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ALoggerThatClosesTheContextAndThrowsStartsNoPublishTimer(bool dispose)
+    {
+        var context = CreateContext(UidNotHeldOut, DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_logger_closes_throws"), 11)));
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 1)))
+            .Callback(() =>
+            {
+                if (dispose) context.Dispose();
+                else context.Close();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetTreatment("exp_logger_closes_throws");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        context.IsClosed().Should().BeTrue();
+        FlushScheduled(context).Should().BeFalse();
+    }
+
+    // Throws for one audience string, so a later candidate's lookup fails.
+    private sealed class ThrowingAudienceDeserializer : IAudienceDeserializer
+    {
+        public const string Poisoned = "{\"filter\":\"poisoned\"}";
+        private readonly DefaultAudienceDeserializer _inner = new();
+
+        public Dictionary<string, object> Deserialize(string audience) =>
+            audience == Poisoned ? throw new FormatException("audience") : _inner.Deserialize(audience);
+    }
+
+    // A losing candidate's logger throws and a later candidate's lookup then fails too: the caller
+    // gets the logger's exception. Without the earlier failure, the lookup error propagates.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void AnEarlierLoggerFailureIsKeptWhenALaterCandidatesLookupThrows(bool loggerThrows)
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"lookup_key\":\"a\"}";
+        var second = NewExperiment(2, "exp_var_poisoned");
+        second.Audience = ThrowingAudienceDeserializer.Poisoned;
+        second.Variants[1].Config = "{\"lookup_key\":\"b\"}";
+        var config = new ContextConfig().SetUnit(UnitType, Uid);
+        config.PublishDelay = TimeSpan.FromMinutes(10);
+        var context = Context.CreateWithData(config,
+            DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) }, first, second), _clock,
+            _dataProvider.Object, _publisher, _eventLogger.Object, new DefaultVariableParser(),
+            new AudienceMatcher(new ThrowingAudienceDeserializer()), null,
+            new Dictionary<string, object> { ["application"] = "website", ["environment"] = "production" });
+        if (loggerThrows) ThrowOnExposure(e => e.Id == 11);
+
+        var act = () => context.GetVariableValue("lookup_key", "default");
+
+        if (loggerThrows) act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        else act.Should().Throw<FormatException>().WithMessage("audience");
     }
 
     // Not every winner has holdouts: one no holdout covers is not queued on a closed context either.
@@ -2445,22 +2536,6 @@ public class ContextHoldoutTests
         match.Should().NotBeNull();
 
         ((bool)match!.Invoke(null, new object?[] { Set(current), Set(pinned) })!).Should().Be(matches);
-    }
-
-    // A stale holdout definition (here an older iteration under another name) resolves to the
-    // live one: its iteration, arm and name.
-    [Test]
-    public void StaleHoldoutDefinitionResolvesToTheLiveHoldout()
-    {
-        var live = NewHoldout(11, "holdout_live", HoldoutBSeedHi, HoldoutBSeedLo);
-        live.Iteration = 2;
-        var context = CreateContext(DataOf(new[] { live }, CoveredBy(NewExperiment(1, "exp_live"), 11)));
-
-        var stale = NewHoldout(11, "holdout_stale", HoldoutASeedHi, HoldoutASeedLo);
-        var resolve = typeof(Context).GetMethod("GetHoldoutAssignment", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var resolved = (Context.Assignment)resolve.Invoke(context, new object[] { stale, UnitType, InstalledHoldouts(context) })!;
-
-        (resolved.Name, resolved.Iteration, resolved.Variant).Should().Be(("holdout_live", 2, 1));
     }
 
     // As JS, a same-iteration rename keeps the unit's arm, and an experiment resolved after the
