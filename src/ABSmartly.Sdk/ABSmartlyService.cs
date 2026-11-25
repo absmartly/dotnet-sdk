@@ -14,7 +14,6 @@ namespace ABSmartly;
 public class ABSmartlyService : IABSmartlyServiceClient
 {
     private readonly ABSmartlyServiceConfiguration _config;
-    internal Func<string> ApiKeySource { get; set; }
 
     private readonly IContextDataDeserializer _dataDeserializer;
     private readonly IContextEventSerializer _eventSerializer;
@@ -182,7 +181,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
 
     private void SetupDefaultHeaders(IABsmartlyHttpClient client)
     {
-        client.AddHeader("X-API-Key", ApiKeySource == null ? _config.ApiKey : ApiKeySource());
+        client.AddHeader("X-API-Key", _config.ApiKey);
         client.AddHeader("X-Application", _config.Application);
         client.AddHeader("X-Environment", _config.Environment);
         client.AddHeader("X-Application-Version", ApplicationVersionHeader(_config.ApplicationVersion));

@@ -1824,6 +1824,29 @@ public class ContextTests
         context.PendingCount.Should().Be(3);
     }
 
+    // A refresh that moves a unit experiment to another unit type re-resolves it under that type.
+    [Test]
+    public void TestRefreshClearAssignmentCacheForUnitTypeChange()
+    {
+        var context = CreateReadyContext();
+        var experimentName = "exp_test_abc";
+        context.GetTreatment(experimentName).Should().Be(_expectedVariants[experimentName]);
+        context.PendingCount.Should().Be(1);
+
+        SetupRefreshData();
+        foreach (var experiment in _refreshedData.Experiments.Where(x => x.Name == experimentName))
+            experiment.UnitType = "user_id";
+        context.Refresh();
+
+        context.GetTreatment(experimentName);
+        context.PendingCount.Should().Be(2);
+        PublishEvent published = null!;
+        Mock.Get(_eventHandler).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((_, e) => published = e).Returns(Task.CompletedTask);
+        context.Publish();
+        published.Exposures!.Select(e => e.Unit).Should().Equal("session_id", "user_id");
+    }
+
     [Test]
     public void TestRefreshClearAssignmentCacheForIterationChange()
     {

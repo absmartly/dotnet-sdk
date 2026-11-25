@@ -38,7 +38,8 @@ public class Sdk
     // attaches both to every exposure server-side, so audiences can target them locally
     // without the SDK publishing anything extra. User-set attributes still overlay these.
     private IReadOnlyDictionary<string, object> _systemAttributes;
-    private IReadOnlyDictionary<string, object> _collectorAttributes;
+    // Read live, as the service's request headers are (see BuildCollectorAttributes).
+    private ABSmartlyServiceConfiguration _serviceConfiguration;
 
     [ActivatorUtilitiesConstructor]
     public Sdk(IABsmartlyHttpClientFactory httpClientFactory,
@@ -71,17 +72,12 @@ public class Sdk
             config?.ContextDataDeserializer ?? new DefaultContextDataDeserializer(_loggerFactory);
         _contextEventSerializer = config?.ContextEventSerializer ?? new DefaultContextEventSerializer(_loggerFactory);
 
-        // One copy for the service's requests and for the values switchback cluster lookups read
-        // (BuildCollectorAttributes), so the headers the Collector replays from always match what
-        // served, whatever the caller later does with its configuration object.
-        var credentials = serviceConfiguration;
-        serviceConfiguration = Snapshot(serviceConfiguration);
         _client = new ABSmartlyService(
             serviceConfiguration,
             _httpClientFactory,
             _contextDataDeserializer,
             _contextEventSerializer,
-            _loggerFactory) { ApiKeySource = () => credentials.ApiKey };
+            _loggerFactory);
 
         _contextDataProvider = config?.ContextDataProvider ?? new DefaultContextDataProvider(_client);
         _contextEventHandler = config?.ContextPublisher ?? new DefaultContextPublisher(_client);
@@ -91,7 +87,7 @@ public class Sdk
         _audienceDeserializer = config?.AudienceDeserializer ?? new DefaultAudienceDeserializer(_loggerFactory);
 
         _systemAttributes = BuildSystemAttributes(serviceConfiguration);
-        _collectorAttributes = BuildCollectorAttributes(serviceConfiguration);
+        _serviceConfiguration = serviceConfiguration;
     }
 
     // System attributes made available to every context's audience evaluation: the
@@ -111,22 +107,14 @@ public class Sdk
         return systemAttributes;
     }
 
-    private static ABSmartlyServiceConfiguration Snapshot(ABSmartlyServiceConfiguration configuration) =>
-        configuration == null
-            ? null
-            : new ABSmartlyServiceConfiguration
-            {
-                Environment = configuration.Environment,
-                Application = configuration.Application,
-                Endpoint = configuration.Endpoint,
-                ApiKey = configuration.ApiKey,
-                ApplicationVersion = configuration.ApplicationVersion
-            };
-
     // The attributes the Collector adds to every published request that lacks them, from the
     // headers this SDK sends (ContextAPI.extractAttributes): application and environment unless
     // blank, and application_version when application is set and the version header is not 0.
-    // Switchback cluster lookups read them, so serving matches the Collector's replay.
+    // Switchback cluster lookups read them, so serving matches the Collector's replay. Built for each
+    // context when it is created, from the configuration the service sends its headers from (read
+    // live, as released): a context created after the caller changes its configuration serves with
+    // the values its requests carry. Changing it while a context is in use is not supported for
+    // cluster paths rooted at these attributes (see the README).
     internal static IReadOnlyDictionary<string, object> BuildCollectorAttributes(
         ABSmartlyServiceConfiguration serviceConfiguration)
     {
@@ -210,7 +198,7 @@ public class Sdk
             new AudienceMatcher(_audienceDeserializer),
             _loggerFactory,
             _systemAttributes,
-            _collectorAttributes);
+            BuildCollectorAttributes(_serviceConfiguration));
     }
 
     public IContext CreateContextWith(ContextConfig config, ContextData data)
@@ -225,7 +213,7 @@ public class Sdk
             new AudienceMatcher(_audienceDeserializer),
             _loggerFactory,
             _systemAttributes,
-            _collectorAttributes);
+            BuildCollectorAttributes(_serviceConfiguration));
 
         return context;
     }

@@ -104,10 +104,11 @@ public class SdkTests
         pending.PendingCount.Should().Be(1);
     }
 
-    // The Sdk copies its service configuration when built: changing the caller's object later
-    // changes neither the values cluster lookups read nor the headers sent.
+    // As released, the service reads the caller's configuration on every request, and each context
+    // reads the collector attributes when it is created: a context created after a change serves with
+    // the values its requests carry, and one created before keeps serving with its own.
     [Test]
-    public void LaterChangesToTheServiceConfigurationAreNotSeen()
+    public void ContextsReadTheServiceConfigurationWhenCreated()
     {
         var experiment = new Experiment
         {
@@ -117,16 +118,21 @@ public class SdkTests
             Variants = new[] { new ExperimentVariant { Name = "A" }, new ExperimentVariant { Name = "B" } },
             RandomizationType = "switchback",
             SwitchbackClusters = new[] { new KeyValuePair<string, string>("store_id", "environment") },
-            SwitchbackClusterValues = new[] { "dev" },
+            SwitchbackClusterValues = new[] { "production" },
             SwitchbackStartAt = 0, SwitchbackPeriodMs = 400_000L * 3_600_000
         };
         var data = new ContextData { Experiments = new[] { experiment } };
         var absmartly = new ABsmartly.Sdk(_httpClientFactory, _serviceConfig);
-        _serviceConfig.Environment = "production";
         var config = new ContextConfig();
         config.SetUnit("store_id", "s-1");
-        var context = (Context)absmartly.CreateContextWith(config, data);
-        context.GetTreatment("exp_sb");
-        context.PendingCount.Should().Be(1, "the cluster is still the configured dev");
+        var before = (Context)absmartly.CreateContextWith(config, data);
+
+        _serviceConfig.Environment = "production";
+        var after = (Context)absmartly.CreateContextWith(config, data);
+
+        after.GetTreatment("exp_sb");
+        after.PendingCount.Should().Be(1, "created after the change, it reads production");
+        before.GetTreatment("exp_sb");
+        before.PendingCount.Should().Be(0, "created before it, it keeps dev, outside the allow-list");
     }
 }

@@ -165,17 +165,14 @@ public class HermeticHttpServerTests
     }
 
     // A switchback context over real HTTP: the PUT body carries a whole floating-point cluster value
-    // as 3.0 (the Collector reads 3 as the integer key "3"), and the headers it replays the
-    // configured application version from match the version that served, even if the caller
-    // changes its configuration object after building the SDK.
+    // as 3.0 (the Collector reads 3 as the integer key "3").
     [Test]
-    public async Task SwitchbackPublishCarriesTheWireEncodingAndTheServingHeaders()
+    public async Task SwitchbackPublishCarriesTheWireEncoding()
     {
         using (var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!)
         using (var reader = new StreamReader(stream))
             _contextBody = await reader.ReadToEndAsync();
-        var sdk = BuildSdk("1004", out var serviceConfig);
-        serviceConfig.ApplicationVersion = "1005";
+        var sdk = BuildSdk("1004");
 
         var config = new ContextConfig();
         config.SetUnit("store_id", "s-1");
@@ -189,10 +186,45 @@ public class HermeticHttpServerTests
 
         var put = WaitForRequest(r => r.Method == "PUT");
         put.Should().NotBeNull();
-        put!.Headers.Should().ContainKey("X-Application-Version").WhoseValue.Should().Be("1004");
-        put.Body.Should().Contain("\"value\":{\"city\":3.0}");
+        put!.Body.Should().Contain("\"value\":{\"city\":3.0}");
         var body = JObject.Parse(put.Body);
         ((JArray)body["exposures"]!).Should().ContainSingle();
+    }
+
+    // The caller changes its configuration after building the SDK, as 1.4.1 allows: the requests
+    // carry the new application, environment and version, and a context created afterwards serves a
+    // switchback clustered on application_version with the version its PUT carries, so the
+    // Collector, which replays that cluster from the header, records the exposure it served.
+    [Test]
+    public async Task ConfigurationChangedAfterBuildReachesTheHeadersAndServing()
+    {
+        var data = JObject.Parse(await new StreamReader(GetType().Assembly
+            .GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!).ReadToEndAsync());
+        var experiment = (JObject)data["experiments"]![0]!;
+        experiment["switchbackClusters"] = new JObject { ["store_id"] = "application_version" };
+        experiment["switchbackClusterValues"] = new JArray("1005");
+        _contextBody = data.ToString();
+        var sdk = BuildSdk("1004", out var serviceConfig);
+        serviceConfig.ApplicationVersion = "1005";
+        serviceConfig.Environment = "staging";
+        serviceConfig.Application = "mobile";
+
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+        context.GetTreatment("exp_test_switchback");
+        await context.PublishAsync();
+
+        foreach (var request in new[] { WaitForRequest(r => r.Method == "GET")!, WaitForRequest(r => r.Method == "PUT")! })
+        {
+            request.Headers["X-Application-Version"].Should().Be("1005");
+            request.Headers["X-Environment"].Should().Be("staging");
+            request.Headers["X-Application"].Should().Be("mobile");
+        }
+
+        var put = JObject.Parse(WaitForRequest(r => r.Method == "PUT")!.Body);
+        ((JArray)put["exposures"]!).Should().ContainSingle().Which["eligible"]!.Value<bool>().Should().BeTrue();
     }
 
     [Test]

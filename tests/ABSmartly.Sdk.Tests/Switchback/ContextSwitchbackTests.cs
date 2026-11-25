@@ -257,6 +257,29 @@ public class ContextSwitchbackTests : SwitchbackTestBase
             NewExposure(1, "exp_sb", Expected2Arms[1], Anchor + Hour, true, true));
     }
 
+    // A cached period is served from the read path: repeated reads in the period, and in the next
+    // one once it is built, rebuild nothing.
+    [Test]
+    public void RepeatedReadsInAPeriodAreServedFromTheCache()
+    {
+        var context = CreateContext(DataOf(NewSwitchback(2, Hour)));
+        var rebuilds = 0;
+        Clock.Now = Anchor + 10;
+        context.GetTreatment("exp_sb");
+        Clock.Now = Anchor + Hour + 10;
+        context.GetTreatment("exp_sb");
+
+        foreach (var now in new[] { Anchor + 20, Anchor + Hour - 1, Anchor + Hour + 20, Anchor + 2 * Hour - 1 })
+        {
+            Clock.Now = now;
+            context.BeforeAssignmentRebuild = () => ++rebuilds;
+            context.GetTreatment("exp_sb");
+            context.PeekTreatment("exp_sb");
+        }
+
+        rebuilds.Should().Be(0);
+    }
+
     [Test]
     public void VariableLookupsFollowThePeriodAndExposeOncePerPeriod()
     {

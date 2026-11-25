@@ -99,6 +99,87 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
             .Should().Equal("1:1", "2:", "2:3");
     }
 
+    // A synchronous Close() on a UI-like thread while a publication is in flight publishes its own
+    // batch first ("earlier"); once that publication settles, the close publishes what reads already
+    // past their checks queued meanwhile, draining until nothing is pending. Its Publish events are
+    // logged in that order (earlier, drained, final), before Close.
+    [Test]
+    [Timeout(20000)]
+    public async Task CloseLogsItsEarlierBatchBeforeTheDrainedOnes()
+    {
+        var firstGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var drainGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var draining = new ManualResetEventSlim();
+        var publisher = new Mock<IContextPublisher>();
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>((_, e) =>
+            {
+                if (e.Goals != null && e.Goals.Any(g => g.Name == "first")) return firstGate.Task;
+                if (e.Exposures != null && e.Exposures.Any(x => x.Name == "exp_b"))
+                {
+                    draining.Set();
+                    return drainGate.Task;
+                }
+
+                return Task.CompletedTask;
+            });
+        Publisher = publisher.Object;
+        var events = new List<(EventType, object)>();
+        var closeLogged = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var context = WithLogger(events, DataOf(AsUnit(NewSwitchback(3, "exp_b", 2, Hour)),
+            AsUnit(NewSwitchback(4, "exp_c", 2, Hour))), closeLogged);
+
+        // A read past its checks, held before queuing its exposure.
+        Task PastChecks(string experiment, ManualResetEventSlim release)
+        {
+            var entered = new ManualResetEventSlim();
+            context.AfterAssignmentLookup = () =>
+            {
+                entered.Set();
+                release.Wait();
+            };
+            var read = Task.Run(() => context.GetTreatment(experiment));
+            entered.Wait(5000).Should().BeTrue();
+            return read;
+        }
+
+        context.Track("first", null!);
+        var inFlight = context.PublishAsync();
+        var releaseB = new ManualResetEventSlim();
+        var releaseC = new ManualResetEventSlim();
+        var readB = PastChecks("exp_b", releaseB);
+        var readC = PastChecks("exp_c", releaseC);
+        context.Track("second", null!);
+        using (var ui = new UiThread())
+        {
+            var closed = ui.Run(() => context.Close());
+            (await Task.WhenAny(closed, Task.Delay(5000))).Should().Be(closed);
+            await closed;
+        }
+
+        releaseB.Set();
+        (await Task.WhenAny(readB, Task.Delay(5000))).Should().Be(readB);
+        firstGate.SetResult(true);
+        draining.Wait(5000).Should().BeTrue("the close publishes exp_b once the publication settles");
+        releaseC.Set();
+        (await Task.WhenAny(readC, Task.Delay(5000))).Should().Be(readC);
+        drainGate.SetResult(true);
+        await inFlight;
+        await context.FinalizeAsync();
+        (await Task.WhenAny(closeLogged.Task, Task.Delay(5000))).Should().Be(closeLogged.Task);
+
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        List<string> logged;
+        lock (events)
+            logged = events.Where(e => e.Item1 is EventType.Publish or EventType.Close)
+                .Select(e => e.Item1 == EventType.Close ? "close" : string.Join(",",
+                    (((PublishEvent)e.Item2).Exposures ?? Array.Empty<Exposure>()).Select(x => x.Name)
+                    .Concat((((PublishEvent)e.Item2).Goals ?? Array.Empty<GoalAchievement>()).Select(g => g.Name))))
+                .ToList();
+        logged.Should().Equal("first", "second", "exp_b", "exp_c", "close");
+    }
+
     [Test]
     public void LoggerSeesTheDeliveredRequestWhenALaterOneFails()
     {
