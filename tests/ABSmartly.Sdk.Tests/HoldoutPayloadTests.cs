@@ -13,6 +13,12 @@ public class HoldoutPayloadTests
 {
     private const string Uid = "e791e240fcd3df7d238cfc285f475e8152fcc0ec";
 
+    // Raw fragment: malformed/numeric tokens supplied by each test are never reserialized.
+    private const string CoveredExperimentJson =
+        "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
+        "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
+        "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11]}";
+
     private string Resource(string name)
     {
         using var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources." + name);
@@ -164,9 +170,7 @@ public class HoldoutPayloadTests
     {
         var json = "{\"holdouts\":[{\"id\":11,\"name\":\"holdout_a\",\"unitType\":\"session_id\",\"iteration\":1," +
                    "\"seedHi\":13,\"seedLo\":111,\"split\":[1,0]," + irrelevant + "}],\"experiments\":[" +
-                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
-                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
-                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11]}]}";
+                   CoveredExperimentJson + "]}";
 
         var data = Deserialize(json);
 
@@ -190,9 +194,7 @@ public class HoldoutPayloadTests
     {
         var json = "{\"holdouts\":[{\"id\":11," + fields + ",\"iteration\":1,\"seedHi\":13,\"seedLo\":111," +
                    "\"split\":[1,0]}],\"experiments\":[" +
-                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
-                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
-                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11]}]}";
+                   CoveredExperimentJson + "]}";
 
         var data = Deserialize(json);
 
@@ -216,9 +218,7 @@ public class HoldoutPayloadTests
     public void IntegralFloatHoldoutNumbersKeepTheHoldout(string numbers)
     {
         var json = "{\"holdouts\":[{" + numbers + ",\"name\":\"holdout_a\",\"split\":[0.1,0.9]}],\"experiments\":[" +
-                   "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100," +
-                   "\"seedLo\":200,\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1]," +
-                   "\"fullOnVariant\":0,\"variants\":[{\"name\":\"A\"},{\"name\":\"B\"}],\"holdoutIds\":[11]}]}";
+                   CoveredExperimentJson + "]}";
 
         var data = Deserialize(json);
 

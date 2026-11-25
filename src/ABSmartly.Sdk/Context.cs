@@ -111,7 +111,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private volatile Exception _failedError;
     private Dictionary<string, ExperimentVariables> _index;
     private Dictionary<string, Dictionary<string, ContextCustomFieldValue>> _contextCustomFields;
-    
+
     private DictionaryLockableAdapter<string, List<ExperimentVariables>> _indexVariables;
     // A holdout's own assignment per (holdout id, covered experiment's unit type), kept across
     // refreshes while the holdout's iteration is unchanged. Guarded by the context write lock;
@@ -434,22 +434,33 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // stays open, the next read exposes them.
     private void QueueExposure(Assignment assignment, bool deferred = false)
     {
-        if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
+        // Coverage can rebuild the exposure batch without changing the split decision. Share the
+        // pin across those batches, including a reservation that may still be skipped by a close.
+        var ruleUnitPin = assignment.RuleUnitPin;
+        if (ruleUnitPin != null) Interlocked.Increment(ref ruleUnitPin.Reservations);
+        try
         {
-            ExceptionDispatchInfo failure = null;
-            try
+            if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
             {
-                if (!assignment.Suppressed && !EnqueueExposure(assignment, assignment.Name, deferred)) return;
-            }
-            catch (Exception e)
-            {
-                failure = ExceptionDispatchInfo.Capture(e);
-            }
+                ExceptionDispatchInfo failure = null;
+                try
+                {
+                    if (!assignment.Suppressed && !EnqueueExposure(assignment, assignment.Name, deferred)) return;
+                }
+                catch (Exception e)
+                {
+                    failure = ExceptionDispatchInfo.Capture(e);
+                }
 
-            // Once the experiment's own exposure is queued, its holdouts follow as on any read. (A
-            // deferred winner is assigned, so it is never suppressed.)
-            var holdoutFailure = TriggerHoldoutExposures(assignment);
-            (failure ?? holdoutFailure)?.Throw();
+                // Once the experiment's own exposure is queued, its holdouts follow as on any read. (A
+                // deferred winner is assigned, so it is never suppressed.)
+                var holdoutFailure = TriggerHoldoutExposures(assignment);
+                (failure ?? holdoutFailure)?.Throw();
+            }
+        }
+        finally
+        {
+            if (ruleUnitPin != null) Interlocked.Decrement(ref ruleUnitPin.Reservations);
         }
     }
 
@@ -504,9 +515,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             RuleOverride = assignment.RuleOverride
         };
 
-        try
+        lock (_eventLock)
         {
-            Monitor.Enter(_eventLock);
             if (_closed || deferred && _closing > 0)
             {
                 // Not sent: a close that fails leaves the context open, and a later read exposes it.
@@ -515,10 +525,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
             Interlocked.Increment(ref _pendingCount);
             _exposures.Add(exposure);
-        }
-        finally
-        {
-            Monitor.Exit(_eventLock);
+            if (assignment.RuleUnitPin != null) Volatile.Write(ref assignment.RuleUnitPin.Queued, 1);
         }
 
         try
@@ -814,15 +821,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // since the assignment was last validated.
     private bool RuleMatches(ExperimentVariables experiment, Assignment assignment, int attrsSeq, bool rulesChanged)
     {
-        // A no-unit split still unexposed while its unit is set (its exposure was skipped by a close
-        // after SetUnit saw it reserved) was never seen, so it is re-resolved with the unit.
-        var unseenWithUnit = assignment.RuleMissingUnit && Volatile.Read(ref assignment.Exposed) == 0 &&
-                             assignment.UnitType != null && _units.ContainsKey(assignment.UnitType);
-        if (!rulesChanged && attrsSeq <= assignment.AttrsSeq && !unseenWithUnit) return true;
+        if (!rulesChanged && attrsSeq <= assignment.AttrsSeq) return true;
 
         // An exposed split resolved without its unit keeps resolving as if the unit were still
         // missing, so a unit set afterwards cannot switch the variant the user already saw.
-        var unitPinnedMissing = assignment.RuleMissingUnit && assignment.Exposed != 0;
+        var unitPinnedMissing = assignment.RuleUnitPin?.IsPinned == true;
         var rule = ResolveRule(experiment, unitPinnedMissing, false);
         if (AfterRuleRevalidation != null) AfterRuleRevalidation();
         int? cachedRuleVariant = assignment.RuleOverride ? assignment.Variant : null;
@@ -900,6 +903,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         previous.RuleKey = fresh.RuleKey;
         previous.RuleMissingUnit = fresh.RuleMissingUnit;
+        previous.RuleUnitPin = fresh.RuleUnitPin;
+        if (previous.RuleUnitPin != null) Volatile.Write(ref previous.RuleUnitPin.Queued, 1);
         previous.AttrsSeq = fresh.AttrsSeq;
         return previous;
     }
@@ -965,7 +970,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             Variant = assigner.Assign(holdout.Split, holdout.SeedHi, holdout.SeedLo),
             Assigned = true,
             Eligible = true,
-            Holdout = new HoldoutState { ArmCount = holdout.Split.Length }
+            HoldoutArmCount = holdout.Split.Length
         };
         (_holdoutAssignments ??= new Dictionary<(int, string), Assignment>())[key] = assignment;
         return assignment;
@@ -994,6 +999,15 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var assignment = _assignmentCache.TryGetValue(experimentName, out var e) ? e : null;
         if (assignment != null)
         {
+            if (Volatile.Read(ref assignment.Exposed) == 2) return null;
+            if (HasNewlyAvailableUnit(assignment))
+            {
+                // SetUnit may have seen an exposure reservation that a close subsequently skipped.
+                // Retire on the write path too: a racing read must not expose the old decision.
+                if (!writeLocked || Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0)
+                    return null;
+            }
+
             var experiment = GetExperiment(experimentName);
 
             if (_overrides.TryGetValue(experimentName, out var @override))
@@ -1123,16 +1137,15 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                     // Recorded for every assignment, including those no rule matched, so RuleMatches
                     // only re-resolves after a refresh changes the rules or an attribute is set.
                     assignment.RuleKey = experiment.Data.AssignmentRules;
-                    // An exposed split resolved without its unit stays so for the same experiment run
-                    // and rules, as RuleMatches, also when the rebuild is for a coverage change. One
-                    // still cached unexposed (its exposure was skipped by a close, after SetUnit saw
-                    // it reserved) was never seen, so it is resolved with the unit.
-                    var unitPinnedMissing = _assignmentCache.TryGetValue(experimentName, out var exposedRule) &&
-                                            exposedRule.RuleMissingUnit &&
-                                            Volatile.Read(ref exposedRule.Exposed) == 1 &&
-                                            ExperimentMatches(experiment.Data, exposedRule) &&
-                                            string.Equals(exposedRule.RuleKey, experiment.Data.AssignmentRules,
-                                                StringComparison.Ordinal);
+                    // The decision pin survives coverage-only rebuilds independently of the new
+                    // batch's exposure state. A skipped reservation releases it; a queued one never does.
+                    var previousPin = _assignmentCache.TryGetValue(experimentName, out var exposedRule) &&
+                                      ExperimentMatches(experiment.Data, exposedRule) &&
+                                      string.Equals(exposedRule.RuleKey, experiment.Data.AssignmentRules,
+                                          StringComparison.Ordinal)
+                        ? exposedRule.RuleUnitPin
+                        : null;
+                    var unitPinnedMissing = previousPin?.IsPinned == true;
                     var rule = ResolveRule(experiment, unitPinnedMissing, true);
 
                     if (rule == null && !heldOut && !string.IsNullOrEmpty(experiment.Data.Audience))
@@ -1148,6 +1161,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                         // assignments. Assigned stays false, so the exposure is not analysed.
                         assignment.RuleOverride = true;
                         assignment.RuleMissingUnit = ruleResolution.MissingUnit;
+                        if (ruleResolution.MissingUnit) assignment.RuleUnitPin = previousPin ?? new RuleUnitPin();
                         assignment.Variant = ruleResolution.Variant;
                     }
                     else if (heldOut)
@@ -1271,8 +1285,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
             catch (Exception) when (failure != null)
             {
-                // After an earlier logger failure, that failure is the one propagated (below), over
-                // a later lookup's or the deferred winner's.
                 break;
             }
 
@@ -1300,7 +1312,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
     }
 
-    
+
     // Custom-field reads stay available after close, as in 1.3.0 and the Java SDK
     // (checkReady(false)).
     public List<string> GetCustomFieldKeys()
@@ -1637,8 +1649,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             var assignment = entry.Value;
             if (unitType == assignment.UnitType &&
-                (assignment.RuleOverride && assignment.RuleMissingUnit ||
-                 assignment.HoldoutAssignments != null) &&
+                assignment.RuleUnitPin?.IsPinned != true &&
+                (assignment.RuleMissingUnit || assignment.HoldoutAssignments != null) &&
                 Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0)
                 (evicted ??= new List<string>()).Add(entry.Key);
         }
@@ -1646,6 +1658,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         if (evicted == null) return;
         foreach (var name in evicted) _assignmentCache.Remove(name);
     }
+
+    // Every holdout in a decision uses the same covered-experiment unit, so missing entries
+    // are all null. Both override and ordinary cache hits must retry a skipped, unseen decision.
+    private bool HasNewlyAvailableUnit(Assignment assignment) =>
+        Volatile.Read(ref assignment.Exposed) == 0 &&
+        (assignment.RuleMissingUnit && assignment.RuleUnitPin?.IsPinned != true ||
+         assignment.HoldoutAssignments is { Length: > 0 } holdouts && holdouts[0] == null) &&
+        assignment.UnitType != null && _units.ContainsKey(assignment.UnitType);
 
     public Dictionary<string, string> Units
     {
@@ -1894,21 +1914,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     private void ClearTimeout()
     {
-        if (_timeout == null)
-            return;
-
-        try
+        lock (_timeoutLock)
         {
-            Monitor.Enter(_timeoutLock);
             if (_timeout == null) return;
-
             _timeout.Cancel();
             _timeout.Dispose();
             _timeout = null;
-        }
-        finally
-        {
-            Monitor.Exit(_timeoutLock);
         }
     }
 
@@ -2059,7 +2070,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             index[experiment.Name] = experimentVariables;
 
             if (experiment.CustomFieldValues == null) continue;
-            
+
             var experimentCustomFields = new Dictionary<string, ContextCustomFieldValue>();
             foreach (var customFieldValue in experiment.CustomFieldValues)
             {
@@ -2377,12 +2388,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         // A logger that started this close may have scheduled a timer while it was in progress. Taken
         // under _timeoutLock, where SetTimeout checks _closed, so no timer outlives the seal.
-        lock (_timeoutLock)
-        {
-            _timeout?.Cancel();
-            _timeout?.Dispose();
-            _timeout = null;
-        }
+        ClearTimeout();
 
         return true;
     }
@@ -2526,8 +2532,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         _dataLock?.Dispose();
         _contextLock?.Dispose();
-        _timeout?.Dispose();
-        _refreshTimer?.Dispose();
+        ClearTimeout();
+        ClearRefreshTimer();
     }
 
     public async ValueTask DisposeAsync()
@@ -2557,7 +2563,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // The holdouts covering the experiment, sorted by id; null when none is installed.
         internal Experiment[] Holdouts { get; set; }
     }
-    
+
     public class ContextCustomFieldValue
     {
         public string Name { get; set; }
@@ -2597,19 +2603,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // no-unit variant was given instead of randomizing.
         internal bool RuleMissingUnit { get; set; }
 
-        // Holdout state, allocated only for an experiment with holdouts or a holdout's own
-        // assignment, so assignments without holdouts carry a single null reference.
+        // Only no-unit split decisions need a shared pin across coverage exposure batches.
+        internal RuleUnitPin RuleUnitPin;
+
+        // Allocated only for a covered experiment.
         internal HoldoutState Holdout;
 
         // Held out by one of the experiment's holdouts (and no rule matched): control values, not
         // assigned, and no exposure of its own.
         internal bool Suppressed => Holdout?.Suppressed == true;
-        // The holdouts the assignment was resolved against and their decisions, in the same order;
-        // a null decision means the experiment's unit was missing. Null when it has no holdouts.
         internal Experiment[] Holdouts => Holdout?.Holdouts;
         internal Assignment[] HoldoutAssignments => Holdout?.HoldoutAssignments;
-        // For a holdout's own assignment: the split length its arm was drawn from.
-        internal int HoldoutArmCount => Holdout?.ArmCount ?? 0;
+        internal int HoldoutArmCount;
     }
 
     internal sealed class HoldoutState
@@ -2617,7 +2622,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         public bool Suppressed;
         public Experiment[] Holdouts;
         public Assignment[] HoldoutAssignments;
-        public int ArmCount;
+    }
+
+    internal sealed class RuleUnitPin
+    {
+        internal int Reservations;
+        internal int Queued;
+        internal bool IsPinned => Volatile.Read(ref Queued) != 0 || Volatile.Read(ref Reservations) != 0;
     }
 
     #endregion
