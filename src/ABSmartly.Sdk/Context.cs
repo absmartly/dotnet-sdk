@@ -90,6 +90,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // resolves the experiment's holdouts, to force a concurrent refresh there.
     internal Action AfterExperimentSnapshot;
 
+    // Test seam: called (every time) after the read path re-resolves a cached assignment's rules.
+    internal Action AfterRuleRevalidation;
+
     private volatile bool _closed;
     private int _closing;
     private readonly object _closeLock = new();
@@ -477,12 +480,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
             if (assignment.Switchback?.Silent == true) return;
-            if (assignment.HoldoutAssignments == null)
-            {
-                EnqueueExposure(assignment, assignment.Name, deferred);
-                return;
-            }
-
             ExceptionDispatchInfo failure = null;
             try
             {
@@ -956,7 +953,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // since the assignment was last validated.
     private bool RuleMatches(ExperimentVariables experiment, Assignment assignment, int attrsSeq, bool rulesChanged)
     {
-        if (!rulesChanged && attrsSeq <= assignment.AttrsSeq) return true;
+        // A no-unit split still unexposed while its unit is set (its exposure was skipped by a close
+        // after SetUnit saw it reserved) was never seen, so it is re-resolved with the unit.
+        var unseenWithUnit = assignment.RuleMissingUnit && Volatile.Read(ref assignment.Exposed) == 0 &&
+                             assignment.UnitType != null && _units.ContainsKey(assignment.UnitType);
+        if (!rulesChanged && attrsSeq <= assignment.AttrsSeq && !unseenWithUnit) return true;
         // The Collector evaluates a switchback's rules only for an eligible cluster, so a rule change
         // cannot make a switchback without one stale.
         if (!SwitchbackConsultedRules(assignment)) return true;
@@ -967,6 +968,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // A switchback's split rule randomizes over the serving unit it resolved.
         var rule = ResolveRule(experiment, assignment.Switchback != null ? assignment.UnitType : experiment.Data.UnitType,
             unitPinnedMissing, false);
+        if (AfterRuleRevalidation != null) AfterRuleRevalidation();
         int? cachedRuleVariant = assignment.RuleOverride ? assignment.Variant : null;
         if (rule?.Variant != cachedRuleVariant) return false;
 
@@ -1157,7 +1159,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             else if (experiment == null)
             {
                 // A rule-won assignment is not "assigned" either, but its variant came from
-                // the experiment's rules, so it is rebuilt once the experiment is gone.
+                // the experiment's rules, so it is rebuilt once the experiment is gone. A held-out one
+                // is kept, with its holdouts, as JS and Java.
                 if (!assignment.Assigned && !assignment.RuleOverride)
                     // previously not-running experiment
                     return assignment;
@@ -1768,55 +1771,45 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         ExceptionDispatchInfo failure = null;
         foreach (var experiment in experiments)
         {
-            Assignment assignment;
             try
             {
-                assignment = GetAssignment(experiment.Data.Name, ref now);
+                var assignment = GetAssignment(experiment.Data.Name, ref now);
+                // As the Java SDK: the first assigned (or overridden) experiment by id wins, even
+                // if its selected variant does not define the key (the caller then returns the
+                // default). It is the experiment exposed, so units in its control arm are
+                // counted too.
+                if (assignment.Assigned || assignment.Overridden || assignment.RuleOverride)
+                {
+                    if (failure == null) return assignment;
+
+                    // An earlier candidate's holdout logger threw (so this is not a peek): the winner
+                    // and its holdouts are exposed here, as the caller would, before the first
+                    // failure propagates; unless the context is closing or closed (by that logger or
+                    // another thread), which has flushed and must not be left with a new pending
+                    // exposure.
+                    QueueExposure(assignment, deferred: true);
+                    break;
+                }
+
+                // Every candidate visited was evaluated, so its holdouts fire (not on peek), as JS and
+                // Java. The winner's fire after its own exposure, from QueueExposure, as JS.
+                // Each candidate fires even after an earlier one's logger threw.
+                if (doExposure && assignment.HoldoutAssignments != null)
+                {
+                    var holdoutFailure = TriggerHoldoutExposures(assignment, deferred: failure != null);
+                    failure ??= holdoutFailure;
+                }
+
+                // A held-out experiment never wins over an assigned one; when nothing is assigned, the
+                // first one gives its control value.
+                if (assignment.Suppressed) suppressedFallback ??= assignment;
             }
             catch (Exception) when (failure != null)
             {
-                // An earlier candidate's logger failure is the one the caller gets.
-                failure.Throw();
-                throw;
+                // After an earlier logger failure, that failure is the one propagated (below), over
+                // a later lookup's or the deferred winner's.
+                break;
             }
-            // As the Java SDK: the first assigned (or overridden) experiment by id wins, even
-            // if its selected variant does not define the key (the caller then returns the
-            // default). It is the experiment exposed, so units in its control arm are
-            // counted too.
-            if (assignment.Assigned || assignment.Overridden || assignment.RuleOverride)
-            {
-                if (failure == null) return assignment;
-
-                // An earlier candidate's holdout logger threw (so this is not a peek): the winner
-                // and its holdouts are exposed here, as the caller would, before the first
-                // failure propagates; unless the context is closing or closed (by that logger or
-                // another thread), which has flushed and must not be left with a new pending
-                // exposure.
-                try
-                {
-                    QueueExposure(assignment, deferred: true);
-                }
-                catch (Exception)
-                {
-                    // The first failure is the one rethrown.
-                }
-
-                failure.Throw();
-            }
-
-            // Every candidate visited was evaluated, so its holdouts fire (not on peek), as JS and
-            // Java. The winner's fire after its own exposure, from QueueExposure, as JS.
-            // Each candidate fires even after an earlier one's logger threw; the first failure
-            // is rethrown once the key is resolved.
-            if (doExposure && assignment.HoldoutAssignments != null)
-            {
-                var holdoutFailure = TriggerHoldoutExposures(assignment, deferred: failure != null);
-                failure ??= holdoutFailure;
-            }
-
-            // A held-out experiment never wins over an assigned one; when nothing is assigned, the
-            // first one gives its control value.
-            if (assignment.Suppressed) suppressedFallback ??= assignment;
 
             // A logger disposed the context: its locks are gone, so no later candidate is read.
             if (Volatile.Read(ref _locksDisposed)) break;
@@ -2423,14 +2416,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // read), so it starts no publish timer.
     private void SetTimeout()
     {
-        if (!IsReady() || _closed) return;
+        if (!IsReady()) return;
         if (_timeout != null) return;
 
         try
         {
             Monitor.Enter(_timeoutLock);
 
-            if (_timeout != null) return;
+            if (_timeout != null || _closed) return;
 
             _timeout = new CancellationTokenSource();
             var token = _timeout.Token;
@@ -2893,7 +2886,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (earlier.Error != null)
             {
                 SettleCloseAttempt(attempt, earlier);
-                ReportCloseOutcome(default, null, earlier, false, false); // throws the publish error
+                ReportCloseOutcome(default, null, earlier, false, false);
                 return;
             }
 
@@ -2965,8 +2958,18 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             if (_pendingCount > 0) return false;
             lock (_closeLock) _closed = true;
-            return true;
         }
+
+        // A logger that started this close may have scheduled a timer while it was in progress. Taken
+        // under _timeoutLock, where SetTimeout checks _closed, so no timer outlives the seal.
+        lock (_timeoutLock)
+        {
+            _timeout?.Cancel();
+            _timeout?.Dispose();
+            _timeout = null;
+        }
+
+        return true;
     }
 
     // The close's own flush: it takes the batch while the close is in progress, and a
