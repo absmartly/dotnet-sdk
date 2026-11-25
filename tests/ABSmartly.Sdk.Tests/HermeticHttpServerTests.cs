@@ -227,6 +227,55 @@ public class HermeticHttpServerTests
         ((JArray)put["exposures"]!).Should().ContainSingle().Which["eligible"]!.Value<bool>().Should().BeTrue();
     }
 
+    // The same change after requests were already sent: the service reads the caller's configuration
+    // on every request, not once at its first, so the refresh, a second context's fetch and both
+    // PUTs carry the new values, and the second context serves the version its PUT carries.
+    [Test]
+    public async Task ConfigurationChangedAfterRequestsReachesLaterRequestsAndContexts()
+    {
+        var data = JObject.Parse(await new StreamReader(GetType().Assembly
+            .GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!).ReadToEndAsync());
+        var experiment = (JObject)data["experiments"]![0]!;
+        experiment["switchbackClusters"] = new JObject { ["store_id"] = "application_version" };
+        experiment["switchbackClusterValues"] = new JArray("1005");
+        _contextBody = data.ToString();
+        var sdk = BuildSdk("1004", out var serviceConfig);
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        var first = await sdk.CreateContextAsync(config);
+        first.GetTreatment("exp_test_switchback");
+        first.Track("before", null!);
+        await first.PublishAsync();
+        WaitForRequest(r => r.Method == "PUT")!.Headers["X-Application-Version"].Should().Be("1004");
+        _requests.Clear();
+
+        serviceConfig.ApplicationVersion = "1005";
+        serviceConfig.Environment = "staging";
+        serviceConfig.Application = "mobile";
+        await first.RefreshAsync();
+        first.Track("after", null!);
+        await first.PublishAsync();
+        var second = await sdk.CreateContextAsync(config);
+        second.GetTreatment("exp_test_switchback");
+        await second.PublishAsync();
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (_requests.Count < 4 && DateTime.UtcNow < deadline) await Task.Delay(25);
+        var requests = _requests.ToArray();
+        requests.Count(r => r.Method == "GET").Should().Be(2);
+        requests.Count(r => r.Method == "PUT").Should().Be(2);
+        foreach (var request in requests)
+        {
+            request.Headers["X-Application-Version"].Should().Be("1005");
+            request.Headers["X-Environment"].Should().Be("staging");
+            request.Headers["X-Application"].Should().Be("mobile");
+        }
+
+        var exposures = requests.Where(r => r.Method == "PUT").Select(r => JObject.Parse(r.Body))
+            .SelectMany(b => (JArray?)b["exposures"] ?? new JArray()).ToList();
+        exposures.Should().ContainSingle().Which["eligible"]!.Value<bool>().Should().BeTrue();
+    }
+
     [Test]
     public async Task CallerCredentialAndRotationsReachGetAndPut()
     {
