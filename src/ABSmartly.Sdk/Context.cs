@@ -127,7 +127,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private volatile Exception _failedError;
     private Dictionary<string, ExperimentVariables> _index;
     private Dictionary<string, Dictionary<string, ContextCustomFieldValue>> _contextCustomFields;
-    
+
     private DictionaryLockableAdapter<string, List<ExperimentVariables>> _indexVariables;
     // A holdout's own assignment per (holdout id, covered experiment's unit type), kept across
     // refreshes while the holdout's iteration is unchanged. Guarded by the context write lock;
@@ -1849,7 +1849,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         }
     }
 
-    
+
     // Custom-field reads stay available after close, as in 1.3.0 and the Java SDK
     // (checkReady(false)).
     public List<string> GetCustomFieldKeys()
@@ -2642,7 +2642,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             index[experiment.Name] = experimentVariables;
 
             if (experiment.CustomFieldValues == null) continue;
-            
+
             var experimentCustomFields = new Dictionary<string, ContextCustomFieldValue>();
             foreach (var customFieldValue in experiment.CustomFieldValues)
             {
@@ -3158,7 +3158,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // SameSwitchbackIdentity), otherwise fresh. Unused for unit experiments.
         internal long SwitchbackGeneration { get; set; }
     }
-    
+
     public class ContextCustomFieldValue
     {
         public string Name { get; set; }
