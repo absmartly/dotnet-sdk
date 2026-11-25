@@ -311,48 +311,25 @@ public class ContextHoldoutTests
         context.GetTreatment("exp_fullon_holdout").Should().Be(0);
     }
 
-    [Test]
-    public void ThreeArmVariantZeroHoldsOutBothFullOnAndNonFullOnExperiments()
+    [TestCase(ThreeArm0SeedLo, 0, 0, 0)]
+    [TestCase(ThreeArm1SeedLo, 1, 0, 2)]
+    [TestCase(ThreeArm2SeedLo, 2, NormalVariant, 2)]
+    public void ThreeArmHoldoutAppliesItsArmToFullOnAndNonFullOnExperiments(int seedLo, int arm,
+        int nonFullOnVariant, int fullOnVariant)
     {
-        var nonFullOn = CoveredBy(NewExperiment(1, "exp_three_arm_0_non_fullon"), 21);
-        var fullOn = CoveredBy(NewExperiment(2, "exp_three_arm_0_fullon", 2), 21);
-        var context = CreateContext(DataOf(new[] { NewThreeArmHoldout(21, "holdout_three_arm", ThreeArm0SeedLo) },
+        var nonFullOn = CoveredBy(NewExperiment(1, "exp_non_fullon"), 21);
+        var fullOn = CoveredBy(NewExperiment(2, "exp_fullon", 2), 21);
+        var context = CreateContext(DataOf(new[] { NewThreeArmHoldout(21, "holdout_three_arm", seedLo) },
             nonFullOn, fullOn));
 
-        context.GetTreatment("exp_three_arm_0_non_fullon").Should().Be(0);
-        context.GetTreatment("exp_three_arm_0_fullon").Should().Be(0);
+        context.GetTreatment("exp_non_fullon").Should().Be(nonFullOnVariant);
+        context.GetTreatment("exp_fullon").Should().Be(fullOnVariant);
 
-        AssertPublished(context, Uid, HoldoutExposure(21, "holdout_three_arm", 0));
-    }
-
-    [Test]
-    public void ThreeArmVariantOneForcesNonFullOnExperimentToControlButAssignsFullOnExperimentNormally()
-    {
-        var nonFullOn = CoveredBy(NewExperiment(1, "exp_three_arm_1_non_fullon"), 21);
-        var fullOn = CoveredBy(NewExperiment(2, "exp_three_arm_1_fullon", 2), 21);
-        var context = CreateContext(DataOf(new[] { NewThreeArmHoldout(21, "holdout_three_arm", ThreeArm1SeedLo) },
-            nonFullOn, fullOn));
-
-        context.GetTreatment("exp_three_arm_1_non_fullon").Should().Be(0);
-        context.GetTreatment("exp_three_arm_1_fullon").Should().Be(2);
-
-        AssertPublished(context, Uid, HoldoutExposure(21, "holdout_three_arm", 1),
-            Exposure(2, "exp_three_arm_1_fullon", 2, fullOn: true));
-    }
-
-    [Test]
-    public void ThreeArmVariantTwoEvaluatesBothExperimentKindsNormally()
-    {
-        var nonFullOn = CoveredBy(NewExperiment(1, "exp_three_arm_2_non_fullon"), 21);
-        var fullOn = CoveredBy(NewExperiment(2, "exp_three_arm_2_fullon", 2), 21);
-        var context = CreateContext(DataOf(new[] { NewThreeArmHoldout(21, "holdout_three_arm", ThreeArm2SeedLo) },
-            nonFullOn, fullOn));
-
-        context.GetTreatment("exp_three_arm_2_non_fullon").Should().Be(NormalVariant);
-        context.GetTreatment("exp_three_arm_2_fullon").Should().Be(2);
-
-        AssertPublished(context, Uid, Exposure(1, "exp_three_arm_2_non_fullon", NormalVariant),
-            HoldoutExposure(21, "holdout_three_arm", 2), Exposure(2, "exp_three_arm_2_fullon", 2, fullOn: true));
+        var expected = new List<Exposure>();
+        if (arm == 2) expected.Add(Exposure(1, "exp_non_fullon", NormalVariant));
+        expected.Add(HoldoutExposure(21, "holdout_three_arm", arm));
+        if (arm != 0) expected.Add(Exposure(2, "exp_fullon", 2, fullOn: true));
+        AssertPublished(context, Uid, expected.ToArray());
     }
 
     // Cross-sdk scenario 222: the arm count comes from the split, never from holdoutType. A 3-arm
@@ -1645,7 +1622,6 @@ public class ContextHoldoutTests
 
     #region Caching and ordering (beyond the Java port; each kills a measured mutant)
 
-    // Counts the assignment rebuilds (cache misses that take the write lock).
     private static Func<int> CountRebuilds(Context context)
     {
         var rebuilds = 0;
@@ -1865,7 +1841,6 @@ public class ContextHoldoutTests
         _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
     }
 
-    // Pauses the next Millis() call on one thread until released, to interleave a close there.
     private sealed class GateClock : Clock
     {
         private readonly long _millis;
@@ -1914,7 +1889,6 @@ public class ContextHoldoutTests
                 It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
             .Callback(() =>
             {
-                // The next exposure built on this thread is the deferred winner's.
                 clock.ArmCurrentThread();
                 throw new InvalidOperationException("boom");
             });
@@ -2105,7 +2079,6 @@ public class ContextHoldoutTests
         context.IsClosed().Should().BeTrue();
         context.PendingCount.Should().Be(0);
         _published.SelectMany(p => p.Event.Exposures!).Select(e => e.Id).Should().Equal(11, 2, 12);
-        // Each batch the close published is reported, as a Publish event, before Close.
         var events = _eventLogger.Invocations.Select(i => ((EventType)i.Arguments[1], i.Arguments[2]))
             .Where(e => e.Item1 is EventType.Publish or EventType.Close).ToList();
         events.Select(e => e.Item1).Should().Equal(EventType.Publish, EventType.Publish, EventType.Close);
@@ -2216,6 +2189,9 @@ public class ContextHoldoutTests
         var rules = rulesChanged ? NoUnitSplit.Replace("\"split\",\"type\"", "\"split_v2\",\"type\"") : NoUnitSplit;
         Refresh(context, DataOf(holdouts, SplitRuled(rules, newIteration ? 2 : 1, 11)));
 
+        context.PeekTreatment("exp_pinned_split").Should().Be(variantAfter);
+        context.SetAttribute("force_rule_revalidation", true);
+        context.PeekTreatment("exp_pinned_split").Should().Be(variantAfter);
         context.GetTreatment("exp_pinned_split").Should().Be(variantAfter);
         var exposures = Publish(context).Exposures!.Select(e => (e.Id, e.Variant)).ToList();
         exposures.Should().Contain((11, 1));
@@ -2226,9 +2202,11 @@ public class ContextHoldoutTests
     // A no-unit split whose deferred exposure was reserved (so SetUnit kept it cached) and then
     // skipped by a close that failed was never seen: the next read resolves it with the unit, with or
     // without a coverage-only refresh, so it and its exposure give the split's variant 1.
-    [TestCase(true)]
-    [TestCase(false)]
-    public void ANoUnitSplitWhoseExposureACloseSkippedIsResolvedWithItsUnitOnTheNextRead(bool refresh)
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(true, true)]
+    public void ANoUnitSplitWhoseExposureACloseSkippedIsResolvedWithItsUnitOnTheNextRead(bool refresh,
+        bool refreshWhileReserved)
     {
         var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
         first.Variants[1].Config = "{\"skipped_split_key\":\"a\"}";
@@ -2260,7 +2238,6 @@ public class ContextHoldoutTests
                 It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
             .Callback(() =>
             {
-                // The next exposure built on this thread is the deferred winner's.
                 clock.ArmCurrentThread();
                 throw new InvalidOperationException("boom");
             });
@@ -2268,6 +2245,12 @@ public class ContextHoldoutTests
         var read = Task.Run(() => context.GetVariableValue("skipped_split_key", "default"));
         clock.Paused.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
         context.SetUnit("device_id", "device-1"); // sees the reservation: the no-unit split stays cached
+        if (refreshWhileReserved)
+        {
+            Refresh(context, Data(12));
+            context.PeekTreatment("exp_skipped_split").Should().Be(0);
+            context.PeekTreatment("exp_skipped_split").Should().Be(0);
+        }
         var finalizing = context.FinalizeAsync();
         context.IsClosing().Should().BeTrue();
         clock.Resume.Set();
@@ -2281,12 +2264,152 @@ public class ContextHoldoutTests
         _eventLogger.Reset();
         _published.Clear();
 
-        if (refresh) Refresh(context, Data(12));
+        if (refresh && !refreshWhileReserved) Refresh(context, Data(12));
 
         context.GetTreatment("exp_skipped_split").Should().Be(1);
         var exposures = Publish(context).Exposures!.Select(e => (e.Id, e.Variant)).ToList();
         exposures.Should().Contain((2, 1));
         exposures.Should().NotContain((2, 0));
+    }
+
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(true, true)]
+    [TestCase(false, true)]
+    public void AMissingHoldoutUnitReservedThenSkippedByACloseIsResolvedOnRetry(bool overridden, bool closeSucceeds)
+    {
+        var first = WithVariables(CoveredBy(NewExperiment(1, "exp_loser"), 11), "retry_unit_key");
+        var winner = WithVariables(CoveredBy(NewExperiment(2, "exp_winner", "device_id", 1), 12), "retry_unit_key");
+        var holdout = NewHoldout(12, "holdout_device", "device_id", 0, 0, "full");
+        holdout.Split = new[] { 0.0, 1.0 };
+        var clock = new GateClock(Now);
+        var config = new ContextConfig().SetUnit(UnitType, Uid);
+        config.PublishDelay = TimeSpan.FromMinutes(10);
+        var context = Context.CreateWithData(config, DataOf(new[]
+            {
+                NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo), holdout
+            }, first, winner), clock, _dataProvider.Object, _publisher, _eventLogger.Object,
+            new DefaultVariableParser(), new AudienceMatcher(new DefaultAudienceDeserializer()), null);
+        if (overridden) context.SetOverride("exp_winner", 1);
+        var publish = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var publishes = 0;
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(() => Interlocked.Increment(ref publishes) == 1 ? publish.Task : Task.CompletedTask);
+        var sentinel = new InvalidOperationException("original logger failure");
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                clock.ArmCurrentThread();
+                throw sentinel;
+            });
+
+        var read = Task.Run(() => context.GetVariableValue("retry_unit_key", "default"));
+        Task finalizing;
+        try
+        {
+            clock.Paused.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+            context.SetUnit("device_id", "device-1");
+            finalizing = context.FinalizeAsync();
+            context.IsClosing().Should().BeTrue();
+        }
+        finally
+        {
+            clock.Resume.Set();
+        }
+        var act = () => read.GetAwaiter().GetResult();
+        act.Should().Throw<InvalidOperationException>().Which.Should().BeSameAs(sentinel);
+        if (closeSucceeds)
+        {
+            publish.SetResult(true);
+            finalizing.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+            context.IsClosed().Should().BeTrue();
+            context.PendingCount.Should().Be(0);
+            _published.Single().Event.Exposures!.Select(e => e.Id).Should().Equal(11);
+            return;
+        }
+
+        publish.SetException(new HttpRequestException("collector down"));
+        var settle = () => finalizing.Wait(TimeSpan.FromSeconds(10));
+        settle.Should().Throw<AggregateException>();
+        _eventLogger.Reset();
+        _published.Clear();
+
+        context.PeekTreatment("exp_winner").Should().Be(1);
+        context.GetTreatment("exp_winner").Should().Be(1);
+        context.GetTreatment("exp_winner").Should().Be(1);
+        Publish(context).Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0),
+            Exposure(2, "exp_winner", 1, assigned: !overridden, overridden: overridden,
+                fullOn: !overridden, unitType: "device_id"),
+            HoldoutExposure(12, "holdout_device", 1, unitType: "device_id"));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void DisposalOverlappingTheSealSettlesJoinedFinalizersAndClearsTheTimer(bool asynchronousDispose)
+    {
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_dispose_seal"), 11)));
+        var publish = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns(publish.Task);
+        Task owner = null!;
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                owner = context.FinalizeAsync();
+                throw new InvalidOperationException("boom");
+            });
+        var act = () => context.GetTreatment("exp_dispose_seal");
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        var joined = context.FinalizeAsync();
+        FlushScheduled(context).Should().BeTrue();
+        var timeoutLock = typeof(Context).GetField("_timeoutLock", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(context)!;
+        Task disposing = null!;
+        using var disposeEntered = new ManualResetEventSlim();
+        lock (timeoutLock)
+        {
+            publish.SetResult(true);
+            SpinWait.SpinUntil(context.IsClosed, TimeSpan.FromSeconds(10)).Should().BeTrue();
+            disposing = Task.Run(async () =>
+            {
+                disposeEntered.Set();
+                if (asynchronousDispose) await context.DisposeAsync();
+                else context.Dispose();
+            });
+            disposeEntered.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+            // Cleanup must join the timer lock, not dispose its source behind the sealing owner.
+            disposing.Wait(TimeSpan.FromMilliseconds(100)).Should().BeFalse();
+        }
+
+        Task.WhenAll(owner, joined, disposing).Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        FlushScheduled(context).Should().BeFalse();
+    }
+
+    [Test]
+    public async Task AThrowingUncoveredExposureLoggerStillPublishesOnTheTimer()
+    {
+        var delivered = new TaskCompletionSource<PublishEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((_, e) => delivered.TrySetResult(e)).Returns(Task.CompletedTask);
+        var config = new ContextConfig().SetUnit(UnitType, Uid);
+        config.PublishDelay = TimeSpan.FromMilliseconds(20);
+        await using var context = Context.CreateWithData(config, DataOf(NewExperiment(1, "exp_uncovered")),
+            _clock, _dataProvider.Object, _publisher, _eventLogger.Object, new DefaultVariableParser(),
+            new AudienceMatcher(new DefaultAudienceDeserializer()), null);
+        ThrowOnExposure(e => e.Id == 1);
+        var act = () => context.GetTreatment("exp_uncovered");
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+
+        var observed = await Task.WhenAny(delivered.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        observed.Should().BeSameAs(delivered.Task);
+        (await delivered.Task).Exposures.Should().Equal(Exposure(1, "exp_uncovered", NormalVariant));
+        context.PendingCount.Should().Be(0);
     }
 
     [Test]
@@ -2371,7 +2494,6 @@ public class ContextHoldoutTests
         Publish(context).Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
     }
 
-    // An exposed assignment is not exposed again after a refresh removes its experiment.
     [Test]
     public void AnExposedAssignmentRemovedByARefreshIsNotExposedAgain()
     {
@@ -2387,8 +2509,6 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(0);
     }
 
-    // A rule-won assignment is rebuilt once a refresh removes its experiment: the read gives the
-    // default variant 0, not the rule's variant.
     [Test]
     public void ARuleWonAssignmentIsRebuiltOnceItsExperimentIsRemoved()
     {
@@ -2428,8 +2548,6 @@ public class ContextHoldoutTests
         revalidations.Should().Be(0);
     }
 
-    // The deferred winner ends the scan: a later covered candidate is not visited, so its holdout
-    // fires nothing.
     [Test]
     public void NoCandidateAfterTheDeferredWinnerIsVisited()
     {
@@ -2450,10 +2568,12 @@ public class ContextHoldoutTests
         act.Should().Throw<InvalidOperationException>().WithMessage("boom");
         _eventLogger.Reset();
 
+        var cache = (Dictionary<string, Context.Assignment>)typeof(Context)
+            .GetField("_assignmentCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!;
+        cache.Should().NotContainKey("exp_var_later");
         Publish(context).Exposures!.Select(e => e.Id).Should().Equal(11, 2);
     }
 
-    // Throws for one audience string, so a later candidate's lookup fails.
     private sealed class ThrowingAudienceDeserializer : IAudienceDeserializer
     {
         public const string Poisoned = "{\"filter\":\"poisoned\"}";
@@ -2697,7 +2817,6 @@ public class ContextHoldoutTests
             HoldoutExposure(11, "holdout_old_name", 1));
     }
 
-    // The pinned holdout's name is published as is, even null (as JS), not a cached name.
     [Test]
     public void SameIterationRenameToNullPublishesNull()
     {
