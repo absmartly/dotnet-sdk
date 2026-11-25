@@ -2387,6 +2387,22 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(0);
     }
 
+    // A rule-won assignment is rebuilt once a refresh removes its experiment: the read gives the
+    // default variant 0, not the rule's variant.
+    [Test]
+    public void ARuleWonAssignmentIsRebuiltOnceItsExperimentIsRemoved()
+    {
+        var ruled = NewExperiment(1, "exp_rule_removed");
+        ruled.AssignmentRules = UsRule;
+        var context = CreateContext(DataOf(Array.Empty<Experiment>(), ruled, NewExperiment(2, "exp_kept")));
+        context.SetAttribute("country", "US");
+        context.PeekTreatment("exp_rule_removed").Should().Be(1);
+
+        Refresh(context, DataOf(Array.Empty<Experiment>(), NewExperiment(2, "exp_kept")));
+
+        context.PeekTreatment("exp_rule_removed").Should().Be(0);
+    }
+
     // The cached read re-resolves a no-unit split's rules only while it is unexposed and its unit is
     // set: an exposed split, and an unexposed one with no unit, are not re-evaluated on every read.
     [TestCase(true)]
