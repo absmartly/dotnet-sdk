@@ -828,6 +828,12 @@ For Blazor or other component-based scenarios with navigation. `CreateContextAsy
 }
 ```
 
+## Publishing to NuGet
+
+[Publish NuGet](.github/workflows/publish.yml) builds, tests and packs the SDK and uploads the package artifact. Manual runs default to `dry_run: true`, which skips both NuGet login and push. Existing `v*` tag pushes (with a tag matching `PackageVersion`) and manual runs with `dry_run: false` publish to nuget.org.
+
+Publishing uses [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) with the NuGet profile username `jonasalves` (not an email). The existing NuGet policy trusts repository `absmartly/dotnet-sdk`, workflow `publish.yml`, with **no environment**, and allows new packages and versions. `NuGet/login` exchanges GitHub OIDC for a short-lived API key immediately before push; no repository secret or long-lived API key setup is required.
+
 ## About A/B Smartly
 
 **A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
