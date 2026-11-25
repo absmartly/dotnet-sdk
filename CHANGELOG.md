@@ -9,7 +9,7 @@ Unreleased. There are no source or binary API breaks against 1.4.1, enforced at 
 - `ContextData.Holdouts`, a `ContextData(Experiment[] experiments, Experiment[] holdouts)` constructor, `Experiment.HoldoutIds` and `Experiment.HoldoutType`. `Equals`/`GetHashCode` take them into account; for data without them the results are unchanged.
 
 ### Changed
-- When the event logger throws on an exposure, the publish timer is still scheduled, as the JavaScript and Java SDKs, so the queued exposure is published after the publish delay (a failed publish keeps it queued, as before). In 1.3.0 the throw skipped scheduling, so unless a timer was already running or a later event started one, it waited for the next explicit publish or close. **Who is affected:** apps whose event logger throws on exposures now publish those exposures on the publish delay instead of waiting for `Publish()`/`Close()`.
+- When the event logger throws on an exposure, the publish timer is still scheduled, as the JavaScript and Java SDKs, so the queued exposure is published after the publish delay (a failed publish keeps it queued, as before). In 1.4.1 (and 1.3.0) the throw skipped scheduling, so unless a timer was already running or a later event started one, it waited for the next explicit publish or close. **Who is affected:** apps whose event logger throws on exposures now publish those exposures on the publish delay instead of waiting for `Publish()`/`Close()`.
 
 ## 1.4.1
 
