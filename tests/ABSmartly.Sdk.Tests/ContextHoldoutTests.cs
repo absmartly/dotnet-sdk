@@ -823,7 +823,6 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(4);
     }
 
-    // The holdout is resolved with the covered experiment's unit type, not its own.
     [Test]
     public void SetUnitEvictsUsingTheCoveredExperimentsUnitTypeNotTheHoldoutsDeclaredUnitType()
     {
@@ -1515,7 +1514,6 @@ public class ContextHoldoutTests
         field.GetValue(covered).Should().NotBeNull();
     }
 
-    // When several candidates' holdout loggers throw, the first failure is the one rethrown.
     [Test]
     public void VariablePathRethrowsTheFirstHoldoutLoggerFailure()
     {
@@ -1933,8 +1931,6 @@ public class ContextHoldoutTests
         _published.Should().ContainSingle().Which.Event.Exposures.Should().Equal(HoldoutExposure(11, "holdout_a", 0));
     }
 
-    // An experiment's logger that closes the context (without throwing) has flushed it: the
-    // holdout exposures that follow are not left pending on the closed context.
     [Test]
     public void ALoggerThatClosesTheContextLeavesNoHoldoutExposurePending()
     {
@@ -2035,8 +2031,6 @@ public class ContextHoldoutTests
             HoldoutExposure(12, "holdout_b", 1));
     }
 
-    // A later held-out candidate's holdout, skipped because the earlier logger started a close that
-    // then fails, is exposed by the next read.
     [Test]
     public void ALaterCandidatesHoldoutSkippedByAFailedCloseIsExposedByTheNextRead()
     {
@@ -2171,7 +2165,6 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(0);
     }
 
-    // The same disposal without a throw: the read returns the default instead of a lock error.
     [Test]
     public void ALosingLoggerThatDisposesAndReturnsGivesTheDefault()
     {
@@ -2231,10 +2224,11 @@ public class ContextHoldoutTests
     }
 
     // A no-unit split whose deferred exposure was reserved (so SetUnit kept it cached) and then
-    // skipped by a close that failed was never seen: a coverage-only refresh resolves it with the
-    // unit, so the first successful read and its exposure give the split's variant 1.
-    [Test]
-    public void ANoUnitSplitWhoseExposureACloseSkippedIsResolvedWithItsUnitAfterACoverageRefresh()
+    // skipped by a close that failed was never seen: the next read resolves it with the unit, with or
+    // without a coverage-only refresh, so it and its exposure give the split's variant 1.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ANoUnitSplitWhoseExposureACloseSkippedIsResolvedWithItsUnitOnTheNextRead(bool refresh)
     {
         var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
         first.Variants[1].Config = "{\"skipped_split_key\":\"a\"}";
@@ -2287,7 +2281,7 @@ public class ContextHoldoutTests
         _eventLogger.Reset();
         _published.Clear();
 
-        Refresh(context, Data(12));
+        if (refresh) Refresh(context, Data(12));
 
         context.GetTreatment("exp_skipped_split").Should().Be(1);
         var exposures = Publish(context).Exposures!.Select(e => (e.Id, e.Variant)).ToList();
@@ -2295,7 +2289,6 @@ public class ContextHoldoutTests
         exposures.Should().NotContain((2, 0));
     }
 
-    // A split exposed with its unit is not pinned to the no-unit result by a coverage refresh.
     [Test]
     public void ASplitExposedWithItsUnitKeepsItsHashedVariantAcrossACoverageRefresh()
     {
@@ -2308,8 +2301,6 @@ public class ContextHoldoutTests
         context.GetTreatment("exp_pinned_split").Should().Be(1);
     }
 
-    // An exposure logger that closes or disposes the context and then throws: the context has
-    // flushed for good, so no publish timer is started after the exception.
     [TestCase(false)]
     [TestCase(true)]
     public void ALoggerThatClosesTheContextAndThrowsStartsNoPublishTimer(bool dispose)
@@ -2330,6 +2321,79 @@ public class ContextHoldoutTests
         act.Should().Throw<InvalidOperationException>().WithMessage("boom");
         context.IsClosed().Should().BeTrue();
         FlushScheduled(context).Should().BeFalse();
+    }
+
+    // A holdout logger starts an asynchronous close and throws while the close is still publishing:
+    // the timer the throw schedules does not outlive the successful seal.
+    [Test]
+    public void AnAsynchronousCloseStartedByAThrowingLoggerLeavesNoPublishTimer()
+    {
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_async_close"), 11)));
+        context.Track("goal_before_close", null);
+        var publish = new TaskCompletionSource<bool>();
+        Mock.Get(_publisher).Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Callback<IContext, PublishEvent>((c, e) => _published.Add((c, e)))
+            .Returns(() => _published.Count == 1 ? publish.Task : Task.CompletedTask);
+        Task finalizing = null!;
+        _eventLogger.Setup(x => x.HandleEvent(It.IsAny<IContext>(), EventType.Exposure,
+                It.Is<object>(o => o is Exposure && ((Exposure)o).Id == 11)))
+            .Callback(() =>
+            {
+                finalizing = context.FinalizeAsync();
+                throw new InvalidOperationException("boom");
+            });
+
+        var act = () => context.GetTreatment("exp_async_close");
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        FlushScheduled(context).Should().BeTrue();
+        publish.SetResult(true);
+        finalizing.Wait(TimeSpan.FromSeconds(10)).Should().BeTrue();
+
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        FlushScheduled(context).Should().BeFalse();
+    }
+
+    // A held-out experiment peeked before a refresh removes it: the next GetTreatment gives the
+    // default variant and publishes no holdout exposure for the removed coverage.
+    [Test]
+    public void APeekedHeldOutExperimentRemovedByARefreshFiresNoHoldoutExposure()
+    {
+        var holdouts = new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) };
+        var context = CreateContext(DataOf(holdouts, CoveredBy(NewExperiment(1, "exp_removed"), 11),
+            NewExperiment(2, "exp_kept")));
+        context.PeekTreatment("exp_removed").Should().Be(0);
+
+        Refresh(context, DataOf(holdouts, NewExperiment(2, "exp_kept")));
+
+        context.GetTreatment("exp_removed").Should().Be(0);
+        Publish(context).Exposures!.Select(e => (e.Id, e.Name)).Should().Equal((0, "exp_removed"));
+    }
+
+    // The deferred winner ends the scan: a later covered candidate is not visited, so its holdout
+    // fires nothing.
+    [Test]
+    public void NoCandidateAfterTheDeferredWinnerIsVisited()
+    {
+        var first = CoveredBy(NewExperiment(1, "exp_var_held_out"), 11);
+        first.Variants[1].Config = "{\"stop_key\":\"a\"}";
+        var winner = NewExperiment(2, "exp_var_uncovered_winner");
+        winner.Variants[1].Config = "{\"stop_key\":\"b\"}";
+        var later = CoveredBy(NewExperiment(3, "exp_var_later"), 12);
+        later.Variants[1].Config = "{\"stop_key\":\"c\"}";
+        var context = CreateContext(DataOf(new[]
+        {
+            NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo),
+            NewHoldout(12, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo)
+        }, first, winner, later));
+        ThrowOnExposure(e => e.Id == 11);
+
+        var act = () => context.GetVariableValue("stop_key", "default");
+        act.Should().Throw<InvalidOperationException>().WithMessage("boom");
+        _eventLogger.Reset();
+
+        Publish(context).Exposures!.Select(e => e.Id).Should().Equal(11, 2);
     }
 
     // Throws for one audience string, so a later candidate's lookup fails.
