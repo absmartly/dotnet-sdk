@@ -285,6 +285,23 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         PublishExposures(context).Should().Equal(NewExposure(1, "exp_sb", Expected2Arms[0], Anchor + Hour - 1, true, true));
     }
 
+    // One GetVariableValue reads the clock once for every candidate, as Java: the first candidate
+    // (linked only to an unset unit) does not apply, and the second still resolves the period that
+    // first reading selected, not the one a later reading would.
+    [Test]
+    public void VariableCandidatesShareOneClockReading()
+    {
+        var unlinked = NewSwitchback(1, "exp_sb_unlinked", 2, Hour);
+        unlinked.SwitchbackClusters = Clusters("device_id", ClusterPath);
+        var served = NewSwitchback(2, "exp_sb", 2, Hour);
+        var context = CreateContext(DataOf(unlinked, served));
+        Clock.Now = Anchor + Hour;
+        Clock.NextRead = Anchor + Hour - 1;
+
+        context.GetVariableValue("sb.arm", -1).Should().Be(Expected2Arms[0]);
+        PublishExposures(context).Should().Equal(NewExposure(2, "exp_sb", Expected2Arms[0], Anchor + Hour - 1, true, true));
+    }
+
     // A peek caches the period's assignment without exposing; the later GetTreatment exposes it
     // stamped with the instant the slot read its cluster (the peek's), so the Collector, which
     // re-resolves the cluster from the published attributes at exposedAt, sees what served.
