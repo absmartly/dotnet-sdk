@@ -479,10 +479,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         if (Interlocked.CompareExchange(ref assignment.Exposed, 1, 0) == 0)
         {
             if (assignment.Switchback?.Silent == true) return;
-            var guard = deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.None;
             if (assignment.HoldoutAssignments == null)
             {
-                EnqueueExposure(assignment, assignment.Name, guard);
+                EnqueueExposure(assignment, assignment.Name, deferred);
                 return;
             }
 
@@ -490,7 +489,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             try
             {
                 // Skipped (and left unexposed): its holdouts follow it on the next read.
-                if (!assignment.Suppressed && !EnqueueExposure(assignment, assignment.Name, guard)) return;
+                if (!assignment.Suppressed && !EnqueueExposure(assignment, assignment.Name, deferred)) return;
             }
             catch (Exception e)
             {
@@ -507,8 +506,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // Fires the holdout decisions pinned when the assignment was resolved, in holdout id order,
     // each once per (holdout, unit type): a refresh after the decision cannot publish a holdout
     // exposure from another iteration. A null entry (the unit was missing) fires nothing.
-    // They follow the experiment's own exposure, whose logger may have closed the context: a closed
-    // context has flushed for good, so they are not queued there.
     private ExceptionDispatchInfo TriggerHoldoutExposures(Assignment assignment, bool deferred = false)
     {
         var holdoutAssignments = assignment.HoldoutAssignments;
@@ -525,8 +522,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
             try
             {
-                EnqueueExposure(holdoutAssignment, holdouts[i].Name,
-                    deferred ? EnqueueGuard.UnlessClosing : EnqueueGuard.UnlessClosed);
+                EnqueueExposure(holdoutAssignment, holdouts[i].Name, deferred);
             }
             catch (Exception e)
             {
@@ -539,16 +535,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     private void EnqueueExposure(Assignment assignment) => EnqueueExposure(assignment, assignment.Name);
 
-    private enum EnqueueGuard
-    {
-        None,
-        UnlessClosed,
-        UnlessClosing
-    }
-
-    // False when the guard skipped it (the assignment is then left unexposed). A switchback
-    // exposure carries its slot's cluster-read instant and serving units (see QueueExposure).
-    private bool EnqueueExposure(Assignment assignment, string name, EnqueueGuard guard = EnqueueGuard.None)
+    // False when it was not queued (the assignment is then left unexposed): never on a closed
+    // context, which has flushed for good (an event logger can close it during a read), and, for
+    // an exposure deferred past an earlier logger failure, not while a close is in progress either.
+    // A switchback exposure carries its slot's cluster-read instant and serving units (see
+    // QueueExposure).
+    private bool EnqueueExposure(Assignment assignment, string name, bool deferred = false)
     {
         var switchback = assignment.Switchback;
         var exposure = new Exposure
@@ -572,7 +564,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         try
         {
             Monitor.Enter(_eventLock);
-            if (guard == EnqueueGuard.UnlessClosed && _closed || guard == EnqueueGuard.UnlessClosing && IsDisposing())
+            if (_closed || deferred && _closing > 0)
             {
                 // Not sent: a close that fails leaves the context open, and a later read exposes it.
                 Interlocked.Exchange(ref assignment.Exposed, 0);
@@ -1315,7 +1307,15 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                     // Recorded for every assignment, including those no rule matched, so RuleMatches
                     // only re-resolves after a refresh changes the rules or an attribute is set.
                     assignment.RuleKey = experiment.Data.AssignmentRules;
-                    var rule = ResolveRule(experiment, unitType, false, true);
+                    // An exposed split resolved without its unit stays so for the same experiment run
+                    // and rules, as RuleMatches, also when the rebuild is for a coverage change. (An
+                    // unexposed one is no longer cached: SetUnit evicted it.)
+                    var unitPinnedMissing = _assignmentCache.TryGetValue(experimentName, out var exposedRule) &&
+                                            exposedRule.RuleMissingUnit &&
+                                            ExperimentMatches(experiment.Data, exposedRule) &&
+                                            string.Equals(exposedRule.RuleKey, experiment.Data.AssignmentRules,
+                                                StringComparison.Ordinal);
+                    var rule = ResolveRule(experiment, unitType, unitPinnedMissing, true);
 
                     if (rule == null && !heldOut && !string.IsNullOrEmpty(experiment.Data.Audience))
                     {
@@ -1814,6 +1814,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             // A held-out experiment never wins over an assigned one; when nothing is assigned, the
             // first one gives its control value.
             if (assignment.Suppressed) suppressedFallback ??= assignment;
+
+            // A logger disposed the context: its locks are gone, so no later candidate is read.
+            if (Volatile.Read(ref _locksDisposed)) break;
         }
 
         // As java-sdk: with no assigned, overridden or rule-won candidate and no held-out one, the key
@@ -2902,7 +2905,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (earlier.Error != null)
             {
                 SettleCloseAttempt(attempt, earlier);
-                ReportCloseOutcome(default, earlier, false, false); // throws the publish error
+                ReportCloseOutcome(default, null, earlier, false, false); // throws the publish error
                 return;
             }
 
@@ -2945,11 +2948,37 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // Publishes what is pending, then seals the context or, if that fails, leaves it
     // open for a retry, and notifies the event logger (first of an earlier successful
     // flush of this close, if any).
+    // Events queued while the close's flush was publishing (by an event logger called back during
+    // a read, or a read already past its checks) are published by a further flush before sealing,
+    // so a successful close never leaves any pending.
     private async Task CompleteCloseAsync(TaskCompletionSource<bool> attempt, FlushOutcome earlier)
     {
-        var outcome = await FlushForCloseAsync().ConfigureUnboundContinuation();
-        var disposeLocks = SettleCloseAttempt(attempt, outcome);
-        ReportCloseOutcome(earlier, outcome, true, disposeLocks);
+        List<PublishEvent> drained = null;
+        while (true)
+        {
+            var outcome = await FlushForCloseAsync().ConfigureUnboundContinuation();
+            if (outcome.Error == null && !TrySealDrained())
+            {
+                if (outcome.Delivered != null) (drained ??= new List<PublishEvent>()).AddRange(outcome.Delivered);
+                continue;
+            }
+
+            var disposeLocks = SettleCloseAttempt(attempt, outcome);
+            ReportCloseOutcome(earlier, drained, outcome, true, disposeLocks);
+            return;
+        }
+    }
+
+    // Seals the context if nothing is pending, under _eventLock, where exposures are queued: one
+    // queued before is flushed first, one queued after sees the context closed.
+    private bool TrySealDrained()
+    {
+        lock (_eventLock)
+        {
+            if (_pendingCount > 0) return false;
+            lock (_closeLock) _closed = true;
+            return true;
+        }
     }
 
     // The close's own flush: it takes the batch while the close is in progress, and a
@@ -2991,10 +3020,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             return false;
         }
 
+        // Sealed (_closed set) by TrySealDrained, atomically with the event queue.
         bool disposeLocks;
         lock (_closeLock)
         {
-            _closed = true;
             Interlocked.Exchange(ref _closing, 0);
             disposeLocks = _disposeAfterClose;
         }
@@ -3003,13 +3032,16 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return disposeLocks;
     }
 
-    private void ReportCloseOutcome(FlushOutcome earlier, FlushOutcome outcome, bool logClose, bool disposeLocks)
+    private void ReportCloseOutcome(FlushOutcome earlier, List<PublishEvent> drained, FlushOutcome outcome,
+        bool logClose, bool disposeLocks)
     {
         var previous = t_notifyingClose;
         t_notifyingClose = this;
         try
         {
             LogPublishes(earlier);
+            if (drained != null)
+                foreach (var published in drained) LogEventSafely(EventType.Publish, published);
             ReportFlush(outcome);
             if (logClose) LogEvent(EventType.Close, null);
         }
