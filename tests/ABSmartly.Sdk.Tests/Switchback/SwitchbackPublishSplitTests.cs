@@ -59,6 +59,46 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         events.Where(e => e.Item1 == EventType.Publish).Select(e => ((PublishEvent)e.Item2).Units.Length).Should().Equal(1, 2);
     }
 
+    // An exposure queued by a read already past its checks when a close started is published by a
+    // further flush before the close seals; the logger still sees every request of the close's
+    // first, split, batch, then the further one, before Close.
+    [Test]
+    [Timeout(10000)]
+    public void CloseThatDrainsALateExposureLogsEverySplitRequestOfItsFirstBatch()
+    {
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var publisher = new Mock<IContextPublisher>();
+        publisher.Setup(x => x.PublishAsync(It.IsAny<IContext>(), It.IsAny<PublishEvent>()))
+            .Returns<IContext, PublishEvent>((_, _) => Interlocked.Increment(ref calls) == 1 ? gate.Task : Task.CompletedTask);
+        Publisher = publisher.Object;
+        var events = new List<(EventType, object)>();
+        var closeLogged = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var context = WithLogger(events, DataOf(Linked(), AsUnit(NewSwitchback(3, "exp_unit", 2, Hour))), closeLogged);
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("user_id", "u1");
+        context.Track("purchase", null!);
+        Task finalizing = null!;
+        context.AfterAssignmentLookup = () => finalizing = context.FinalizeAsync();
+
+        context.GetTreatment("exp_unit");
+        context.PendingCount.Should().Be(1, "queued after the close took its batch");
+        gate.SetResult(true);
+        finalizing.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+        closeLogged.Task.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        List<(EventType, object)> logged;
+        lock (events) logged = events.Where(e => e.Item1 is EventType.Publish or EventType.Close).ToList();
+        logged.Select(e => e.Item1).Should().Equal(EventType.Publish, EventType.Publish, EventType.Publish, EventType.Close);
+        logged.Take(3).Select(e => (PublishEvent)e.Item2)
+            .Select(p => $"{p.Units.Length}:{string.Join(",", p.Exposures?.Select(x => x.Id) ?? Array.Empty<int>())}")
+            .Should().Equal("1:1", "2:", "2:3");
+    }
+
     [Test]
     public void LoggerSeesTheDeliveredRequestWhenALaterOneFails()
     {
