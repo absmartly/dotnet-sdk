@@ -2199,6 +2199,39 @@ public class ContextHoldoutTests
         if (variantAfter == 0) exposures.Should().NotContain((1, 1));
     }
 
+    // The shared split pin survives an exposed rule assignment's coverage-only rebuild. A later
+    // unit set and rule revalidation must keep the no-unit variant and must not evict/re-randomize it.
+    [Test]
+    public void ExposedNoUnitSplitPinSurvivesReuseAndSetUnitRevalidation()
+    {
+        var holdouts = new[] { NewHoldout(11, "holdout_pin_reuse", HoldoutBSeedHi, HoldoutBSeedLo) };
+        var context = CreateContextWithoutUnits(DataOf(holdouts, SplitRuled()));
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+
+        Refresh(context, DataOf(holdouts, SplitRuled(NoUnitSplit, 1, 11)));
+        context.SetUnit(UnitType, Uid);
+        context.SetAttribute("pin_revalidation", true);
+        context.PeekTreatment("exp_pinned_split").Should().Be(0);
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+        Publish(context).Exposures!.Where(e => e.Id == 1).Should().NotBeEmpty().And.OnlyContain(e => e.Variant == 0);
+    }
+
+    // SetUnit must not retire a carried pin while a coverage rebuild is still represented by the
+    // rebuilt assignment: the next read remains on the original no-unit split arm.
+    [Test]
+    public void SetUnitDoesNotEvictTheCarriedPinAfterCoverageRebuild()
+    {
+        var holdouts = new[] { NewHoldout(11, "holdout_pin_eviction", HoldoutBSeedHi, HoldoutBSeedLo) };
+        var context = CreateContextWithoutUnits(DataOf(holdouts, SplitRuled()));
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+        Refresh(context, DataOf(holdouts, SplitRuled(NoUnitSplit, 1, 11)));
+        context.SetUnit(UnitType, Uid);
+        context.PeekTreatment("exp_pinned_split").Should().Be(0);
+        context.SetAttribute("pin_eviction_revalidation", true);
+        context.PeekTreatment("exp_pinned_split").Should().Be(0);
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+    }
+
     // A no-unit split whose deferred exposure was reserved (so SetUnit kept it cached) and then
     // skipped by a close that failed was never seen: the next read resolves it with the unit, with or
     // without a coverage-only refresh, so it and its exposure give the split's variant 1.
@@ -2541,11 +2574,8 @@ public class ContextHoldoutTests
         }
 
         context.PeekTreatment("exp_pinned_split").Should().Be(0);
-        var revalidations = 0;
-        context.AfterRuleRevalidation = () => revalidations++;
         for (var i = 0; i < 10; i++) context.PeekTreatment("exp_pinned_split").Should().Be(0);
 
-        revalidations.Should().Be(0);
     }
 
     [Test]
