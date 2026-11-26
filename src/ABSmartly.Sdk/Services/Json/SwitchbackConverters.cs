@@ -155,7 +155,7 @@ internal sealed class LenientLongConverter : JsonConverter<long?>
                 // A JSON exponent beyond 18 digits cannot give a 64-bit integer either way.
                 var exponentText = text.Substring(exponentAt + 1).TrimStart('+');
                 var exponentDigits = exponentText.TrimStart('-').TrimStart('0');
-                if (exponentDigits.Length > 18) return exponentText.StartsWith("-", StringComparison.Ordinal) ? IntegralZero(mantissa) : null;
+                if (exponentDigits.Length > 18) return IntegralZero(mantissa);
                 if (!long.TryParse(exponentText, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent))
                     return null;
             }

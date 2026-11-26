@@ -113,6 +113,8 @@ public class SwitchbackPayloadTests
     [TestCase("0e-2147483648", 0L)]
     [TestCase("1e-9999999999", null)]
     [TestCase("1e99999999999999999999", null)]
+    [TestCase("0e+99999999999999999999", 0L)]
+    [TestCase("-0e99999999999999999999", 0L)]
     [Timeout(10000)]
     public void SixtyFourBitFieldsReadTheExactDecimalValue(string number, long? expected)
     {

@@ -180,7 +180,7 @@ M = [
  ('payload: 64-bit zero read as null', S+'Services/Json/SwitchbackConverters.cs', '            if (digits.Length == 0) return 0;', '            if (digits.Length == 0) return null;'),
  ('payload: 64-bit upper-case exponent ignored', S+'Services/Json/SwitchbackConverters.cs', "    private static readonly char[] ExponentMarkers = { 'e', 'E' };", "    private static readonly char[] ExponentMarkers = { 'e' };"),
  ('payload: 64-bit digit guard removed', S+'Services/Json/SwitchbackConverters.cs', '            if (digits.Length - scale > 19) return null;\n', ''),
- ('payload: 64-bit huge exponent not short-circuited', S+'Services/Json/SwitchbackConverters.cs', '                if (exponentDigits.Length > 18) return', '                if (false) return'),
+ ('payload: 64-bit huge exponent ignores zero', S+'Services/Json/SwitchbackConverters.cs', '                if (exponentDigits.Length > 18) return IntegralZero(mantissa);', '                if (exponentDigits.Length > 18) return null;'),
  ('payload: 64-bit reader throws on overflow', S+'Services/Json/SwitchbackConverters.cs', '        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&\n                                  !(e is System.Threading.ThreadAbortException))\n        {\n            return null;\n        }\n    }\n\n    // The value of a mantissa', '        catch (InvalidCastException)\n        {\n            return null;\n        }\n    }\n\n    // The value of a mantissa'),
  ('cache: period slots keyed by name only', S+'Context.cs', '        if (key.Period is { } period) return _switchbackSlots.TryGetValue((key.Name, period), out assignment);\n        return _assignmentCache.TryGetValue(key.Name, out assignment);', '        if (key.Period is { } period) return _switchbackSlots.TryGetValue((key.Name, 0), out assignment);\n        return _assignmentCache.TryGetValue(key.Name, out assignment);', '        if (key.Period is { } period) _switchbackSlots[(key.Name, period)] = assignment;', '        if (key.Period is { } period) _switchbackSlots[(key.Name, 0)] = assignment;'),
  ('setUnit: period slots not evicted', S+'Context.cs', '        foreach (var entry in _switchbackSlots)\n        {\n            if (ShouldEvictForNewUnit(entry.Value, unitType))', '        foreach (var entry in _switchbackSlots)\n        {\n            if (false)'),
@@ -200,7 +200,6 @@ M = [
 ]
 EQUIVALENT = {
     'wire: Half text via double',
-    'payload: 64-bit huge exponent not short-circuited',
     'payload: 64-bit reader throws on overflow',
 }
 only = sys.argv[1:]
