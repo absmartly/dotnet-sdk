@@ -2597,8 +2597,8 @@ public class ContextHoldoutTests
         var revalidations = 0;
         context.AfterRuleRevalidation = () => revalidations++;
         for (var i = 0; i < 10; i++) context.PeekTreatment("exp_pinned_split").Should().Be(0);
-        revalidations.Should().Be(0);
 
+        revalidations.Should().Be(0);
     }
 
     [Test]
