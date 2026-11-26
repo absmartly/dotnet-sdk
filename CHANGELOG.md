@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0
+
+Unreleased. There are no source or binary API breaks against 1.4.1, enforced at build time by package validation against the published 1.4.1 package (itself validated against 1.3.0).
+
+### Added
+- Holdouts, as the JavaScript (javascript-sdk#65) and Java SDKs. The context data's new `holdouts` list and each experiment's `holdoutIds` decide which holdouts cover an experiment. The unit is placed in a holdout arm with the covered experiment's unit type. Arm 0 holds the unit out of every covered experiment; in a three-arm holdout (the arm count comes from the split), arm 1 holds it out of the covered experiments that are not full-on. Any one covering holdout is enough. A held-out experiment returns variant 0 with its control variables, publishes no exposure of its own and skips its audience, full-on variant, traffic and custom assignment; each covering holdout publishes its own exposure (its id, name and arm) once per unit type when an exposure-tracking read evaluates a covered experiment: `GetTreatment`, or `GetVariableValue` for every candidate it visits, including a held-out one or one that loses the key to another experiment. Peek methods publish nothing. `SetOverride()` and a matching assignment rule win over a holdout, whose exposure is still published. A holdout's arm is kept until its iteration changes. Holdouts without a split, unknown holdout ids, `holdoutIds` entries that are not whole numbers, and malformed holdout entries or fields are ignored. A holdout whose `id`, `iteration`, `seedHi` or `seedLo` is null, fractional (`11.5`) or outside the 32-bit range is dropped, so the experiments it covers are assigned normally (the JavaScript SDK keeps it); an integral decimal such as `11.0` is read as that integer, as JavaScript. An assignment rule's split that was exposed before the experiment's unit was set keeps that variant when a refresh only changes the experiment's holdout coverage, as it does when the unit is set; the JavaScript SDK (311cfca) re-resolves it there and can publish a second variant for the same experiment. One whose exposure was never sent (a close that later failed skipped it) is resolved with the unit. Experiments without `holdoutIds` behave, and publish, exactly as before.
+- `ContextData.Holdouts`, a `ContextData(Experiment[] experiments, Experiment[] holdouts)` constructor, `Experiment.HoldoutIds` and `Experiment.HoldoutType`. `Equals`/`GetHashCode` take them into account; for data without them the results are unchanged.
+
+### Changed
+- When the event logger throws on an exposure, the publish timer is still scheduled, as the JavaScript and Java SDKs, so the queued exposure is published after the publish delay (a failed publish keeps it queued, as before). In 1.4.1 (and 1.3.0) the throw skipped scheduling, so unless a timer was already running or a later event started one, it waited for the next explicit publish or close. **Who is affected:** apps whose event logger throws on exposures now publish those exposures on the publish delay instead of waiting for `Publish()`/`Close()`.
+
 ## 1.4.1
 
 The first release after 1.3.0: 1.4.0 was tagged but never published to NuGet, so its changes ship in 1.4.1.
