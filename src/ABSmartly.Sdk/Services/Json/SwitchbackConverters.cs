@@ -139,39 +139,64 @@ internal sealed class LenientLongConverter : JsonConverter<long?>
 
     // A JSON number in fraction or exponent notation read by its exact decimal value, not through a
     // double, which would round away a small fraction (3600000.0000000001 must stay a fraction). An
-    // integral value in any notation (3.6e6, 3600000.0, 36e5) within the 64-bit range is that integer;
-    // anything else is null.
+    // integral value in any notation (3.6e6, 3600000.0, 36e5, 3.6E+6) within the 64-bit range is that
+    // integer; anything else, including an exponent too large to matter, is null. Never throws: the
+    // arithmetic is bounded (long), and a malformed or extreme token degrades only this field.
     private static long? ExactInt64(byte[] utf8)
     {
-        var text = Encoding.ASCII.GetString(utf8);
-        var exponentAt = text.IndexOfAny(ExponentMarkers);
-        var mantissa = exponentAt < 0 ? text : text.Substring(0, exponentAt);
-        if (!int.TryParse(exponentAt < 0 ? "0" : text.Substring(exponentAt + 1), NumberStyles.AllowLeadingSign,
-                CultureInfo.InvariantCulture, out var exponent)) return null;
-
-        var negative = mantissa.StartsWith("-", StringComparison.Ordinal);
-        if (negative) mantissa = mantissa.Substring(1);
-        var dot = mantissa.IndexOf('.');
-        var digits = dot < 0 ? mantissa : mantissa.Remove(dot, 1);
-        var scale = (dot < 0 ? 0 : mantissa.Length - dot - 1) - exponent;
-
-        digits = digits.TrimStart('0');
-        if (digits.Length == 0) return 0;
-        // Trailing zeros of the digits that sit after the decimal point carry no value.
-        while (scale > 0 && digits.EndsWith("0", StringComparison.Ordinal))
+        try
         {
-            digits = digits.Substring(0, digits.Length - 1);
-            scale--;
-        }
+            var text = Encoding.ASCII.GetString(utf8);
+            var exponentAt = text.IndexOfAny(ExponentMarkers);
+            var mantissa = exponentAt < 0 ? text : text.Substring(0, exponentAt);
+            long exponent = 0;
+            if (exponentAt >= 0)
+            {
+                // A JSON exponent beyond 18 digits cannot give a 64-bit integer either way.
+                var exponentText = text.Substring(exponentAt + 1).TrimStart('+');
+                var exponentDigits = exponentText.TrimStart('-').TrimStart('0');
+                if (exponentDigits.Length > 18) return exponentText.StartsWith("-", StringComparison.Ordinal) ? IntegralZero(mantissa) : null;
+                if (!long.TryParse(exponentText, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent))
+                    return null;
+            }
 
-        if (scale > 0) return null;
-        // More than 19 integer digits cannot fit a long.
-        if (digits.Length - scale > 19) return null;
-        var integer = BigInteger.Parse(digits, CultureInfo.InvariantCulture) * BigInteger.Pow(10, -scale);
-        if (negative) integer = -integer;
-        if (integer < long.MinValue || integer > long.MaxValue) return null;
-        return (long)integer;
+            var negative = mantissa.StartsWith("-", StringComparison.Ordinal);
+            if (negative) mantissa = mantissa.Substring(1);
+            var dot = mantissa.IndexOf('.');
+            var fractionDigits = dot < 0 ? 0 : mantissa.Length - dot - 1;
+            var digits = (dot < 0 ? mantissa : mantissa.Remove(dot, 1)).TrimStart('0');
+            if (digits.Length == 0) return 0;
+
+            // Trailing zeros sitting after the decimal point carry no value. One bounded trim, not a
+            // loop: a long run of zeros stays linear.
+            long scale = fractionDigits - exponent;
+            if (scale > 0)
+            {
+                var trimmed = digits.TrimEnd('0');
+                var dropped = Math.Min(digits.Length - trimmed.Length, scale);
+                digits = digits.Substring(0, digits.Length - (int)dropped);
+                scale -= dropped;
+            }
+
+            if (scale > 0) return null;
+            // More than 19 integer digits cannot fit a long (checked before any power is taken).
+            if (digits.Length - scale > 19) return null;
+            var integer = BigInteger.Parse(digits, CultureInfo.InvariantCulture) * BigInteger.Pow(10, (int)-scale);
+            if (negative) integer = -integer;
+            if (integer < long.MinValue || integer > long.MaxValue) return null;
+            return (long)integer;
+        }
+        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&
+                                  !(e is System.Threading.ThreadAbortException))
+        {
+            return null;
+        }
     }
+
+    // The value of a mantissa scaled down by an exponent below -10^18: zero when the mantissa is
+    // zero, otherwise a fraction (null).
+    private static long? IntegralZero(string mantissa) =>
+        mantissa.TrimStart('-').Replace(".", "").TrimStart('0').Length == 0 ? 0 : null;
 
     private static readonly char[] ExponentMarkers = { 'e', 'E' };
 

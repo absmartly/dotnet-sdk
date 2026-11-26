@@ -98,9 +98,51 @@ public class SwitchbackPayloadTests
     [TestCase("9223372036854775807", long.MaxValue)]
     [TestCase("9223372036854775808", null)]
     [TestCase("1e19", null)]
+    [TestCase("-3.6e6", -3_600_000L)]
+    [TestCase("-3600000.0", -3_600_000L)]
+    [TestCase("0.0", 0L)]
+    [TestCase("-0.0", 0L)]
+    [TestCase("0e5", 0L)]
+    [TestCase("3.6E6", 3_600_000L)]
+    [TestCase("3.6e+6", 3_600_000L)]
+    [TestCase("36000000e-1", 3_600_000L)]
+    [TestCase("1e999999999", null)]
+    [TestCase("1e2147483647", null)]
+    [TestCase("1e-2147483648", null)]
+    [TestCase("10e-2147483648", null)]
+    [TestCase("0e-2147483648", 0L)]
+    [TestCase("1e-9999999999", null)]
+    [TestCase("1e99999999999999999999", null)]
+    [Timeout(10000)]
     public void SixtyFourBitFieldsReadTheExactDecimalValue(string number, long? expected)
     {
         DeserializeExperiment(",\"switchbackPeriodMs\":" + number).SwitchbackPeriodMs.Should().Be(expected);
+    }
+
+    // An extreme or malformed 64-bit field degrades only itself: the rest of the payload decodes and
+    // an unrelated experiment is still there.
+    [TestCase("1e-2147483648")]
+    [TestCase("1e2147483647")]
+    [TestCase("1e99999999999999999999")]
+    [Timeout(10000)]
+    public void AnExtremeSixtyFourBitFieldDoesNotFailTheContext(string number)
+    {
+        var json = "{\"experiments\":[{\"id\":1,\"name\":\"exp_sb\",\"unitType\":\"store_id\",\"switchbackPeriodMs\":" +
+                   number + "},{\"id\":2,\"name\":\"exp_other\",\"unitType\":\"store_id\"}]}";
+        var bytes = Encoding.UTF8.GetBytes(json);
+        var data = new DefaultContextDataDeserializer().Deserialize(new MemoryStream(bytes));
+
+        data.Should().NotBeNull();
+        data!.Experiments.Select(e => e.Name).Should().Equal("exp_sb", "exp_other");
+    }
+
+    // A fraction written with a very long run of trailing zeros decodes in linear time.
+    [Test]
+    [Timeout(10000)]
+    public void ALongRunOfTrailingZerosDecodesQuickly()
+    {
+        DeserializeExperiment(",\"switchbackPeriodMs\":3600000." + new string('0', 300_000))
+            .SwitchbackPeriodMs.Should().Be(3_600_000L);
     }
 
     [Test]

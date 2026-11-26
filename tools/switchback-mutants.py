@@ -175,7 +175,13 @@ M = [
  ('wire: root string not in wire form', S+'Internal/SwitchbackAttributePath.cs', '        if (rootValue is string str) return _keys.Length == 1 ? WireString(str) : null;\n', ''),
  ('wire: only lone high surrogates replaced', S+'Internal/SwitchbackAttributePath.cs', '            if (!char.IsSurrogate(s[i])) continue;', '            if (!char.IsHighSurrogate(s[i])) continue;'),
  ('payload: 64-bit fraction rounded through a double', S+'Services/Json/SwitchbackConverters.cs', '        if (scale > 0) return null;', '        if (scale > 0 && double.Parse(text, CultureInfo.InvariantCulture) != System.Math.Floor(double.Parse(text, CultureInfo.InvariantCulture))) return null;\n        if (scale > 0) return (long)double.Parse(text, CultureInfo.InvariantCulture);'),
- ('payload: 64-bit trailing zeros count as a fraction', S+'Services/Json/SwitchbackConverters.cs', '        while (scale > 0 && digits.EndsWith("0", StringComparison.Ordinal))', '        while (false && digits.EndsWith("0", StringComparison.Ordinal))'),
+ ('payload: 64-bit trailing zeros count as a fraction', S+'Services/Json/SwitchbackConverters.cs', '                var dropped = Math.Min(digits.Length - trimmed.Length, scale);', '                var dropped = 0L;'),
+ ('payload: 64-bit sign dropped', S+'Services/Json/SwitchbackConverters.cs', '            if (negative) integer = -integer;', ''),
+ ('payload: 64-bit zero read as null', S+'Services/Json/SwitchbackConverters.cs', '            if (digits.Length == 0) return 0;', '            if (digits.Length == 0) return null;'),
+ ('payload: 64-bit upper-case exponent ignored', S+'Services/Json/SwitchbackConverters.cs', "    private static readonly char[] ExponentMarkers = { 'e', 'E' };", "    private static readonly char[] ExponentMarkers = { 'e' };"),
+ ('payload: 64-bit digit guard removed', S+'Services/Json/SwitchbackConverters.cs', '            if (digits.Length - scale > 19) return null;\n', ''),
+ ('payload: 64-bit huge exponent not short-circuited', S+'Services/Json/SwitchbackConverters.cs', '                if (exponentDigits.Length > 18) return', '                if (false) return'),
+ ('payload: 64-bit reader throws on overflow', S+'Services/Json/SwitchbackConverters.cs', '        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&\n                                  !(e is System.Threading.ThreadAbortException))\n        {\n            return null;\n        }\n    }\n\n    // The value of a mantissa', '        catch (InvalidCastException)\n        {\n            return null;\n        }\n    }\n\n    // The value of a mantissa'),
  ('cache: period slots keyed by name only', S+'Context.cs', '        if (key.Period is { } period) return _switchbackSlots.TryGetValue((key.Name, period), out assignment);\n        return _assignmentCache.TryGetValue(key.Name, out assignment);', '        if (key.Period is { } period) return _switchbackSlots.TryGetValue((key.Name, 0), out assignment);\n        return _assignmentCache.TryGetValue(key.Name, out assignment);', '        if (key.Period is { } period) _switchbackSlots[(key.Name, period)] = assignment;', '        if (key.Period is { } period) _switchbackSlots[(key.Name, 0)] = assignment;'),
  ('setUnit: period slots not evicted', S+'Context.cs', '        foreach (var entry in _switchbackSlots)\n        {\n            if (ShouldEvictForNewUnit(entry.Value, unitType))', '        foreach (var entry in _switchbackSlots)\n        {\n            if (false)'),
  ('wire: customer getter exception leaks', S+'Internal/SwitchbackAttributePath.cs', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value);\n        }\n        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&\n                                  !(e is System.Threading.ThreadAbortException))', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value);\n        }\n        catch (Exception e) when (e is System.Text.Json.JsonException)'),
@@ -194,6 +200,8 @@ M = [
 ]
 EQUIVALENT = {
     'wire: Half text via double',
+    'payload: 64-bit huge exponent not short-circuited',
+    'payload: 64-bit reader throws on overflow',
 }
 only = sys.argv[1:]
 TEST = ['dotnet', 'test', 'tests/ABSmartly.Sdk.Tests', '-f', 'net9.0', '--', 'NUnit.DefaultTimeout=60000']
