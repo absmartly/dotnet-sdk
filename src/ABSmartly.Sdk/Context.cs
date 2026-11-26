@@ -24,7 +24,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 {
     private readonly List<GoalAchievement> _achievements = new();
     private readonly DictionaryLockableAdapter<string, VariantAssigner> _assigners;
-    private readonly Dictionary<(string Name, long? Period), Assignment> _assignmentCache = new();
+    // Unit experiments, and switchbacks before their start or with an unservable grid, by name.
+    private readonly Dictionary<string, Assignment> _assignmentCache = new();
+    // Switchback period slots, by (name, period index). Kept apart from _assignmentCache so the
+    // ordinary lookup keeps its string key, and no experiment name can match a period slot.
+    private readonly Dictionary<(string, long), Assignment> _switchbackSlots = new();
 
     private readonly ListLockableAdapter<Attribute> _attributes;
     private readonly AudienceMatcher _audienceMatcher;
@@ -1142,7 +1146,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     private Assignment TryGetUpToDateAssignment((string, long?) cacheKey, string experimentName, ExperimentVariables experiment,
         bool writeLocked)
     {
-        var assignment = _assignmentCache.TryGetValue(cacheKey, out var e) ? e : null;
+        var assignment = TryGetCached(cacheKey, out var e) ? e : null;
         if (assignment != null)
         {
             if (Volatile.Read(ref assignment.Exposed) == 2) return null;
@@ -1261,7 +1265,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (current != null) return current;
 
             if (AfterExperimentSnapshot != null) Interlocked.Exchange(ref AfterExperimentSnapshot, null)?.Invoke();
-            var previous = _assignmentCache.TryGetValue(cacheKey, out var p) ? p : null;
+            var previous = TryGetCached(cacheKey, out var p) ? p : null;
             var attrsSeqAtBuild = _attrsSeq;
 
             var assignment = new Assignment
@@ -1315,7 +1319,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                     assignment.RuleKey = experiment.Data.AssignmentRules;
                     // The decision pin survives coverage-only rebuilds independently of the new
                     // batch's exposure state. A skipped reservation releases it; a queued one never does.
-                    var previousPin = _assignmentCache.TryGetValue((experimentName, null), out var exposedRule) &&
+                    var previousPin = _assignmentCache.TryGetValue(experimentName, out var exposedRule) &&
                                       ExperimentMatches(experiment.Data, exposedRule) &&
                                       string.Equals(exposedRule.RuleKey, experiment.Data.AssignmentRules,
                                           StringComparison.Ordinal)
@@ -1407,7 +1411,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var reused = ReuseExposedRuleAssignment(experiment, previous, assignment);
             if (reused != null) return reused;
 
-            _assignmentCache[cacheKey] = assignment;
+            SetCached(cacheKey, assignment);
 
             return assignment;
         }
@@ -1466,11 +1470,21 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return (now - startAt) / experiment.Data.SwitchbackPeriodMs!.Value;
     }
 
-    // A unit experiment, or a switchback before its start or with an unservable grid, is cached under
-    // (name, null); a switchback period under (name, index). A tuple key, so no experiment name can
-    // collide with another experiment's period slot.
     private static (string, long?) AssignmentCacheKey(string experimentName, long? periodIndex) =>
         (experimentName, periodIndex);
+
+    // A slot with a period index is a switchback period, in _switchbackSlots; any other is by name.
+    private bool TryGetCached((string Name, long? Period) key, out Assignment assignment)
+    {
+        if (key.Period is { } period) return _switchbackSlots.TryGetValue((key.Name, period), out assignment);
+        return _assignmentCache.TryGetValue(key.Name, out assignment);
+    }
+
+    private void SetCached((string Name, long? Period) key, Assignment assignment)
+    {
+        if (key.Period is { } period) _switchbackSlots[(key.Name, period)] = assignment;
+        else _assignmentCache[key.Name] = assignment;
+    }
 
 
     // A cached assignment is a switchback slot exactly when the experiment is a switchback. Its grid
@@ -1519,8 +1533,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         if (!_switchbackEpochs.TryGetValue(experimentName, out var epoch)) return;
         _switchbackEpochs.Remove(experimentName);
-        foreach (var period in epoch.Periods) _assignmentCache.Remove((experimentName, period));
-        _assignmentCache.Remove((experimentName, null));
+        foreach (var period in epoch.Periods) _switchbackSlots.Remove((experimentName, period));
+        _assignmentCache.Remove(experimentName);
     }
 
     // Records a switchback resolution under the current epoch. At most SwitchbackRetainedPeriods
@@ -1544,7 +1558,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var evicted = epoch.Periods.Min;
             if (evicted == index) evicted = epoch.Periods.GetViewBetween(index + 1, long.MaxValue).Min;
             epoch.Periods.Remove(evicted);
-            _assignmentCache.Remove((experimentName, evicted));
+            _switchbackSlots.Remove((experimentName, evicted));
         }
     }
 
@@ -1655,7 +1669,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         var reused = ReuseExposedRuleAssignment(experiment, previous, assignment);
         if (reused != null) return reused;
 
-        _assignmentCache[cacheKey] = assignment;
+        SetCached(cacheKey, assignment);
         RetainSwitchbackPeriod(data.Name, experiment, periodIndex);
         return assignment;
     }
@@ -1765,7 +1779,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         {
             var key = AssignmentCacheKey(experimentName,
                 CurrentSwitchbackPeriod(GetExperiment(experimentName), _clock.Millis()));
-            return _assignmentCache.TryGetValue(key, out var assignment) ? assignment : null;
+            return TryGetCached(key, out var assignment) ? assignment : null;
         }
         finally
         {
@@ -2206,26 +2220,37 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // overridden one only while unexposed.
     private void InvalidateAssignmentsWithMissingUnit(string unitType)
     {
-        List<(string, long?)> evicted = null;
+        List<string> evicted = null;
         foreach (var entry in _assignmentCache)
         {
-            var assignment = entry.Value;
-            if (assignment.Switchback?.Serving.Status == SwitchbackServing.ServingStatus.Absent)
-            {
-                if (Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0 || !assignment.Overridden)
-                    (evicted ??= new List<(string, long?)>()).Add(entry.Key);
-                continue;
-            }
-
-            if (unitType == assignment.UnitType &&
-                assignment.RuleUnitPin?.IsPinned != true &&
-                (assignment.RuleMissingUnit || assignment.HoldoutAssignments != null) &&
-                Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0)
-                (evicted ??= new List<(string, long?)>()).Add(entry.Key);
+            if (ShouldEvictForNewUnit(entry.Value, unitType))
+                (evicted ??= new List<string>()).Add(entry.Key);
         }
 
-        if (evicted == null) return;
-        foreach (var key in evicted) _assignmentCache.Remove(key);
+        if (evicted != null)
+            foreach (var key in evicted) _assignmentCache.Remove(key);
+
+        List<(string, long)> evictedSlots = null;
+        foreach (var entry in _switchbackSlots)
+        {
+            if (ShouldEvictForNewUnit(entry.Value, unitType))
+                (evictedSlots ??= new List<(string, long)>()).Add(entry.Key);
+        }
+
+        if (evictedSlots != null)
+            foreach (var key in evictedSlots) _switchbackSlots.Remove(key);
+    }
+
+    // Retires the assignment (Exposed 0 -> 2) when it must be resolved again now that unitType is set.
+    private static bool ShouldEvictForNewUnit(Assignment assignment, string unitType)
+    {
+        if (assignment.Switchback?.Serving.Status == SwitchbackServing.ServingStatus.Absent)
+            return Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0 || !assignment.Overridden;
+
+        return unitType == assignment.UnitType &&
+               assignment.RuleUnitPin?.IsPinned != true &&
+               (assignment.RuleMissingUnit || assignment.HoldoutAssignments != null) &&
+               Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0;
     }
 
     // Every holdout in a decision uses the same covered-experiment unit, so missing entries

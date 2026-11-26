@@ -236,9 +236,13 @@ public abstract class SwitchbackTestBase
         return result;
     }
 
+    // Every cached assignment: those by name and the switchback period slots.
     internal static int AssignmentCacheSize(Context context) =>
+        CacheCount(context, "_assignmentCache") + CacheCount(context, "_switchbackSlots");
+
+    private static int CacheCount(Context context, string field) =>
         ((System.Collections.IDictionary)typeof(Context)
-            .GetField("_assignmentCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!).Count;
+            .GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!).Count;
 
     protected static string Hash(string uid) => Md5.Hash(uid);
 }

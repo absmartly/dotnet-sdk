@@ -942,6 +942,37 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         json.Should().Contain("\"value\":{\"region\":\"Porto\"}");
     }
 
+    // Reads the context from another thread inside its getter, as a customer object might.
+    private sealed class ProbingProfile
+    {
+        public Context Context = null!;
+        public bool ReaderCompleted;
+
+        public string City
+        {
+            get
+            {
+                var reader = Task.Run(() => Context.PeekTreatment("exp_sb"));
+                ReaderCompleted = reader.Wait(TimeSpan.FromSeconds(2));
+                return "Faro";
+            }
+        }
+    }
+
+    // SetAttribute serialises a structured value before taking the write lock: a getter that waits on
+    // another reader of the context completes instead of blocking every reader.
+    [Test]
+    [Timeout(10000)]
+    public void SetAttributeRunsCustomerGettersOutsideTheWriteLock()
+    {
+        var context = CreateContext(DataOf(Linked()));
+        var profile = new ProbingProfile { Context = context };
+
+        context.SetAttribute("profile", profile);
+
+        profile.ReaderCompleted.Should().BeTrue();
+    }
+
     private sealed class ThrowingProfile
     {
         public string Lazy => throw new NotImplementedException("customer getter");

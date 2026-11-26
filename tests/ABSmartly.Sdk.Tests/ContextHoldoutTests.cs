@@ -1697,9 +1697,9 @@ public class ContextHoldoutTests
 
     private static Context.Assignment CachedAssignment(Context context, string experimentName)
     {
-        var cache = (Dictionary<(string Name, long? Period), Context.Assignment>)typeof(Context)
+        var cache = (Dictionary<string, Context.Assignment>)typeof(Context)
             .GetField("_assignmentCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!;
-        return cache[(experimentName, null)];
+        return cache[experimentName];
     }
 
     // A held-out assignment never applies the custom assignment, so a custom variant other than
@@ -1855,8 +1855,8 @@ public class ContextHoldoutTests
         context.PeekTreatment("exp_mid_refresh").Should().Be(0); // UidNotHeldOut's normal variant
 
         context.AfterExperimentSnapshot.Should().BeNull();
-        var decision = ((Dictionary<(string Name, long? Period), Context.Assignment>)typeof(Context)
-            .GetField("_assignmentCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!)[("exp_mid_refresh", null)];
+        var decision = ((Dictionary<string, Context.Assignment>)typeof(Context)
+            .GetField("_assignmentCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!)["exp_mid_refresh"];
         decision.Suppressed.Should().BeFalse();
         decision.HoldoutAssignments!.Select(h => (h.Id, h.Name, h.Iteration, h.Variant))
             .Should().Equal((11, "holdout_a", 1, 1), (12, "holdout_b", 1, 1));
@@ -2683,9 +2683,9 @@ public class ContextHoldoutTests
         act.Should().Throw<InvalidOperationException>().WithMessage("boom");
         _eventLogger.Reset();
 
-        var cache = (Dictionary<(string Name, long? Period), Context.Assignment>)typeof(Context)
+        var cache = (Dictionary<string, Context.Assignment>)typeof(Context)
             .GetField("_assignmentCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(context)!;
-        cache.Should().NotContainKey(("exp_var_later", null));
+        cache.Should().NotContainKey("exp_var_later");
         Publish(context).Exposures!.Select(e => e.Id).Should().Equal(11, 2);
     }
 
