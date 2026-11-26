@@ -896,6 +896,53 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(1);
     }
 
+    // A reader that holds a retired cached assignment must not return it: SetUnit retires it after
+    // the lookup callback, and the next treatment resolves and exposes only the replacement.
+    [Test]
+    public void RetiredCacheHitTreatmentReresolvesAfterSetUnit()
+    {
+        var context = CreateContextWithoutUnits(DataOf(
+            new[] { NewHoldout(11, "holdout_retired_treatment", "user_id", HoldoutASeedHi, HoldoutASeedLo, "full") },
+            CoveredBy(NewExperiment(1, "exp_retired_treatment", "user_id", 2), 11)));
+        context.PeekTreatment("exp_retired_treatment");
+        context.AfterAssignmentLookup = () => context.SetUnit("user_id", Uid);
+
+        context.GetTreatment("exp_retired_treatment").Should().Be(0);
+        context.PendingCount.Should().Be(1);
+    }
+
+    // The same retired cache-hit guard applies to variable reads, which must not expose the stale
+    // assignment beside the replacement.
+    [Test]
+    public void RetiredCacheHitVariableReresolvesAfterSetUnit()
+    {
+        var experiment = CoveredBy(NewExperiment(1, "exp_retired_variable", "user_id", 1), 11);
+        experiment.Variants[1].Config = "{\"retired_key\":\"value\"}";
+        var context = CreateContextWithoutUnits(DataOf(
+            new[] { NewHoldout(11, "holdout_retired_variable", "user_id", HoldoutASeedHi, HoldoutASeedLo, "full") }, experiment));
+        context.PeekVariableValue("retired_key", "default");
+        context.AfterAssignmentLookup = () => context.SetUnit("user_id", Uid);
+
+        context.GetVariableValue("retired_key", "default").Should().Be("default");
+        context.PendingCount.Should().Be(1);
+    }
+
+    // A writer rebuild can retire the assignment it is replacing; a reader holding that old instance
+    // must observe Exposed == 2 and retry rather than return or expose it.
+    [Test]
+    public void WritePathRetiresTheHeldAssignmentBeforeCoverageRebuild()
+    {
+        var context = CreateContextWithoutUnits(DataOf(
+            new[] { NewHoldout(11, "holdout_writer_retire", "user_id", HoldoutASeedHi, HoldoutASeedLo, "full") },
+            CoveredBy(NewExperiment(1, "exp_writer_retire", "user_id", 2), 11)));
+        context.PeekTreatment("exp_writer_retire");
+        context.AfterAssignmentLookup = () => context.SetUnit("user_id", Uid);
+
+        context.GetTreatment("exp_writer_retire").Should().Be(0);
+        CachedAssignment(context, "exp_writer_retire").Exposed.Should().Be(1);
+        context.PendingCount.Should().Be(1);
+    }
+
     // Java bounds its settle loop at three attempts; dotnet re-resolves until its assignment is not
     // retired, and only a SetUnit of the experiment's own unit type retires it.
     [Test]
@@ -2243,6 +2290,24 @@ public class ContextHoldoutTests
         context.SetUnit(UnitType, Uid);
         context.SetAttribute("force_rule_revalidation", true);
 
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+        Publish(context).Exposures!.Where(e => e.Id == 1).Should().OnlyContain(e => e.Variant == 0);
+    }
+
+    // After an exposed split is carried through a coverage rebuild, a unit set and a rule
+    // revalidation must keep the original no-unit variant and publish it only once.
+    [Test]
+    public void ExposedSplitPinSurvivesCoverageRefreshUnitAndRuleRevalidation()
+    {
+        var holdouts = new[] { NewHoldout(11, "holdout_revalidate_pin", HoldoutBSeedHi, HoldoutBSeedLo) };
+        var context = CreateContextWithoutUnits(DataOf(holdouts, SplitRuled()));
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+        Refresh(context, DataOf(holdouts, SplitRuled(NoUnitSplit, 1, 11)));
+        context.PeekTreatment("exp_pinned_split").Should().Be(0);
+        context.SetUnit(UnitType, Uid);
+        context.SetAttribute("force_pin_revalidation", true);
+
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
         context.GetTreatment("exp_pinned_split").Should().Be(0);
         Publish(context).Exposures!.Where(e => e.Id == 1).Should().OnlyContain(e => e.Variant == 0);
     }
