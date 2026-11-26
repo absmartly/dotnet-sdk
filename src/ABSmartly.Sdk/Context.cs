@@ -1033,15 +1033,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return new RuleResolution(assigner.Assign(split, data.SeedHi, data.SeedLo), false);
     }
 
-    // Called with the write lock held. When the freshly resolved assignment is a rule win with
-    // the same variant as an already-exposed cached one for the same experiment run, the cached
-    // object is kept and only its rule bookkeeping refreshed: a new Assignment would reset its
-    // exposure and publish the same decision a second time.
+    // Write lock held. Keeps an exposed rule decision with the same variant, so it is not
+    // published twice; never a retired one (Exposed 2), which its holders must re-resolve.
     private static Assignment ReuseExposedRuleAssignment(ExperimentVariables experiment, Assignment previous,
         Assignment fresh)
     {
         if (previous == null || experiment == null || !fresh.RuleOverride || !previous.RuleOverride ||
-            previous.Overridden || previous.Variant != fresh.Variant || previous.Exposed == 0 ||
+            previous.Overridden || previous.Variant != fresh.Variant || Volatile.Read(ref previous.Exposed) != 1 ||
             !ExperimentMatches(experiment.Data, previous) || !HoldoutSetMatches(fresh.Holdouts, previous.Holdouts))
             return null;
 
