@@ -2,7 +2,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -179,12 +178,17 @@ internal sealed class LenientLongConverter : JsonConverter<long?>
             }
 
             if (scale > 0) return null;
-            // More than 19 integer digits cannot fit a long (checked before any power is taken).
+            // More than 19 integer digits cannot fit a long (checked before scaling).
             if (digits.Length - scale > 19) return null;
-            var integer = BigInteger.Parse(digits, CultureInfo.InvariantCulture) * BigInteger.Pow(10, (int)-scale);
-            if (negative) integer = -integer;
-            if (integer < long.MinValue || integer > long.MaxValue) return null;
-            return (long)integer;
+            // Accumulated as a negative value, which reaches long.MinValue too; checked arithmetic turns
+            // a 19-digit value beyond the range into null.
+            long value = 0;
+            checked
+            {
+                foreach (var digit in digits) value = value * 10 - (digit - '0');
+                for (var i = 0L; i < -scale; i++) value *= 10;
+                return negative ? value : -value;
+            }
         }
         catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&
                                   !(e is System.Threading.ThreadAbortException))

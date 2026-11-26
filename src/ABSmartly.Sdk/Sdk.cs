@@ -38,7 +38,6 @@ public class Sdk
     // attaches both to every exposure server-side, so audiences can target them locally
     // without the SDK publishing anything extra. User-set attributes still overlay these.
     private IReadOnlyDictionary<string, object> _systemAttributes;
-    // Read live, as the service's request headers are (see BuildCollectorAttributes).
     private ABSmartlyServiceConfiguration _serviceConfiguration;
 
     [ActivatorUtilitiesConstructor]

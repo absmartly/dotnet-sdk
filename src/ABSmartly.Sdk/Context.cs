@@ -1662,7 +1662,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             Serving = serving,
             ServingReadAt = servingReadAt,
             ServingUnitCount = servingUnitCount,
-            LinkedUnitTypes = experiment.SwitchbackSources?.Select(source => source.Key).ToArray(),
+            LinkedUnitTypes = experiment.LinkedUnitTypes,
             CustomAssignment = custom
         };
         assignment.Switchback = state;
@@ -2263,7 +2263,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             foreach (var key in evictedSlots) _switchbackSlots.Remove(key);
     }
 
-    // Retires the assignment (Exposed 0 -> 2) when it must be resolved again now that unitType is set.
     private static bool ShouldEvictForNewUnit(Assignment assignment, string unitType)
     {
         if (assignment.Switchback?.Serving.Status == SwitchbackServing.ServingStatus.Absent)
@@ -2642,6 +2641,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             if (IsSwitchback(experiment))
             {
                 experimentVariables.SwitchbackSources = SwitchbackServing.Sources(experiment.SwitchbackClusters);
+                experimentVariables.LinkedUnitTypes =
+                    experimentVariables.SwitchbackSources?.Select(source => source.Key).ToArray();
             }
 
             foreach (var variant in experiment.Variants)
@@ -3202,6 +3203,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // A switchback's linked unit types and parsed attribute paths, in declared order; null for a
         // unit experiment and for a missing, empty or unreadable cluster map (the legacy path).
         internal KeyValuePair<string, SwitchbackAttributePath>[] SwitchbackSources { get; set; }
+
+        // SwitchbackSources' unit types, projected once per installed definition. Queued exposures
+        // share this array, which is never mutated.
+        internal string[] LinkedUnitTypes { get; set; }
 
         // Carried over from the previous data while the switchback identity is unchanged (see
         // SameSwitchbackIdentity), otherwise fresh. Unused for unit experiments.

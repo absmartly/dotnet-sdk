@@ -322,8 +322,9 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         context.PeekTreatment("exp_sb").Should().Be(Expected("Lisboa", 4));
     }
 
-    // Among attributes with the same setAt, the one set last wins; names are matched trimmed, and
-    // system attributes (application, environment) are never cluster sources.
+    // Among attributes with the same setAt, the one set last wins; names are matched trimmed. This
+    // context has no configured application or environment, so those roots find no value here (see
+    // ClusterPathsRootedAtCollectorAttributesReadTheConfiguredValues for a configured one).
     [Test]
     public void TiesGoToTheLastSetAndSystemAttributesAreNotRead()
     {

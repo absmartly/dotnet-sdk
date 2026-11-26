@@ -97,6 +97,13 @@ public class SwitchbackPayloadTests
     [TestCase("-1", -1L)]
     [TestCase("9223372036854775807", long.MaxValue)]
     [TestCase("9223372036854775808", null)]
+    [TestCase("9223372036854775807.0", long.MaxValue)]
+    [TestCase("9.223372036854775807e18", long.MaxValue)]
+    [TestCase("9.223372036854775808e18", null)]
+    [TestCase("-9223372036854775808.0", long.MinValue)]
+    [TestCase("-9.223372036854775808e18", long.MinValue)]
+    [TestCase("-9.223372036854775809e18", null)]
+    [TestCase("99999999999999999990e-1", null)]
     [TestCase("1e19", null)]
     [TestCase("-3.6e6", -3_600_000L)]
     [TestCase("-3600000.0", -3_600_000L)]
@@ -321,7 +328,7 @@ public class SwitchbackPayloadTests
         new Experiment { Id = 1, Name = "e" }.ToString().Should().NotContain("switchback").And.NotContain("randomization");
     }
 
-    // No cost without switchbacks: unit experiments carry no switchback state and no epoch is kept.
+    // Unit experiments carry no switchback state and no epoch is kept.
     // (HoldoutPayloadTests.PublishBytesWithoutHoldoutsAreUnchanged pins the unchanged publish bytes.)
     [Test]
     public void ExperimentsWithoutSwitchbacksAllocateNoSwitchbackState()

@@ -772,8 +772,6 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         ones.Should().BeInRange(1, 31);
     }
 
-    // A split rule's revalidation after a SetAttribute uses the serving unit too, not the payload's
-    // unitType: with only the serving unit set, the slot stays current instead of being rebuilt.
     // An exposed rule-won switchback slot whose rule stops matching (tier=y) is rebuilt; when the
     // attribute is back to tier=x by the time the rebuild reads it, the rule wins again with the same
     // variant, so the exposed assignment is reused, not exposed a second time.
@@ -805,6 +803,8 @@ public class ContextSwitchbackTests : SwitchbackTestBase
             e.Variant == 1 && e.RuleOverride && !e.Assigned);
     }
 
+    // A split rule's revalidation after a SetAttribute uses the serving unit too, not the payload's
+    // unitType: with only the serving unit set, the slot stays current instead of being rebuilt.
     [Test]
     public void SplitRuleRevalidatesOverTheServingUnit()
     {
