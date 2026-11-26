@@ -48,7 +48,7 @@ M = [
  ('carryover: switchback exposure stamped at enqueue', S+'Context.cs', 'switchback?.ServingReadAt ?? _clock.Millis(),', '_clock.Millis(),'),
  ('carryover: retain 3 periods', S+'Context.cs', 'private const int SwitchbackRetainedPeriods = 2;', 'private const int SwitchbackRetainedPeriods = 3;'),
  ('carryover: evict just-installed period', S+'Context.cs', 'if (evicted == index) evicted = epoch.Periods.GetViewBetween(index + 1, long.MaxValue).Min;', ''),
- ('carryover: single slot per experiment', S+'Context.cs', 'periodIndex == null ? experimentName : SwitchbackCacheKey(experimentName, periodIndex.Value);', 'experimentName;'),
+ ('carryover: single slot per experiment', S+'Context.cs', '        (experimentName, periodIndex);', '        (experimentName, null);'),
  ('carryover: serving re-read per slot rebuild', S+'Context.cs', 'return cached != null && !cached.Silent && cached.Serving.Status != SwitchbackServing.ServingStatus.Absent\n            ? (cached.Serving, cached.ServingReadAt, cached.ServingUnitCount)\n            : (ResolveSwitchbackServing(experiment, now), now, _unitOrder.Count);', 'return (ResolveSwitchbackServing(experiment, now), now, _unitOrder.Count);'),
  ('burn-in/out: burn fields become identity', S+'Context.cs', 'a.SwitchbackPeriodMs == b.SwitchbackPeriodMs &&', 'a.SwitchbackPeriodMs == b.SwitchbackPeriodMs && a.SwitchbackBurnInDurationMs == b.SwitchbackBurnInDurationMs && a.SwitchbackCarryoverDurationMs == b.SwitchbackCarryoverDurationMs && a.SwitchbackEstimand == b.SwitchbackEstimand &&'),
  ('burn-in/out: burn window suppresses exposure', S+'Context.cs', 'if (periodIndex is not { } period)\n        {', 'if (periodIndex is not { } period || data.SwitchbackBurnInDurationMs > 0 || data.SwitchbackCarryoverDurationMs > 0)\n        {'),
@@ -66,7 +66,7 @@ M = [
  ('legacy: unit type fallback draws', S+'Context.cs', 'if (experiment.SwitchbackSources == null) return SwitchbackServing.Legacy(experiment.Data.UnitType, _units);', 'if (experiment.SwitchbackSources == null) experiment.SwitchbackSources = new[] { new KeyValuePair<string, SwitchbackAttributePath>(experiment.Data.UnitType, SwitchbackAttributePath.ParseSupported("store_key")) };'),
  ('path: dot allowed', S+'Internal/SwitchbackAttributePath.cs', "if (path.IndexOf('.') >= 0) return null;", ''),
  ('path: latest attribute ignores setAt', S+'Context.cs', 'if (attribute.SetAt <= now && attribute.Name != null &&', 'if (attribute.Name != null &&'),
- ('setUnit: absent slot not evicted', S+'Context.cs', 'if (Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0 || !assignment.Overridden)\n                    (evicted ??= new List<string>()).Add(entry.Key);', 'if (false) (evicted ??= new List<string>()).Add(entry.Key);'),
+ ('setUnit: absent slot not evicted', S+'Context.cs', 'if (Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0 || !assignment.Overridden)\n                    (evicted ??= new List<(string, long?)>()).Add(entry.Key);', 'if (false) (evicted ??= new List<(string, long?)>()).Add(entry.Key);'),
  ('custom: change not staleness', S+'Context.cs', 'if (assignment.Switchback != null) return Nullable.Equals(hasCustom ? custom : null, assignment.Switchback.CustomAssignment);', 'if (assignment.Switchback != null) return true;'),
  ('staleness: audience re-run for ineligible slot', S+'Context.cs', 'if (assignment.RuleOverride || assignment.Suppressed || !SwitchbackConsultedRules(assignment)) return true;', 'if (assignment.RuleOverride || assignment.Suppressed) return true;'),
  ('staleness: rules re-run for ineligible slot', S+'Context.cs', '        if (!SwitchbackConsultedRules(assignment)) return true;\n', ''),
@@ -109,7 +109,7 @@ M = [
  ('units: earlier requests not logged on close', S+'Context.cs', '            LogPublishes(earlier);\n', ''),
  ('units: failure loses delivered from log', S+'Context.cs', 'return new FlushOutcome(delivered.ToArray(), e);', 'return new FlushOutcome(null, e);'),
  ('concurrency: live units per split request', S+'Context.cs', 'Units = request.UnitCount < 0 ? units : units.Take(request.UnitCount).ToArray(),', 'Units = (request.UnitCount < 0 ? _unitOrder : _unitOrder.Take(request.UnitCount)).Select(t => new Unit { Type = t, Uid = Encoding.ASCII.GetString(GetUnitHash(t, _units[t])) }).ToArray(),'),
- ('concurrency: append outside the write lock', S+'Context.cs', '            if (InsideAttributeAppend != null) Interlocked.Exchange(ref InsideAttributeAppend, null)?.Invoke();\n            _attributes.Add(new Attribute\n            {\n                Name = name, Value = value, SetAt = setAt,\n                WireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null\n            });\n            Interlocked.Increment(ref _attrsSeq);\n        }\n        finally { _contextLock.ExitWriteLock(); }', '            _contextLock.ExitWriteLock();\n            if (InsideAttributeAppend != null) Interlocked.Exchange(ref InsideAttributeAppend, null)?.Invoke();\n            _attributes.ConcurrentAdd(new Attribute\n            {\n                Name = name, Value = value, SetAt = setAt,\n                WireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null\n            });\n            Interlocked.Increment(ref _attrsSeq);\n        }\n        finally { }'),
+ ('concurrency: append outside the write lock', S+'Context.cs', '            if (InsideAttributeAppend != null) Interlocked.Exchange(ref InsideAttributeAppend, null)?.Invoke();\n            _attributes.Add(new Attribute\n            {\n                Name = name, Value = value, SetAt = setAt,\n                WireValue = wireValue\n            });\n            Interlocked.Increment(ref _attrsSeq);\n        }\n        finally { _contextLock.ExitWriteLock(); }', '            _contextLock.ExitWriteLock();\n            if (InsideAttributeAppend != null) Interlocked.Exchange(ref InsideAttributeAppend, null)?.Invoke();\n            _attributes.ConcurrentAdd(new Attribute\n            {\n                Name = name, Value = value, SetAt = setAt,\n                WireValue = wireValue\n            });\n            Interlocked.Increment(ref _attrsSeq);\n        }\n        finally { }'),
  ('randomization type case-insensitive', S+'Context.cs', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.Ordinal);', 'string.Equals(experiment.RandomizationType, RandomizationSwitchback, StringComparison.OrdinalIgnoreCase);'),
  ('replay: split request publishedAt per request', S+'Context.cs', 'PublishedAt = publishedAt,', 'PublishedAt = PublishedAt(request.Exposures, request.Goals),'),
  ('replay: lookup trims as .NET', S+'Context.cs', 'string.Equals(name, SwitchbackAttributePath.JavaTrim(attribute.Name), StringComparison.Ordinal)', 'string.Equals(name, attribute.Name.Trim(), StringComparison.Ordinal)'),
@@ -138,7 +138,7 @@ M = [
  ('replay: latest read not tracked', S+'Context.cs', '        if (!state.Silent) RecordClusterRead(experiment, servingReadAt, servingUnitCount);\n', ''),
  ('replay: latest read is the last read', S+'Context.cs', 'if (!_clusterRootReadAt.TryGetValue(root, out var latest) || readAt > latest)', 'if (true)'),
  ('replay: rewind trims as .NET', S+'Context.cs', '_clusterRootReadAt.TryGetValue(SwitchbackAttributePath.JavaTrim(name), out var readAt)', '_clusterRootReadAt.TryGetValue(name.Trim(), out var readAt)'),
- ('replay: one watermark for every root', S+'Context.cs', 'if (name != null && _clusterRootReadAt.TryGetValue(SwitchbackAttributePath.JavaTrim(name), out var readAt) &&', 'var readAt = _clusterRootReadAt.Count == 0 ? long.MinValue : _clusterRootReadAt.Values.Max();\n            if (name != null && _clusterRootReadAt.Count > 0 &&'),
+ ('replay: one watermark for every root', S+'Context.cs', '            if (name != null && _clusterRootReadAt.Count > 0 &&\n                _clusterRootReadAt.TryGetValue(SwitchbackAttributePath.JavaTrim(name), out var readAt) &&\n                setAt < readAt) setAt = readAt + 1;', '            var readAt = _clusterRootReadAt.Count == 0 ? long.MinValue : _clusterRootReadAt.Values.Max();\n            if (name != null && _clusterRootReadAt.Count > 0 &&\n                setAt < readAt) setAt = readAt + 1;'),
  ('replay: silent reads re-date their roots', S+'Context.cs', '        if (!state.Silent) RecordClusterRead(experiment, servingReadAt, servingUnitCount);', '        RecordClusterRead(experiment, servingReadAt, servingUnitCount);'),
  ('replay: unset linked units re-date their roots', S+'Context.cs', '            if (index < 0 || index >= unitCount) continue;\n            var root = source.Value.RootKey;', '            var root = source.Value.RootKey;'),
  ('concurrency: refresh takes the context lock under the data lock', S+'Context.cs', '            if (hasSwitchbacks) _hasSwitchbacks = true;\n', '            if (hasSwitchbacks) _hasSwitchbacks = true;\n            _contextLock.EnterWriteLock(); _contextLock.ExitWriteLock();\n'),
@@ -165,12 +165,12 @@ M = [
  ('collector: .NET trim on application', S+'Sdk.cs', "var application = serviceConfiguration?.Application?.Trim(' ', '\\t');", 'var application = serviceConfiguration?.Application?.Trim();'),
  ('replay: overridden reads not recorded', S+'Context.cs', '        if (!state.Silent) RecordClusterRead(experiment, servingReadAt, servingUnitCount);', '        if (!state.Silent && !assignment.Overridden) RecordClusterRead(experiment, servingReadAt, servingUnitCount);'),
  ('replay: cached rebuild protects roots it never read', S+'Context.cs', '            if (index < 0 || index >= unitCount) continue;', '            if (index < 0) continue;'),
- ('wire: structured values not frozen at set', S+'Context.cs', '                WireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null', '                WireValue = null'),
+ ('wire: structured values not frozen at set', S+'Context.cs', '                WireValue = wireValue', '                WireValue = null'),
  ('wire: frozen value not used by the lookup', S+'Context.cs', '                var value = attribute?.WireValue ?? attribute?.Value;', '                var value = attribute?.Value;'),
  ('wire: frozen value not published', S+'Internal/SwitchbackAttributePath.cs', '                if (value.WireValue is JsonElement frozen) frozen.WriteTo(writer);\n                else JsonSerializer', '                JsonSerializer'),
  ('wire: serializer ignores the switchback flag', S+'Services/DefaultContextEventSerializer.cs', '                    ? SwitchbackAttributePath.PublishOptions.Value', '                    ? JsonOptionsProvider.Default.SerializerOptions'),
  ('wire: list not frozen', S+'Internal/SwitchbackAttributePath.cs', 'if (value == null || value is char || IsScalar(value) || value is JsonElement) return null;', 'if (value == null || value is System.Collections.IList || value is char || IsScalar(value) || value is JsonElement) return null;'),
- ('wire: pre-switchback values frozen too soon', S+'Context.cs', 'WireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null', 'WireValue = SwitchbackAttributePath.Freeze(value)'),
+ ('wire: pre-switchback values frozen too soon', S+'Context.cs', 'var wireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null;', 'var wireValue = SwitchbackAttributePath.Freeze(value);'),
  ('wire: customer getter exception leaks', S+'Internal/SwitchbackAttributePath.cs', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value);\n        }\n        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&\n                                  !(e is System.Threading.ThreadAbortException))', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value);\n        }\n        catch (Exception e) when (e is System.Text.Json.JsonException)'),
  ('wire: redaction leaves frozen data', S+'Models/Attribute.cs', '            WireValue = null;\n', ''),
  ('wire: configured-root getter exception leaks', S+'Internal/SwitchbackAttributePath.cs', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value).ValueKind == JsonValueKind.Null;\n        }\n        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&\n                                  !(e is System.Threading.ThreadAbortException))', 'return JsonSerializer.SerializeToElement(value, WireOptions.Value).ValueKind == JsonValueKind.Null;\n        }\n        catch (Exception e) when (e is System.Text.Json.JsonException)'),
@@ -189,9 +189,16 @@ EQUIVALENT = {
     'wire: Half text via double',
 }
 only = sys.argv[1:]
+TEST = ['dotnet', 'test', 'tests/ABSmartly.Sdk.Tests', '-f', 'net9.0', '--', 'NUnit.DefaultTimeout=60000']
+selected = [m for m in M if not only or any(o in m[0] for o in only)]
+if not selected:
+    print('No mutant matches %s.' % only); sys.exit(2)
+# A test that already fails would be scored as a kill for every mutant: require a green baseline.
+base = subprocess.run(TEST, env=env, capture_output=True, text=True, timeout=900)
+if base.returncode != 0:
+    print('Baseline suite fails, so no mutant can be scored:'); print('\n'.join(base.stdout.splitlines()[-15:])); sys.exit(2)
 results = []
-for name, path, old, new, *more in M:
-    if only and not any(o in name for o in only): continue
+for name, path, old, new, *more in selected:
     p = pathlib.Path(path); src = p.read_text()
     if src.count(old) != 1:
         results.append((name, 'NOT APPLIED (%d matches)' % src.count(old))); continue
@@ -202,11 +209,15 @@ for name, path, old, new, *more in M:
         mutated = mutated.replace(more[0], more[1])
     p.write_text(mutated)
     try:
-        r = subprocess.run(['dotnet', 'test', 'tests/ABSmartly.Sdk.Tests', '-f', 'net9.0'],
-                           env=env, capture_output=True, text=True, timeout=900)
+        try:
+            r = subprocess.run(TEST, env=env, capture_output=True, text=True, timeout=900)
+        except subprocess.TimeoutExpired:
+            # A hang is not a test kill: record it and go on with the catalogue.
+            results.append((name, 'TIMEOUT (no test result)')); print(name, '-> TIMEOUT', flush=True); continue
         out = r.stdout + r.stderr
         failed = [l.strip() for l in out.splitlines() if l.strip().startswith('Failed ')][:3]
-        if 'error CS' in out: status = 'killed (compile error)'
+        # A mutant that does not compile tests nothing: it is invalid, not killed.
+        if 'error CS' in out: status = 'INVALID (does not compile)'
         elif r.returncode != 0 and failed:
             status = 'killed: ' + '; '.join(failed)
         elif r.returncode != 0:

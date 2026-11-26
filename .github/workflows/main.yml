@@ -22,8 +22,10 @@ jobs:
       - name: Run Build
         run: dotnet build src/ABSmartly.Sdk
 
+      # NUnit's [Timeout] reports a hung test but leaves its thread spinning; the blame-hang timeout
+      # kills the test host instead, so a spinning read cannot hold the job open.
       - name: Run Tests
-        run: dotnet test tests/ABSmartly.Sdk.Tests
+        run: dotnet test tests/ABSmartly.Sdk.Tests --blame-hang-timeout 5m
 
       # Same pack as the publish workflow, so a packaging or package-validation failure shows
       # up on the pull request instead of at release time.

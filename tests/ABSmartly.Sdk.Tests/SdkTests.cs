@@ -89,7 +89,8 @@ public class SdkTests
         var dataProvider = Mock.Of<IContextDataProvider>(x => x.GetContextDataAsync() == Task.FromResult(data));
         var absmartly = new ABsmartly.Sdk(_httpClientFactory, _serviceConfig,
             new ABsmartlyConfig { ContextDataProvider = dataProvider });
-        var config = new ContextConfig();
+        // A long publish delay, so the timer cannot flush the exposure before PendingCount is read.
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
         config.SetUnit("store_id", "s-1");
         // The contexts read the system clock; the 400,000-hour period keeps the index stable.
         var period = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / experiment.SwitchbackPeriodMs!.Value;
@@ -123,7 +124,8 @@ public class SdkTests
         };
         var data = new ContextData { Experiments = new[] { experiment } };
         var absmartly = new ABsmartly.Sdk(_httpClientFactory, _serviceConfig);
-        var config = new ContextConfig();
+        // A long publish delay, so the timer cannot flush the exposure before PendingCount is read.
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
         config.SetUnit("store_id", "s-1");
         var before = (Context)absmartly.CreateContextWith(config, data);
 

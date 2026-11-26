@@ -136,7 +136,7 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
             context.AfterAssignmentLookup = () =>
             {
                 entered.Set();
-                release.Wait();
+                release.Wait(10000);
             };
             var read = Task.Run(() => context.GetTreatment(experiment));
             entered.Wait(5000).Should().BeTrue();
@@ -147,26 +147,37 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         var inFlight = context.PublishAsync();
         var releaseB = new ManualResetEventSlim();
         var releaseC = new ManualResetEventSlim();
-        var readB = PastChecks("exp_b", releaseB);
-        var readC = PastChecks("exp_c", releaseC);
-        context.Track("second", null!);
-        using (var ui = new UiThread())
+        try
         {
-            var closed = ui.Run(() => context.Close());
-            (await Task.WhenAny(closed, Task.Delay(5000))).Should().Be(closed);
-            await closed;
-        }
+            var readB = PastChecks("exp_b", releaseB);
+            var readC = PastChecks("exp_c", releaseC);
+            context.Track("second", null!);
+            using (var ui = new UiThread())
+            {
+                var closed = ui.Run(() => context.Close());
+                (await Task.WhenAny(closed, Task.Delay(5000))).Should().Be(closed);
+                await closed;
+            }
 
-        releaseB.Set();
-        (await Task.WhenAny(readB, Task.Delay(5000))).Should().Be(readB);
-        firstGate.SetResult(true);
-        draining.Wait(5000).Should().BeTrue("the close publishes exp_b once the publication settles");
-        releaseC.Set();
-        (await Task.WhenAny(readC, Task.Delay(5000))).Should().Be(readC);
-        drainGate.SetResult(true);
-        await inFlight;
-        await context.FinalizeAsync();
-        (await Task.WhenAny(closeLogged.Task, Task.Delay(5000))).Should().Be(closeLogged.Task);
+            releaseB.Set();
+            (await Task.WhenAny(readB, Task.Delay(5000))).Should().Be(readB);
+            firstGate.SetResult(true);
+            draining.Wait(5000).Should().BeTrue("the close publishes exp_b once the publication settles");
+            releaseC.Set();
+            (await Task.WhenAny(readC, Task.Delay(5000))).Should().Be(readC);
+            drainGate.SetResult(true);
+            await inFlight;
+            await context.FinalizeAsync();
+            (await Task.WhenAny(closeLogged.Task, Task.Delay(5000))).Should().Be(closeLogged.Task);
+        }
+        finally
+        {
+            // A failed assertion above must not leave the held readers or publications blocked.
+            releaseB.Set();
+            releaseC.Set();
+            firstGate.TrySetResult(true);
+            drainGate.TrySetResult(true);
+        }
 
         context.IsClosed().Should().BeTrue();
         context.PendingCount.Should().Be(0);

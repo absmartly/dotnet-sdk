@@ -24,7 +24,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 {
     private readonly List<GoalAchievement> _achievements = new();
     private readonly DictionaryLockableAdapter<string, VariantAssigner> _assigners;
-    private readonly Dictionary<string, Assignment> _assignmentCache = new();
+    private readonly Dictionary<(string Name, long? Period), Assignment> _assignmentCache = new();
 
     private readonly ListLockableAdapter<Attribute> _attributes;
     private readonly AudienceMatcher _audienceMatcher;
@@ -1139,7 +1139,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
     // The cached assignment under cacheKey when it is still up to date, else null. Called with the
     // context lock held (read, or write when writeLocked); it takes none itself.
-    private Assignment TryGetUpToDateAssignment(string cacheKey, string experimentName, ExperimentVariables experiment,
+    private Assignment TryGetUpToDateAssignment((string, long?) cacheKey, string experimentName, ExperimentVariables experiment,
         bool writeLocked)
     {
         var assignment = _assignmentCache.TryGetValue(cacheKey, out var e) ? e : null;
@@ -1315,7 +1315,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                     assignment.RuleKey = experiment.Data.AssignmentRules;
                     // The decision pin survives coverage-only rebuilds independently of the new
                     // batch's exposure state. A skipped reservation releases it; a queued one never does.
-                    var previousPin = _assignmentCache.TryGetValue(experimentName, out var exposedRule) &&
+                    var previousPin = _assignmentCache.TryGetValue((experimentName, null), out var exposedRule) &&
                                       ExperimentMatches(experiment.Data, exposedRule) &&
                                       string.Equals(exposedRule.RuleKey, experiment.Data.AssignmentRules,
                                           StringComparison.Ordinal)
@@ -1420,7 +1420,6 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     #region Switchback
 
     private const string RandomizationSwitchback = "switchback";
-    private const char SwitchbackKeySeparator = '\u001f';
     private const int SwitchbackRetainedPeriods = 2;
     // The Collector's switchback anchor bounds (Registry): hour aligned and in [0, 10000-01-01).
     private const long SwitchbackAnchorAlignmentMs = 3_600_000L;
@@ -1467,11 +1466,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return (now - startAt) / experiment.Data.SwitchbackPeriodMs!.Value;
     }
 
-    private static string AssignmentCacheKey(string experimentName, long? periodIndex) =>
-        periodIndex == null ? experimentName : SwitchbackCacheKey(experimentName, periodIndex.Value);
+    // A unit experiment, or a switchback before its start or with an unservable grid, is cached under
+    // (name, null); a switchback period under (name, index). A tuple key, so no experiment name can
+    // collide with another experiment's period slot.
+    private static (string, long?) AssignmentCacheKey(string experimentName, long? periodIndex) =>
+        (experimentName, periodIndex);
 
-    private static string SwitchbackCacheKey(string experimentName, long periodIndex) =>
-        experimentName + SwitchbackKeySeparator + periodIndex.ToString(CultureInfo.InvariantCulture);
 
     // A cached assignment is a switchback slot exactly when the experiment is a switchback. Its grid
     // identity is the generation: definitions change only through a refresh, which gives a changed
@@ -1519,8 +1519,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     {
         if (!_switchbackEpochs.TryGetValue(experimentName, out var epoch)) return;
         _switchbackEpochs.Remove(experimentName);
-        foreach (var period in epoch.Periods) _assignmentCache.Remove(SwitchbackCacheKey(experimentName, period));
-        _assignmentCache.Remove(experimentName);
+        foreach (var period in epoch.Periods) _assignmentCache.Remove((experimentName, period));
+        _assignmentCache.Remove((experimentName, null));
     }
 
     // Records a switchback resolution under the current epoch. At most SwitchbackRetainedPeriods
@@ -1544,7 +1544,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             var evicted = epoch.Periods.Min;
             if (evicted == index) evicted = epoch.Periods.GetViewBetween(index + 1, long.MaxValue).Min;
             epoch.Periods.Remove(evicted);
-            _assignmentCache.Remove(SwitchbackCacheKey(experimentName, evicted));
+            _assignmentCache.Remove((experimentName, evicted));
         }
     }
 
@@ -1616,7 +1616,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // full-on, then (pre-start or unservable: silent control) traffic on the serving unit's hash,
     // custom assignment and the draw over the raw cluster key. Holdouts never apply. Write lock held.
     private Assignment InstallSwitchbackAssignment(Assignment assignment, ExperimentVariables experiment,
-        Assignment previous, string cacheKey, long? periodIndex, long now, int attrsSeqAtBuild)
+        Assignment previous, (string, long?) cacheKey, long? periodIndex, long now, int attrsSeqAtBuild)
     {
         var data = experiment.Data;
         var custom = _customAssignments.TryGetValue(data.Name, out var c) ? c : null;
@@ -2006,6 +2006,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         // Collector, which replays the cluster from the latest attribute set at or before exposedAt,
         // still sees the value that served. Every other attribute, including a cluster attribute no
         // such slot has read, keeps the clock reading, as before.
+        // A structured value is serialised before taking the lock: serialising runs the caller's
+        // getters, which must not run while every other reader of the context waits.
+        var wireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null;
         _contextLock.EnterWriteLock();
         try
         {
@@ -2017,7 +2020,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             _attributes.Add(new Attribute
             {
                 Name = name, Value = value, SetAt = setAt,
-                WireValue = _hasSwitchbacks ? SwitchbackAttributePath.Freeze(value) : null
+                WireValue = wireValue
             });
             Interlocked.Increment(ref _attrsSeq);
         }
@@ -2203,14 +2206,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // overridden one only while unexposed.
     private void InvalidateAssignmentsWithMissingUnit(string unitType)
     {
-        List<string> evicted = null;
+        List<(string, long?)> evicted = null;
         foreach (var entry in _assignmentCache)
         {
             var assignment = entry.Value;
             if (assignment.Switchback?.Serving.Status == SwitchbackServing.ServingStatus.Absent)
             {
                 if (Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0 || !assignment.Overridden)
-                    (evicted ??= new List<string>()).Add(entry.Key);
+                    (evicted ??= new List<(string, long?)>()).Add(entry.Key);
                 continue;
             }
 
@@ -2218,11 +2221,11 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 assignment.RuleUnitPin?.IsPinned != true &&
                 (assignment.RuleMissingUnit || assignment.HoldoutAssignments != null) &&
                 Interlocked.CompareExchange(ref assignment.Exposed, 2, 0) == 0)
-                (evicted ??= new List<string>()).Add(entry.Key);
+                (evicted ??= new List<(string, long?)>()).Add(entry.Key);
         }
 
         if (evicted == null) return;
-        foreach (var name in evicted) _assignmentCache.Remove(name);
+        foreach (var key in evicted) _assignmentCache.Remove(key);
     }
 
     // Every holdout in a decision uses the same covered-experiment unit, so missing entries

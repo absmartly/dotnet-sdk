@@ -259,6 +259,20 @@ public class ContextSwitchbackTests : SwitchbackTestBase
 
     // A cached period is served from the read path: repeated reads in the period, and in the next
     // one once it is built, rebuild nothing.
+    // A switchback period is cached apart from every experiment name: an unknown experiment whose
+    // name looks like a period slot of an overridden switchback gets no variant from that slot.
+    [Test]
+    public void APeriodSlotNeverAnswersAnotherExperimentName()
+    {
+        var context = CreateContext(DataOf(NewSwitchback(2, Hour)));
+        context.SetOverride("exp_sb", 1);
+        Clock.Now = Anchor + 10;
+        context.GetTreatment("exp_sb").Should().Be(1);
+
+        foreach (var alias in new[] { "exp_sb\u001f0", "exp_sb\u001f1", "exp_sb\u0000", "exp_sb0" })
+            context.PeekTreatment(alias).Should().Be(0, "'{0}' is not the switchback", alias);
+    }
+
     [Test]
     public void RepeatedReadsInAPeriodAreServedFromTheCache()
     {
