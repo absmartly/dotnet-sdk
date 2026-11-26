@@ -118,10 +118,8 @@ public class HoldoutPayloadTests
             .Should().Equal(("holdout_a", 0), ("exp_free", 1));
     }
 
-    // Forward compatibility at every level of a holdout payload: unknown scalar, object and array keys
-    // at the root and inside experiments, applications, variants, custom fields, assignment rules
-    // and holdouts are ignored. Both experiments still assign, the covered one is held out, and its
-    // rule, variable and custom field are still read.
+    // Unknown keys at every payload level (root, experiment, application, variant, custom field,
+    // assignment rule, holdout) are ignored.
     [Test]
     public void UnknownKeysAtEveryLevelLeaveBothExperimentsAssigning()
     {
