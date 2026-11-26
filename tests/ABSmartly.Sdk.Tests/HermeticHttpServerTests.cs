@@ -227,6 +227,75 @@ public class HermeticHttpServerTests
         ((JArray)put["exposures"]!).Should().ContainSingle().Which["eligible"]!.Value<bool>().Should().BeTrue();
     }
 
+    // A switchback exposure served before a later linked unit was set is sent over real HTTP in its
+    // own PUT carrying only the units present when it was served; the goal tracked after the new
+    // unit goes in a second PUT with every unit. The Collector replays the cluster from each PUT's
+    // units, so the late unit's disagreeing cluster value cannot drop the exposure.
+    [Test]
+    public async Task ALateLinkedUnitSplitsThePublishIntoServingTimeRequests()
+    {
+        using (var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!)
+        using (var reader = new StreamReader(stream))
+            _contextBody = await reader.ReadToEndAsync();
+        var sdk = BuildSdk();
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        config.SetAttribute("store", new Dictionary<string, object> { ["key"] = "porto" });
+        config.SetAttribute("geo", new Dictionary<string, object> { ["city"] = "lisbon" });
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+
+        context.GetTreatment("exp_test_switchback");
+        context.SetUnit("device_id", "d-1");
+        context.Track("purchase", null!);
+        await context.PublishAsync();
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (_requests.Count(r => r.Method == "PUT") < 2 && DateTime.UtcNow < deadline) await Task.Delay(25);
+        var puts = _requests.Where(r => r.Method == "PUT").Select(r => JObject.Parse(r.Body)).ToList();
+        puts.Should().HaveCount(2);
+
+        string[] Units(JObject body) => ((JArray)body["units"]!).Select(u => (string)u["type"]!).ToArray();
+        var exposurePut = puts.Single(b => b["exposures"] is JArray { Count: > 0 });
+        var goalPut = puts.Single(b => b["goals"] is JArray { Count: > 0 });
+        Units(exposurePut).Should().Equal("store_id");
+        ((JArray)exposurePut["exposures"]!).Should().ContainSingle().Which["name"]!.Value<string>()
+            .Should().Be("exp_test_switchback");
+        Units(goalPut).Should().Equal("store_id", "device_id");
+    }
+
+    // A switchback clustered on environment, in a context created after the configuration changed
+    // from dev to staging: its environment-scoped rule sees the same staging its cluster and its PUT
+    // see, so a staging-only rule wins (ruleOverride) instead of being skipped for the old dev.
+    [Test]
+    public async Task SwitchbackRulesUseTheEnvironmentTheContextWasCreatedWith()
+    {
+        var data = JObject.Parse(await new StreamReader(GetType().Assembly
+            .GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!).ReadToEndAsync());
+        var experiment = (JObject)data["experiments"]![0]!;
+        experiment["switchbackClusters"] = new JObject { ["store_id"] = "environment" };
+        experiment["switchbackClusterValues"] = new JArray("staging");
+        experiment["fullOnVariant"] = 1;
+        experiment["assignmentRules"] =
+            "{\"rules\":[{\"type\":\"assign\",\"environments\":[\"staging\"],\"variant\":0}]}";
+        _contextBody = data.ToString();
+        var sdk = BuildSdk(null, out var serviceConfig);
+        serviceConfig.Environment = "staging";
+
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+        context.GetTreatment("exp_test_switchback").Should().Be(0, "the staging-only rule wins");
+        await context.PublishAsync();
+
+        var put = WaitForRequest(r => r.Method == "PUT")!;
+        put.Headers["X-Environment"].Should().Be("staging");
+        var exposure = ((JArray)JObject.Parse(put.Body)["exposures"]!).Should().ContainSingle().Subject;
+        exposure["ruleOverride"]!.Value<bool>().Should().BeTrue();
+        exposure["variant"]!.Value<int>().Should().Be(0);
+    }
+
     // The same change after requests were already sent: the service reads the caller's configuration
     // on every request, not once at its first, so the refresh, a second context's fetch and both
     // PUTs carry the new values, and the second context serves the version its PUT carries.

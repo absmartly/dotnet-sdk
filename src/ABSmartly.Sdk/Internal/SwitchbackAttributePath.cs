@@ -55,8 +55,14 @@ internal sealed class SwitchbackAttributePath
     // floating-point root value is returned as is (a char as a string); anything else is encoded and
     // the result is a JsonElement. Null when the path finds nothing, or the value has no JSON
     // encoding (a cycle, nesting deeper than the serializer's MaxDepth, or a type it rejects).
-    public object ResolveAttribute(object rootValue)
+    public object ResolveAttribute(object rootValue) => ResolveAttribute(rootValue, out _);
+
+    // As ResolveAttribute, also giving the wire encoding of a structured root value when this call
+    // produced it (null for a scalar, a JsonElement, or a value whose encoding failed), so the caller
+    // can keep, and publish, the exact encoding the lookup read.
+    public object ResolveAttribute(object rootValue, out object encoded)
     {
+        encoded = null;
         if (rootValue == null) return null;
 
         if (rootValue is char c) rootValue = c.ToString();
@@ -64,14 +70,23 @@ internal sealed class SwitchbackAttributePath
         if (IsScalar(rootValue)) return _keys.Length == 1 ? rootValue : null;
 
         JsonElement element;
-        try
+        if (rootValue is JsonElement given)
         {
-            element = JsonSerializer.SerializeToElement(rootValue, WireOptions.Value);
+            element = given;
         }
-        catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&
-                                  !(e is System.Threading.ThreadAbortException))
+        else
         {
-            return null;
+            try
+            {
+                element = JsonSerializer.SerializeToElement(rootValue, WireOptions.Value);
+            }
+            catch (Exception e) when (!(e is OutOfMemoryException) && !(e is StackOverflowException) &&
+                                      !(e is System.Threading.ThreadAbortException))
+            {
+                return null;
+            }
+
+            encoded = element;
         }
 
         return Walk(element, 1);

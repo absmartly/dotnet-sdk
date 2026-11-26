@@ -973,6 +973,52 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         profile.ReaderCompleted.Should().BeTrue();
     }
 
+    // A store whose region getter throws on its first `failures` reads, then returns its region.
+    private sealed class FlakyStore
+    {
+        private int _failures;
+        public FlakyStore(int failures, string region) { _failures = failures; Region = region; }
+        private string Region { get; set; }
+
+        public string region
+        {
+            get
+            {
+                if (_failures > 0) { _failures--; throw new InvalidOperationException("customer getter"); }
+                return Region;
+            }
+        }
+
+        public void Move(string region) => Region = region;
+    }
+
+    // Freeze fails twice (the eager freeze at SetAttribute and the lazy one at the first lookup), but
+    // the lookup's own encoding succeeds and serves an exposure. That encoding is the one published,
+    // so a later change of the same object cannot rewrite the earlier exposure's replay.
+    [Test]
+    public void TheEncodingThatServedAnExposureIsPublished()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "store/region");
+        experiment.SwitchbackClusterValues = new[] { "Faro" };
+        var context = CreateContext(DataOf(experiment));
+        var store = new FlakyStore(2, "Faro");
+        Clock.Now = Anchor + Hour - 1;
+        context.SetAttribute("store", store);
+        context.GetTreatment("exp_sb");
+        context.PendingCount.Should().Be(1, "the lookup's encoding read Faro, an allowed key");
+
+        Clock.Now = Anchor + Hour + 1;
+        store.Move("Porto");
+        context.SetAttribute("store", store);
+        var json = Encoding.UTF8.GetString(new DefaultContextEventSerializer().Serialize(PublishEvent(context)));
+
+        var stores = JsonDocument.Parse(json).RootElement.GetProperty("attributes").EnumerateArray()
+            .Where(a => a.GetProperty("name").GetString() == "store")
+            .Select(a => a.GetProperty("value").GetProperty("region").GetString()).ToList();
+        stores.Should().Equal(new[] { "Faro", "Porto" }, "the first is the encoding that served the exposure");
+    }
+
     private sealed class ThrowingProfile
     {
         public string Lazy => throw new NotImplementedException("customer getter");

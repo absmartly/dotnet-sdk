@@ -916,12 +916,19 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // always wins, including one set after an assignment was cached (SetAttribute bumps
     // _attrsSeq, which invalidates it). System attributes are not published; the collector
     // attaches them server-side.
-    private Dictionary<string, object> BuildAttributesDictionary()
+    // A switchback's rules see the application and environment its context was created with (the
+    // collector attributes, the values its requests carry), so they agree with its cluster lookup.
+    private Dictionary<string, object> BuildAttributesDictionary(bool switchback = false)
     {
         var attrs = new Dictionary<string, object>(_systemAttributes.Count + _attributes.Count);
         foreach (var systemAttribute in _systemAttributes)
         {
             attrs[systemAttribute.Key] = systemAttribute.Value;
+        }
+        if (switchback)
+        {
+            foreach (var key in SwitchbackRuleRoots)
+                if (_collectorAttributes.TryGetValue(key, out var configured)) attrs[key] = configured;
         }
         foreach (var attribute in _attributes)
         {
@@ -1010,8 +1017,10 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         if (experiment.AssignmentRules == null || _audienceMatcher == null) return null;
 
         var data = experiment.Data;
-        var action = _audienceMatcher.EvaluateRules(experiment.AssignmentRules, EnvironmentName,
-            BuildAttributesDictionary(), data.Name, _logger);
+        var switchback = IsSwitchback(data);
+        var action = _audienceMatcher.EvaluateRules(experiment.AssignmentRules,
+            switchback ? SwitchbackEnvironmentName : EnvironmentName,
+            BuildAttributesDictionary(switchback), data.Name, _logger);
         if (action == null) return null;
 
         var variantCount = data.Variants?.Length ?? 0;
@@ -1129,6 +1138,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // value the system attributes carry. Null for contexts created without one.
     private string EnvironmentName =>
         _systemAttributes.TryGetValue("environment", out var environment) ? environment as string : null;
+
+    // A switchback's rules are scoped to the environment its context was created with, the one its
+    // requests carry and its cluster lookup reads (CollectorAttributes), so the rule and the cluster
+    // of one decision never see different environments.
+    private string SwitchbackEnvironmentName =>
+        _collectorAttributes.TryGetValue("environment", out var environment) ? environment as string : EnvironmentName;
+
+    private static readonly string[] SwitchbackRuleRoots = { "application", "environment" };
 
     private AudienceMatcher.ParsedRules ParseAssignmentRules(Experiment experiment)
     {
@@ -1583,7 +1600,12 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                 if (_collectorAttributes.TryGetValue(path.RootKey, out var configured) &&
                     SwitchbackAttributePath.IsWireNull(value))
                     value = configured;
-                return path.ResolveAttribute(value);
+                var resolved = path.ResolveAttribute(value, out var encoded);
+                // Freeze failed but this read encoded the value: keep that encoding, the one the cluster
+                // was read from, so the exposure it serves replays the same value when published.
+                if (encoded != null && attribute is { WireValue: null } && ReferenceEquals(value, attribute.Value))
+                    attribute.WireValue = encoded;
+                return resolved;
             });
     }
 
