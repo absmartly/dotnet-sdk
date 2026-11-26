@@ -84,6 +84,50 @@ public class ContextSwitchbackClusterTests : SwitchbackTestBase
         PeekSchedule(context).Should().Equal(ExpectedSchedule("Lisboa"));
     }
 
+    // An unpaired surrogate is published as U+FFFD (the JSON encoder replaces it), so the Collector
+    // replays U+FFFD whether the value was set at the root or nested. A root source and a nested
+    // source holding the same text therefore agree (eligible, not a disagreement), and the cluster key
+    // is the replayed text, which the allow-list must name.
+    // Built from char codes at run time: an attribute argument cannot carry an unpaired surrogate.
+    [TestCase(new[] { 0xD800 }, TestName = "LoneHigh")]
+    [TestCase(new[] { 'a', 0xDC00, 'b' }, TestName = "LoneLowInside")]
+    [TestCase(new[] { 0xD800, 0xD800 }, TestName = "TwoHighs")]
+    public void AnUnpairedSurrogateKeysAsItsReplayedText(int[] codes)
+    {
+        var text = new string(codes.Select(c => (char)c).ToArray());
+        char.IsSurrogate(text, text.IndexOf(text.First(char.IsSurrogate))).Should().BeTrue();
+        var replayed = text.Replace('\uD800', '\uFFFD').Replace('\uDC00', '\uFFFD');
+        var experiment = NewSwitchback(Arms, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "profile/city");
+        experiment.SwitchbackClusterValues = new[] { replayed };
+        var context = Create(new Dictionary<string, string> { [UnitType] = Uid, ["user_id"] = "u1" },
+            DataOf(experiment));
+        context.SetAttribute("city", text);
+        context.SetAttribute("profile", new Dictionary<string, object> { ["city"] = text });
+        Clock.Now = Anchor + 10;
+
+        context.GetTreatment("exp_sb").Should().Be(Expected(replayed, 0));
+        var exposure = PublishExposures(context).Should().ContainSingle().Subject;
+        exposure.Eligible.Should().BeTrue("root and nested hold the same published text");
+    }
+
+    // A well-formed surrogate pair is one code point, published and keyed unchanged.
+    [Test]
+    public void ASurrogatePairKeysUnchanged()
+    {
+        var experiment = NewSwitchback(Arms, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city", "user_id", "profile/city");
+        experiment.SwitchbackClusterValues = new[] { "\uD83D\uDE00" };
+        var context = Create(new Dictionary<string, string> { [UnitType] = Uid, ["user_id"] = "u1" },
+            DataOf(experiment));
+        context.SetAttribute("city", "\uD83D\uDE00");
+        context.SetAttribute("profile", new Dictionary<string, object> { ["city"] = "\uD83D\uDE00" });
+        Clock.Now = Anchor + 10;
+
+        context.GetTreatment("exp_sb").Should().Be(Expected("\uD83D\uDE00", 0));
+        PublishExposures(context).Should().ContainSingle().Which.Eligible.Should().BeTrue();
+    }
+
     [Test]
     public void UnitsSharingAnAttributeValueShareTheSchedule()
     {

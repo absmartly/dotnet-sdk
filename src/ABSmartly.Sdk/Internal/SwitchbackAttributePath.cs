@@ -60,6 +60,7 @@ internal sealed class SwitchbackAttributePath
         if (rootValue == null) return null;
 
         if (rootValue is char c) rootValue = c.ToString();
+        if (rootValue is string str) return _keys.Length == 1 ? WireString(str) : null;
         if (IsScalar(rootValue)) return _keys.Length == 1 ? rootValue : null;
 
         JsonElement element;
@@ -88,6 +89,37 @@ internal sealed class SwitchbackAttributePath
         }
 
         return element.ValueKind == JsonValueKind.Null ? null : element;
+    }
+
+    // A string as the context publishes it: the JSON encoder writes an unpaired surrogate as U+FFFD,
+    // so the Collector replays U+FFFD whether the string was set at the root or nested. Reading the
+    // root the same way keeps a root and a nested source holding the same text in agreement. A
+    // well-formed string (the common case) is returned as is, without allocating.
+    private static string WireString(string s)
+    {
+        var i = FirstUnpairedSurrogate(s, 0);
+        if (i < 0) return s;
+
+        var chars = s.ToCharArray();
+        for (; i >= 0; i = FirstUnpairedSurrogate(s, i + 1)) chars[i] = '\uFFFD';
+        return new string(chars);
+    }
+
+    private static int FirstUnpairedSurrogate(string s, int from)
+    {
+        for (var i = from; i < s.Length; i++)
+        {
+            if (!char.IsSurrogate(s[i])) continue;
+            if (char.IsHighSurrogate(s[i]) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1]))
+            {
+                i++;
+                continue;
+            }
+
+            return i;
+        }
+
+        return -1;
     }
 
     private static bool IsScalar(object value) =>

@@ -83,6 +83,26 @@ public class SwitchbackPayloadTests
     // A wrongly typed switchback field loses only that field: the context still decodes. A path
     // that is not a string keeps its source as a null entry, so the map is unreadable (legacy path)
     // rather than silently skipping a source.
+    // A 64-bit field takes the JSON number's exact decimal value: a fraction too small for binary64
+    // to keep is still a fraction (read as null, so the schedule is unservable), while an integral
+    // number in any notation (3.6e6, 3600000.0, 36e5) is read as that integer.
+    [TestCase("3600000.0000000001", null)]
+    [TestCase("3600000.5", null)]
+    [TestCase("1e-1", null)]
+    [TestCase("3.6000000000000001e6", null)]
+    [TestCase("3.6e6", 3_600_000L)]
+    [TestCase("3600000.0", 3_600_000L)]
+    [TestCase("36e5", 3_600_000L)]
+    [TestCase("3600000", 3_600_000L)]
+    [TestCase("-1", -1L)]
+    [TestCase("9223372036854775807", long.MaxValue)]
+    [TestCase("9223372036854775808", null)]
+    [TestCase("1e19", null)]
+    public void SixtyFourBitFieldsReadTheExactDecimalValue(string number, long? expected)
+    {
+        DeserializeExperiment(",\"switchbackPeriodMs\":" + number).SwitchbackPeriodMs.Should().Be(expected);
+    }
+
     [Test]
     public void WronglyTypedFieldsAreReadAsNull()
     {
