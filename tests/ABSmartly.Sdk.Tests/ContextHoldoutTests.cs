@@ -2261,6 +2261,7 @@ public class ContextHoldoutTests
     // The pin travels with the rebuilt decision: a coverage refresh while the unit is still missing
     // rebuilds the exposed split unexposed, and SetUnit must not evict that rebuild.
     [Test]
+    [Timeout(10000)]
     public void SetUnitKeepsTheSplitPinCarriedByACoverageRebuild()
     {
         var holdouts = new[] { NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo) };
@@ -2297,6 +2298,7 @@ public class ContextHoldoutTests
     // After an exposed split is carried through a coverage rebuild, a unit set and a rule
     // revalidation must keep the original no-unit variant and publish it only once.
     [Test]
+    [Timeout(10000)]
     public void ExposedSplitPinSurvivesCoverageRefreshUnitAndRuleRevalidation()
     {
         var holdouts = new[] { NewHoldout(11, "holdout_revalidate_pin", HoldoutBSeedHi, HoldoutBSeedLo) };

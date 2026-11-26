@@ -7,6 +7,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A hung test (a read spinning on a retired assignment) must fail the job, not hold it open.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
