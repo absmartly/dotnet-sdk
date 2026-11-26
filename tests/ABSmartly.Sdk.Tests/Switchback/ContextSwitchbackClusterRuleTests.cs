@@ -237,6 +237,36 @@ public class ContextSwitchbackClusterRuleTests
         Sbc(attributes, Unit(Session, "x1")).Should().BeNull();
     }
 
+    // Two linked units are set and the first declared one (session_id) has no cluster value, so the
+    // second (user_id) serves: traffic is drawn on that serving unit, never on the first linked one.
+    [Test]
+    public void TrafficIsDrawnOnTheServingUnitNotTheFirstLinkedUnit()
+    {
+        var split = new[] { 0.5, 0.5 };
+        _experiment.TrafficSplit = split;
+        var witnesses = new string?[2];
+        for (var i = 0; i < 1000 && (witnesses[0] == null || witnesses[1] == null); ++i)
+        {
+            var uid = "linked-" + i;
+            witnesses[new VariantAssigner(Md5.HashToUtf8Bytes(uid)).Assign(split, TrafficSeedHi, TrafficSeedLo) == 0 ? 0 : 1] = uid;
+        }
+
+        witnesses.Should().NotContainNulls();
+        const string key = "s-18";
+        Scheduled(key).Should().NotBe(0);
+        foreach (var servingEligible in new[] { false, true })
+        {
+            var assignment = SbcWith(Attrs("profile", Store(key)), new[] { _experiment },
+                Unit(Session, witnesses[servingEligible ? 0 : 1]!), Unit(User, witnesses[servingEligible ? 1 : 0]!))!;
+            assignment.Unit.Should().Be(User);
+            assignment.Eligible.Should().Be(servingEligible);
+            assignment.Variant.Should().Be(servingEligible ? Scheduled(key) : 0);
+            assignment.Exposures.Should().ContainSingle();
+            assignment.Exposures[0].Unit.Should().Be(User);
+            assignment.Exposures[0].Eligible.Should().Be(servingEligible);
+        }
+    }
+
     [Test]
     public void TrafficUsesTheServingUidNotTheExperimentUid()
     {

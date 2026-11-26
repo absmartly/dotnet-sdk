@@ -2010,7 +2010,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         try
         {
             var setAt = _clock.Millis();
-            if (name != null && _clusterRootReadAt.TryGetValue(SwitchbackAttributePath.JavaTrim(name), out var readAt) &&
+            if (name != null && _clusterRootReadAt.Count > 0 &&
+                _clusterRootReadAt.TryGetValue(SwitchbackAttributePath.JavaTrim(name), out var readAt) &&
                 setAt < readAt) setAt = readAt + 1;
             if (InsideAttributeAppend != null) Interlocked.Exchange(ref InsideAttributeAppend, null)?.Invoke();
             _attributes.Add(new Attribute
