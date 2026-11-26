@@ -686,7 +686,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         if (eventCount <= 0) return default;
 
-        PublishRequest[] requests = null;
+        (int UnitCount, Exposure[] Exposures, GoalAchievement[] Goals)[] requests = null;
         var delivered = new List<PublishEvent>();
         try
         {
@@ -781,37 +781,23 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return publishedAt;
     }
 
-    private readonly struct PublishRequest
-    {
-        public PublishRequest(int unitCount, Exposure[] exposures, GoalAchievement[] goals)
-        {
-            UnitCount = unitCount;
-            Exposures = exposures;
-            Goals = goals;
-        }
-
-        // -1: every unit.
-        public int UnitCount { get; }
-        public Exposure[] Exposures { get; }
-        public GoalAchievement[] Goals { get; }
-    }
-
     // The Collector replays a switchback exposure's cluster from the request's units. A switchback
     // exposure served before more units were set is therefore sent in its own request carrying only
     // the units present when its cluster was read (they were set in that order), so a unit linked
     // later cannot add a disagreeing cluster value. Everything else, and every batch without such an
     // exposure, goes in one request with every unit, exactly as before.
-    private PublishRequest[] SplitByServingUnits(Exposure[] exposures, GoalAchievement[] goals, Unit[] units)
+    // UnitCount -1: every unit.
+    private (int UnitCount, Exposure[] Exposures, GoalAchievement[] Goals)[] SplitByServingUnits(Exposure[] exposures, GoalAchievement[] goals, Unit[] units)
     {
         if (exposures == null || !exposures.Any(e => HasLateLinkedUnit(e, units)))
-            return new[] { new PublishRequest(-1, exposures, goals) };
+            return new[] { (-1, exposures, goals) };
 
-        var requests = new List<PublishRequest>();
+        var requests = new List<(int UnitCount, Exposure[] Exposures, GoalAchievement[] Goals)>();
         foreach (var group in exposures.Where(e => HasLateLinkedUnit(e, units)).GroupBy(e => e.ServingUnitCount).OrderBy(g => g.Key))
-            requests.Add(new PublishRequest(group.Key, group.ToArray(), null));
+            requests.Add((group.Key, group.ToArray(), null));
 
         var rest = exposures.Where(e => !HasLateLinkedUnit(e, units)).ToArray();
-        if (rest.Length > 0 || goals != null) requests.Add(new PublishRequest(-1, rest.Length > 0 ? rest : null, goals));
+        if (rest.Length > 0 || goals != null) requests.Add((-1, rest.Length > 0 ? rest : null, goals));
         return requests.ToArray();
     }
 

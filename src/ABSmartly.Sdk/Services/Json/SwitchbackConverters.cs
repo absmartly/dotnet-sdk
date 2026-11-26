@@ -178,10 +178,8 @@ internal sealed class LenientLongConverter : JsonConverter<long?>
             }
 
             if (scale > 0) return null;
-            // More than 19 integer digits cannot fit a long (checked before scaling).
-            if (digits.Length - scale > 19) return null;
             // Accumulated as a negative value, which reaches long.MinValue too; checked arithmetic turns
-            // a 19-digit value beyond the range into null.
+            // a value beyond the range into null within 20 steps, however many digits or zeros follow.
             long value = 0;
             checked
             {
