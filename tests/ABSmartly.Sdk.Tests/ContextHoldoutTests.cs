@@ -1476,6 +1476,26 @@ public class ContextHoldoutTests
         (GC.GetAllocatedBytesForCurrentThread() - before).Should().Be(0);
     }
 
+    // Experiments sharing a holdout reuse its cached arm: one decision object per (holdout, unit
+    // type) for the iteration, drawn once and shared by every covered experiment.
+    [Test]
+    public void ExperimentsSharingAHoldoutReuseItsCachedArm()
+    {
+        var field = typeof(Context).GetField("_holdoutAssignments", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var context = CreateContext(DataOf(new[] { NewHoldout(11, "holdout_a", HoldoutASeedHi, HoldoutASeedLo) },
+            CoveredBy(NewExperiment(1, "exp_shared_a"), 11), CoveredBy(NewExperiment(2, "exp_shared_b"), 11),
+            CoveredBy(NewExperiment(3, "exp_shared_c"), 11)));
+        context.PeekTreatment("exp_shared_a");
+        var cache = (System.Collections.IDictionary)field.GetValue(context)!;
+        var arm = cache[(11, UnitType)];
+
+        context.PeekTreatment("exp_shared_b");
+        context.PeekTreatment("exp_shared_c");
+
+        cache.Count.Should().Be(1);
+        cache[(11, UnitType)].Should().BeSameAs(arm);
+    }
+
     [Test]
     public void HoldoutDecisionStateIsCreatedOnlyOnTheFirstHoldoutDecision()
     {
