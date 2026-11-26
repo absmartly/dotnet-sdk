@@ -774,6 +774,53 @@ public class ContextSwitchbackTests : SwitchbackTestBase
 
     // A split rule's revalidation after a SetAttribute uses the serving unit too, not the payload's
     // unitType: with only the serving unit set, the slot stays current instead of being rebuilt.
+    // A non-identity refresh that changes traffic metadata rebuilds the switchback assignment. The
+    // rule still wins with the same variant, so the exposed rule assignment must be reused rather
+    // than exposed a second time.
+    [Test]
+    public void ExposedSwitchbackRuleWinnerIsReusedAfterTrafficMetadataRefresh()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.AssignmentRules = AssignVariant1;
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + 10;
+        context.GetTreatment("exp_sb").Should().Be(1);
+        context.PendingCount.Should().Be(1);
+
+        var refreshed = NewSwitchback(2, Hour);
+        refreshed.AssignmentRules = AssignVariant1;
+        refreshed.AssignmentRules = AssignVariant1.Replace("\"environments\":[]", "\"environments\":[\"production\"]");
+        RefreshTo(context, refreshed);
+
+        context.GetTreatment("exp_sb").Should().Be(1);
+        context.PendingCount.Should().Be(1);
+        PublishExposures(context).Should().ContainSingle().Which.Should().Match<Exposure>(e =>
+            e.Variant == 1 && e.RuleOverride && !e.Assigned);
+    }
+
+    [Test]
+    public void ExposedSwitchbackRuleWinnerIsReusedAfterCoverageRefresh()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.AssignmentRules = AssignVariant1;
+        var holdout = new Experiment { Id = 90, Name = "holdout_for_switchback_reuse", UnitType = UnitType,
+            Iteration = 1, SeedHi = 1, SeedLo = 2, Split = new[] { 0.0, 1.0 },
+            TrafficSplit = new[] { 0.0, 1.0 }, Variants = Array.Empty<ExperimentVariant>() };
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + 10;
+        context.GetTreatment("exp_sb").Should().Be(1);
+        context.PendingCount.Should().Be(1);
+
+        var refreshed = NewSwitchback(2, Hour);
+        refreshed.AssignmentRules = AssignVariant1;
+        refreshed.HoldoutIds = new[] { holdout.Id };
+        RefreshTo(context, new ContextData(new[] { refreshed }, new[] { holdout }));
+
+        context.GetTreatment("exp_sb").Should().Be(1);
+        context.PendingCount.Should().Be(1);
+        PublishExposures(context).Count(e => e.Id == experiment.Id).Should().Be(1);
+    }
+
     [Test]
     public void SplitRuleRevalidatesOverTheServingUnit()
     {
