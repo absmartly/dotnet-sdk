@@ -134,6 +134,7 @@ M = [
  ('replay: rewound write dated at the read', S+'Context.cs', 'setAt < readAt) setAt = readAt + 1;', 'setAt < readAt) setAt = readAt;'),
  ('replay: same-ms write bumped too', S+'Context.cs', 'setAt < readAt) setAt = readAt + 1;', 'setAt <= readAt) setAt = readAt + 1;'),
  ('replay: cluster-root guard skips the rewind', S+'Context.cs', '_clusterRootReadAt.Count > 0 &&', '_clusterRootReadAt.Count > 1 &&'),
+ ('replay: rewind keeps the first read of a root', S+'Context.cs', 'if (!_clusterRootReadAt.TryGetValue(root, out var latest) || readAt > latest)', 'if (!_clusterRootReadAt.TryGetValue(root, out var latest))'),
  ('replay: latest read not tracked', S+'Context.cs', '        if (!state.Silent) RecordClusterRead(experiment, servingReadAt, servingUnitCount);\n', ''),
  ('replay: latest read is the last read', S+'Context.cs', 'if (!_clusterRootReadAt.TryGetValue(root, out var latest) || readAt > latest)', 'if (true)'),
  ('replay: rewind trims as .NET', S+'Context.cs', '_clusterRootReadAt.TryGetValue(SwitchbackAttributePath.JavaTrim(name), out var readAt)', '_clusterRootReadAt.TryGetValue(name.Trim(), out var readAt)'),

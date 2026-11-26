@@ -427,6 +427,32 @@ public class ContextSwitchbackLifecycleTests : SwitchbackTestBase
         published.Attributes.Last().SetAt.Should().Be(Anchor + Hour + 21);
     }
 
+    // The rewind protection keeps the latest read of a root, not the first: a cluster read in two
+    // periods, then changed after the clock went back between them, is dated after the later read,
+    // so both periods' exposures still replay the served value.
+    [Test]
+    public void RewindProtectsTheLatestReadOfARoot()
+    {
+        var experiment = NewSwitchback(2, Hour);
+        experiment.SwitchbackClusters = Clusters(UnitType, "city");
+        var context = CreateContext(DataOf(experiment));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        Clock.Now = Anchor + Hour + 20;
+        context.GetTreatment("exp_sb");
+        Clock.Now = Anchor + 2 * Hour + 5;
+        context.GetTreatment("exp_sb");
+        Clock.Now = Anchor + 2 * Hour + 1;
+        context.SetAttribute("city", "Porto");
+        Clock.Now = Anchor + 2 * Hour + 10;
+        var published = PublishEvent(context);
+
+        published.Exposures.Should().HaveCount(2);
+        foreach (var exposure in published.Exposures)
+            Replay(published, "city", exposure.ExposedAt).Should().Be("Faro");
+        published.Attributes.Last().SetAt.Should().Be(Anchor + 2 * Hour + 6);
+    }
+
     [Test]
     public void AttributeSetAtIsTheClockReadingWithoutARewind()
     {
