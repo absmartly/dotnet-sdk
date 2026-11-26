@@ -7,13 +7,9 @@ using Attribute = ABSmartly.Models.Attribute;
 
 namespace ABSmartly.Sdk.Tests;
 
-// Holdouts, ported case by case from java-sdk ContextHoldoutTest (java-sdk#12) with the
-// javascript-sdk (#65) behaviour where the two differ: a holdout's own exposure follows the
-// covered experiment's (JS _triggerExposures), and an override pins its holdout decisions like any
-// other assignment (JS _assign). Holdouts arrive in ContextData.Holdouts; an experiment opts in
-// through HoldoutIds. Holdout arm 0 holds the unit out; in a 3-arm holdout, arm 1 holds out
-// experiments that are not full-on. A held-out experiment gets control, is not assigned and
-// publishes no exposure of its own; each holdout publishes its own exposure once per unit type.
+// Ported from java-sdk ContextHoldoutTest (java-sdk#12), following javascript-sdk (#65) where they
+// differ: a holdout's exposure follows the covered experiment's, and an override pins its holdout
+// decisions.
 [TestFixture]
 public class ContextHoldoutTests
 {
@@ -900,10 +896,8 @@ public class ContextHoldoutTests
         context.PendingCount.Should().Be(1);
     }
 
-    // Java bounds its settle loop at three attempts; dotnet re-resolves until the assignment it
-    // holds is not retired. Only the SetUnit of the experiment's own unit type retires it: a later
-    // SetUnit of another type leaves the replacement in place, so the read settles on its second
-    // resolution and exposes once.
+    // Java bounds its settle loop at three attempts; dotnet re-resolves until its assignment is not
+    // retired, and only a SetUnit of the experiment's own unit type retires it.
     [Test]
     public void TreatmentExposureSettlesAfterOneRetirementDespiteALaterUnrelatedSetUnit()
     {
@@ -2189,10 +2183,8 @@ public class ContextHoldoutTests
         return experiment;
     }
 
-    // An exposed split rule resolved without its unit keeps its variant when a later refresh only
-    // adds holdout coverage (the unit having been set meanwhile), as the SetUnit path; the new
-    // holdout is exposed. Only the exposed decision is pinned, and only for the same experiment run
-    // and rules: an unexposed one, a rule change or a new iteration is resolved with the unit.
+    // Only an exposed decision is pinned, and only for the same run and rules: an unexposed one, a
+    // rule change or a new iteration resolves with the unit.
     [TestCase(true, false, false, 0)]
     [TestCase(false, false, false, 1)]
     [TestCase(true, true, false, 1)]
@@ -2217,6 +2209,42 @@ public class ContextHoldoutTests
         exposures.Should().Contain((11, 1));
         exposures.Should().Contain((1, variantAfter));
         if (variantAfter == 0) exposures.Should().NotContain((1, 1));
+    }
+
+    // The pin travels with the rebuilt decision: a coverage refresh while the unit is still missing
+    // rebuilds the exposed split unexposed, and SetUnit must not evict that rebuild.
+    [Test]
+    public void SetUnitKeepsTheSplitPinCarriedByACoverageRebuild()
+    {
+        var holdouts = new[] { NewHoldout(11, "holdout_b", HoldoutBSeedHi, HoldoutBSeedLo) };
+        var context = CreateContextWithoutUnits(DataOf(holdouts, SplitRuled()));
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+        Refresh(context, DataOf(holdouts, SplitRuled(NoUnitSplit, 1, 11)));
+        context.PeekTreatment("exp_pinned_split").Should().Be(0); // the rebuild, still unexposed
+
+        context.SetUnit(UnitType, Uid);
+
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+        Publish(context).Exposures!.Where(e => e.Id == 1).Should().OnlyContain(e => e.Variant == 0);
+    }
+
+    // An exposed assign-rule decision that a rule refresh turns into the same no-unit split variant is
+    // reused in place, and takes the split's pin: setting the unit later keeps the variant shown.
+    [Test]
+    public void AReusedRuleDecisionTakesTheSplitPin()
+    {
+        const string assignZero = "{\"rules\":[{\"name\":\"assign\",\"type\":\"assign\",\"variant\":0," +
+                                  "\"conditions\":null,\"environments\":[]}]}";
+        var context = CreateContextWithoutUnits(DataOf(Array.Empty<Experiment>(), SplitRuled(assignZero)));
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+        Refresh(context, DataOf(Array.Empty<Experiment>(), SplitRuled()));
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+
+        context.SetUnit(UnitType, Uid);
+        context.SetAttribute("force_rule_revalidation", true);
+
+        context.GetTreatment("exp_pinned_split").Should().Be(0);
+        Publish(context).Exposures!.Where(e => e.Id == 1).Should().OnlyContain(e => e.Variant == 0);
     }
 
     // A no-unit split whose deferred exposure was reserved (so SetUnit kept it cached) and then

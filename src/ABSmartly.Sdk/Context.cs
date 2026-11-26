@@ -424,14 +424,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     }
 
 
-    // A suppressed (held-out) assignment publishes no exposure of its own; its holdouts publish
-    // theirs. The holdouts fire even when the experiment's exposure throws (a throwing event
-    // logger), since this assignment is already marked exposed and would never fire them again;
-    // the first failure is rethrown once every holdout has fired.
-    // deferred: the exposure was deferred past an earlier logger failure, so it is not queued
-    // while the context is closing or closed (checked under the event lock, where close sets
-    // _closing); it is left unexposed with its holdouts, so if that close fails and the context
-    // stays open, the next read exposes them.
+    // Holdouts fire even if the experiment's logger throws: the assignment is already marked
+    // exposed and would never fire them again. A deferred exposure skipped by a close stays
+    // unexposed, so a failed close leaves it for the next read.
     private void QueueExposure(Assignment assignment, bool deferred = false)
     {
         // Coverage can rebuild the exposure batch without changing the split decision. Share the
@@ -889,15 +884,13 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return new RuleResolution(assigner.Assign(split, data.SeedHi, data.SeedLo), false);
     }
 
-    // Called with the write lock held. When the freshly resolved assignment is a rule win with
-    // the same variant as an already-exposed cached one for the same experiment run, the cached
-    // object is kept and only its rule bookkeeping refreshed: a new Assignment would reset its
-    // exposure and publish the same decision a second time.
+    // Write lock held. Keeps an exposed rule decision with the same variant, so it is not
+    // published twice; never a retired one (Exposed 2), which its holders must re-resolve.
     private static Assignment ReuseExposedRuleAssignment(ExperimentVariables experiment, Assignment previous,
         Assignment fresh)
     {
         if (previous == null || experiment == null || !fresh.RuleOverride || !previous.RuleOverride ||
-            previous.Overridden || previous.Variant != fresh.Variant || previous.Exposed == 0 ||
+            previous.Overridden || previous.Variant != fresh.Variant || Volatile.Read(ref previous.Exposed) != 1 ||
             !ExperimentMatches(experiment.Data, previous) || !HoldoutSetMatches(fresh.Holdouts, previous.Holdouts))
             return null;
 
@@ -918,10 +911,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                ArrayEquality.Equals(experiment.TrafficSplit, assignment.TrafficSplit);
     }
 
-    // The applicable holdouts are identified by (id, iteration), in id order, as JS and Java: a
-    // seed, split or name edit within an iteration must not re-resolve (and re-expose) the
-    // experiment, while coverage added or removed, or a new iteration, must. Experiments without
-    // holdouts compare null with null.
+    // Coverage is (id, iteration) in id order, as JS and Java: a same-iteration seed, split or
+    // name edit is not a change.
     private static bool HoldoutSetMatches(Experiment[] current, Experiment[] pinned)
     {
         if (ReferenceEquals(current, pinned)) return true;
@@ -945,12 +936,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return false;
     }
 
-    // Called with the context write lock held. The unit is hashed by the covered experiment's
-    // unit type, not the holdout's own. Null when that unit is not set (never cached, so a unit
-    // set later is picked up). The holdout is the one installed with the experiment's own data
-    // (SetData resolves both from the same payload). The cached arm is kept while the holdout's
-    // iteration is unchanged, so a same-iteration seed or split edit does not move the unit to
-    // another arm.
+    // Write lock held. Hashed with the covered experiment's unit type; null (uncached) while that
+    // unit is missing. The arm is kept until the holdout's iteration changes.
     private Assignment GetHoldoutAssignment(Experiment holdout, string unitType)
     {
         if (unitType == null || !_units.TryGetValue(unitType, out var uid)) return null;
@@ -1032,11 +1019,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                      !_customAssignments.TryGetValue(experimentName, out var custom) ||
                      custom == assignment.Variant)
             {
-                // A matching rule, and holdout suppression, win over a custom assignment, so a
-                // custom mismatch is not staleness for a rule-won or held-out assignment.
-                // Rules changed by a refresh are revalidated only under the write lock, where
-                // recording the new rules together with the sequence they were validated at
-                // cannot race another reader validating different rules or attributes.
+                // Rules and suppression beat a custom assignment, so its mismatch is not staleness
+                // here. Changed rules are revalidated only under the write lock, so recording them
+                // cannot race another reader.
                 var rulesChanged = !string.Equals(experiment.Data.AssignmentRules, assignment.RuleKey,
                     StringComparison.Ordinal);
                 // Read before evaluating: an attribute set meanwhile must trigger a new check.
@@ -1253,19 +1238,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             try
             {
                 var assignment = GetAssignment(experiment.Data.Name);
-                // As the Java SDK: the first assigned (or overridden) experiment by id wins, even
-                // if its selected variant does not define the key (the caller then returns the
-                // default). It is the experiment exposed, so units in its control arm are
-                // counted too.
+                // As Java: the first assigned experiment by id wins even if its variant lacks the
+                // key (the caller then returns the default).
                 if (assignment.Assigned || assignment.Overridden || assignment.RuleOverride)
                 {
                     if (failure == null) return assignment;
 
-                    // An earlier candidate's holdout logger threw (so this is not a peek): the winner
-                    // and its holdouts are exposed here, as the caller would, before the first
-                    // failure propagates; unless the context is closing or closed (by that logger or
-                    // another thread), which has flushed and must not be left with a new pending
-                    // exposure.
+                    // An earlier logger threw: expose the winner here, as the caller would have,
+                    // unless a close has started (it must not be left pending).
                     QueueExposure(assignment, deferred: true);
                     break;
                 }
@@ -1634,14 +1614,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         foreach (var kvp in units) SetUnit(kvp.Key, kvp.Value);
     }
 
-    // Called with the write lock held. A split rule resolved without its unit gave the no-unit
-    // variant, and holdouts resolved without it have null entries (they could not suppress and
-    // fire no exposure; every entry is resolved with the experiment's unit type, so an assignment
-    // of this unit type with holdouts has only null ones); with the unit now set such an
-    // assignment is evicted so the next call resolves it again, but only while it is still
-    // unexposed. Retiring it (Exposed 0 -> 2) makes
-    // a racing GetTreatment that already holds it skip the exposure, so the user never gets two
-    // different variants exposed.
+    // Write lock held. Evicts unexposed decisions made without this unit (a no-unit split, or null
+    // holdout entries) so they resolve again. Retiring them (Exposed 0 -> 2) makes a reader already
+    // holding one re-resolve instead of exposing a second variant.
     private void InvalidateAssignmentsWithMissingUnit(string unitType)
     {
         List<string> evicted = null;
@@ -2352,12 +2327,8 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
             }
         });
 
-    // Publishes what is pending, then seals the context or, if that fails, leaves it
-    // open for a retry, and notifies the event logger (first of an earlier successful
-    // flush of this close, if any).
-    // Events queued while the close's flush was publishing (by an event logger called back during
-    // a read, or a read already past its checks) are published by a further flush before sealing,
-    // so a successful close never leaves any pending.
+    // Flushes until nothing is pending, then seals; a failure leaves the context open for a retry.
+    // Events queued during a flush (by a logger or an in-flight read) go out before the seal.
     private async Task CompleteCloseAsync(TaskCompletionSource<bool> attempt, FlushOutcome earlier)
     {
         List<PublishEvent> drained = null;
