@@ -118,6 +118,49 @@ public class HoldoutPayloadTests
             .Should().Equal(("holdout_a", 0), ("exp_free", 1));
     }
 
+    // Forward compatibility at every level of a holdout payload: unknown scalar, object and array keys
+    // at the root and inside experiments, applications, variants, custom fields, assignment rules
+    // and holdouts are ignored. Both experiments still assign, the covered one is held out, and its
+    // rule, variable and custom field are still read.
+    [Test]
+    public void UnknownKeysAtEveryLevelLeaveBothExperimentsAssigning()
+    {
+        const string unknown = "\"futureScalar\":7,\"futureObject\":{\"a\":{\"b\":[1]}},\"futureArray\":[{\"k\":null},2]";
+        var json =
+            "{" + unknown + "," +
+            "\"experiments\":[" +
+            "{\"id\":1,\"name\":\"exp_covered\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100,\"seedLo\":200," +
+            "\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1],\"fullOnVariant\":0," +
+            "\"applications\":[{\"name\":\"website\"," + unknown + "}]," +
+            "\"variants\":[{\"name\":\"A\",\"config\":\"{\\\"color\\\":\\\"red\\\"}\"," + unknown + "}," +
+            "{\"name\":\"B\",\"config\":\"{\\\"color\\\":\\\"blue\\\"}\"," + unknown + "}]," +
+            "\"customFieldValues\":[{\"name\":\"country\",\"value\":\"US\",\"type\":\"string\"," + unknown + "}]," +
+            "\"holdoutIds\":[11]," + unknown + "}," +
+            "{\"id\":2,\"name\":\"exp_free\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":100,\"seedLo\":200," +
+            "\"split\":[0.5,0.5],\"trafficSeedHi\":1,\"trafficSeedLo\":2,\"trafficSplit\":[0,1],\"fullOnVariant\":0," +
+            "\"applications\":[{\"name\":\"website\"," + unknown + "}]," +
+            "\"variants\":[{\"name\":\"A\",\"config\":null," + unknown + "},{\"name\":\"B\",\"config\":null," + unknown + "}]," +
+            "\"assignmentRules\":\"{\\\"rules\\\":[{\\\"name\\\":\\\"r\\\",\\\"type\\\":\\\"assign\\\"," +
+            "\\\"variant\\\":1,\\\"conditions\\\":null,\\\"environments\\\":[],\\\"futureRuleKey\\\":{\\\"x\\\":[1]}}]," +
+            "\\\"futureRulesKey\\\":7}\"," + unknown + "}" +
+            "]," +
+            "\"holdouts\":[{\"id\":11,\"name\":\"holdout_a\",\"unitType\":\"session_id\",\"iteration\":1,\"seedHi\":13," +
+            "\"seedLo\":111,\"split\":[0.1,0.9]," + unknown + "}]" +
+            "}";
+
+        var data = Deserialize(json);
+
+        var (publisher, published) = Publisher();
+        var context = CreateContext(data, publisher);
+        context.GetTreatment("exp_covered").Should().Be(0);
+        context.GetVariableValue("color", "none").Should().Be("red");
+        context.GetCustomFieldValue("exp_covered", "country").Should().Be("US");
+        context.GetTreatment("exp_free").Should().Be(1);
+        context.Publish();
+        published.Single().Exposures.Select(e => (e.Name, e.Variant))
+            .Should().Equal(("holdout_a", 0), ("exp_free", 1));
+    }
+
     // A wrongly typed holdout field loses only that field or holdout: the context still decodes
     // and the unrelated experiment still assigns (1.3.0 ignored these fields altogether).
     [TestCase("\"holdouts\":{\"id\":11}", "\"holdoutType\":\"full\"", 0)]
