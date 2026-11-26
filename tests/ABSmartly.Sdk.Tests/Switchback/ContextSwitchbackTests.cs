@@ -824,6 +824,57 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         overlaid["sb_audience"].AudienceMismatch.Should().BeTrue("a user-set environment wins");
     }
 
+    // The same audience on a switchback and a unit experiment, in a context created after the
+    // environment moved from dev to staging: the switchback's audience sees staging, the unit
+    // experiment's dev, both when first read and when revalidated after an unrelated SetAttribute,
+    // so neither is rebuilt or exposed again.
+    [Test]
+    public void AudiencesKeepTheirEnvironmentWhenRevalidated()
+    {
+        const string onStaging = "{\"filter\":[{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}]}";
+        var switchback = NewSwitchback(1, "sb_audience", 2, Hour);
+        switchback.Audience = onStaging;
+        var unit = AsUnit(NewSwitchback(2, "unit_audience", 2, Hour));
+        unit.Audience = onStaging;
+
+        var counter = new CountingAudienceDeserializer();
+        var serviceConfig = H.ServiceConfig("website", "http://localhost/v1", "dev", "key");
+        var sdk = new ABsmartly.Sdk(Mock.Of<IABsmartlyHttpClientFactory>(), serviceConfig,
+            new ABsmartlyConfig { ContextPublisher = Publisher, AudienceDeserializer = counter });
+        serviceConfig.Environment = "staging";
+        var context = (Context)sdk.CreateContextWith(new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) }
+            .SetUnit(UnitType, Uid).SetAttribute(ClusterPath, ClusterKey), DataOf(switchback, unit));
+
+        var switchbackVariant = context.GetTreatment("sb_audience");
+        var unitVariant = context.GetTreatment("unit_audience");
+        var exposures = PublishExposures(context).ToDictionary(e => e.Name);
+        exposures["sb_audience"].AudienceMismatch.Should().BeFalse("the switchback's audience sees staging");
+        exposures["unit_audience"].AudienceMismatch.Should().BeTrue("the unit experiment's audience sees dev");
+
+        context.SetAttribute("unrelated", "x");
+        counter.Calls = 0;
+        for (var i = 0; i < 5; ++i)
+        {
+            context.GetTreatment("sb_audience").Should().Be(switchbackVariant);
+            context.GetTreatment("unit_audience").Should().Be(unitVariant);
+        }
+
+        counter.Calls.Should().BeLessOrEqualTo(2, "each audience is revalidated once, to the same result");
+        PublishExposures(context).Should().BeEmpty();
+    }
+
+    private sealed class CountingAudienceDeserializer : IAudienceDeserializer
+    {
+        private readonly DefaultAudienceDeserializer _inner = new();
+        public int Calls;
+
+        public Dictionary<string, object> Deserialize(string audience)
+        {
+            Interlocked.Increment(ref Calls);
+            return _inner.Deserialize(audience);
+        }
+    }
+
     // An exposed rule-won switchback slot whose rule stops matching (tier=y) is rebuilt; when the
     // attribute is back to tier=x by the time the rebuild reads it, the rule wins again with the same
     // variant, so the exposed assignment is reused, not exposed a second time.
