@@ -772,6 +772,58 @@ public class ContextSwitchbackTests : SwitchbackTestBase
         ones.Should().BeInRange(1, 31);
     }
 
+    // A context created after the configuration moved from website/dev to mobile/staging: a
+    // switchback's rules and strict audience see mobile/staging, the values its cluster lookup and
+    // requests use; a unit experiment's still see the SDK's website/dev; a user-set environment wins.
+    [Test]
+    public void SwitchbackRulesAndAudienceSeeTheContextsCreationValues()
+    {
+        const string onStaging = "{\"eq\":[{\"var\":\"environment\"},{\"value\":\"staging\"}]}";
+        const string onMobile = "{\"eq\":[{\"var\":\"application\"},{\"value\":\"mobile\"}]}";
+        string Rule(string environments, string conditions) =>
+            "{\"rules\":[{\"type\":\"assign\",\"environments\":[" + environments + "],\"variant\":1" +
+            (conditions == null ? "" : ",\"conditions\":" + conditions) + "}]}";
+
+        var bothRoots = NewSwitchback(1, "sb_both_roots", 2, Hour);
+        bothRoots.AssignmentRules = Rule("", "{\"and\":[" + onStaging + "," + onMobile + "]}");
+        var scoped = NewSwitchback(2, "sb_scoped", 2, Hour);
+        scoped.AssignmentRules = Rule("\"staging\"", null);
+        var audience = NewSwitchback(3, "sb_audience", 2, Hour);
+        audience.Audience = "{\"filter\":[" + onStaging + "]}";
+        audience.AudienceStrict = true;
+        var unitScoped = AsUnit(NewSwitchback(4, "unit_scoped", 2, Hour));
+        unitScoped.AssignmentRules = Rule("\"staging\"", null);
+        var unitConditions = AsUnit(NewSwitchback(5, "unit_conditions", 2, Hour));
+        unitConditions.AssignmentRules = Rule("", onStaging);
+
+        var serviceConfig = H.ServiceConfig("website", "http://localhost/v1", "dev", "key");
+        var sdk = new ABsmartly.Sdk(Mock.Of<IABsmartlyHttpClientFactory>(), serviceConfig,
+            new ABsmartlyConfig { ContextPublisher = Publisher });
+        serviceConfig.Environment = "staging";
+        serviceConfig.Application = "mobile";
+        ContextConfig Config() => new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) }
+            .SetUnit(UnitType, Uid).SetAttribute(ClusterPath, ClusterKey);
+
+        var context = (Context)sdk.CreateContextWith(Config(),
+            DataOf(bothRoots, scoped, audience, unitScoped, unitConditions));
+        foreach (var name in new[] { "sb_both_roots", "sb_scoped", "sb_audience", "unit_scoped", "unit_conditions" })
+            context.GetTreatment(name);
+        var exposures = PublishExposures(context).ToDictionary(e => e.Name);
+        exposures["sb_both_roots"].RuleOverride.Should().BeTrue("the rule sees mobile and staging");
+        exposures["sb_scoped"].RuleOverride.Should().BeTrue("the rule is scoped to staging");
+        exposures["sb_audience"].AudienceMismatch.Should().BeFalse("the audience sees staging");
+        exposures["unit_scoped"].RuleOverride.Should().BeFalse("a unit experiment's rules see dev");
+        exposures["unit_conditions"].RuleOverride.Should().BeFalse("a unit experiment's conditions see dev");
+
+        var userSet = (Context)sdk.CreateContextWith(Config().SetAttribute("environment", "qa"),
+            DataOf(bothRoots, audience));
+        userSet.GetTreatment("sb_both_roots");
+        userSet.GetTreatment("sb_audience");
+        var overlaid = PublishExposures(userSet).ToDictionary(e => e.Name);
+        overlaid["sb_both_roots"].RuleOverride.Should().BeFalse("a user-set environment wins");
+        overlaid["sb_audience"].AudienceMismatch.Should().BeTrue("a user-set environment wins");
+    }
+
     // An exposed rule-won switchback slot whose rule stops matching (tier=y) is rebuilt; when the
     // attribute is back to tier=x by the time the rebuild reads it, the rule wins again with the same
     // variant, so the exposed assignment is reused, not exposed a second time.

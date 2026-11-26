@@ -902,8 +902,9 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
     // always wins, including one set after an assignment was cached (SetAttribute bumps
     // _attrsSeq, which invalidates it). System attributes are not published; the collector
     // attaches them server-side.
-    // A switchback's rules see the application and environment its context was created with (the
-    // collector attributes, the values its requests carry), so they agree with its cluster lookup.
+    // A switchback's rules and audience see the application and environment its context was created
+    // with (the collector attributes, the values its requests carry), so they agree with its cluster
+    // lookup.
     private Dictionary<string, object> BuildAttributesDictionary(bool switchback = false)
     {
         var attrs = new Dictionary<string, object>(_systemAttributes.Count + _attributes.Count);
@@ -923,14 +924,14 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
         return attrs;
     }
 
-    private bool? EvaluateAudience(string audience)
+    private bool? EvaluateAudience(string audience, bool switchback = false)
     {
         if (string.IsNullOrEmpty(audience))
         {
             return null;
         }
 
-        var attrs = BuildAttributesDictionary();
+        var attrs = BuildAttributesDictionary(switchback);
         return _audienceMatcher.Evaluate(audience, attrs);
     }
 
@@ -942,7 +943,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         if (!string.IsNullOrEmpty(experiment.Audience) && attrsSeq > assignment.AttrsSeq)
         {
-            var match = EvaluateAudience(experiment.Audience);
+            var match = EvaluateAudience(experiment.Audience, IsSwitchback(experiment));
             var newAudienceMismatch = match != null ? !match.Value : false;
             if (newAudienceMismatch != assignment.AudienceMismatch)
             {
@@ -1736,7 +1737,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
 
         if (!string.IsNullOrEmpty(data.Audience))
         {
-            var match = EvaluateAudience(data.Audience);
+            var match = EvaluateAudience(data.Audience, true);
             if (match != null) assignment.AudienceMismatch = !match.Value;
         }
 
