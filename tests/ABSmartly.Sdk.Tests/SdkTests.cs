@@ -1,4 +1,5 @@
 ﻿using ABSmartly.Models;
+using ABSmartly.Services;
 
 namespace ABSmartly.Sdk.Tests;
 
@@ -69,5 +70,71 @@ public class SdkTests
         {
             return Task.FromResult(expected);
         }
+    }
+
+    [Test]
+    public async Task ContextsReadTheConfiguredCollectorAttributesInClusterPaths()
+    {
+        var experiment = new Experiment
+        {
+            Id = 1, Name = "exp_sb", UnitType = "store_id", Iteration = 1, SeedHi = 0, SeedLo = 42,
+            Split = new[] { 0.5, 0.5 }, TrafficSeedHi = 1, TrafficSeedLo = 2, TrafficSplit = new[] { 0.0, 1.0 },
+            FullOnVariant = 0, Applications = new[] { new ExperimentApplication { Name = "website" } },
+            Variants = new[] { new ExperimentVariant { Name = "A" }, new ExperimentVariant { Name = "B" } },
+            RandomizationType = "switchback",
+            SwitchbackClusters = new[] { new KeyValuePair<string, string>("store_id", "environment") },
+            SwitchbackStartAt = 0, SwitchbackPeriodMs = 400_000L * 3_600_000
+        };
+        var data = new ContextData { Experiments = new[] { experiment } };
+        var dataProvider = Mock.Of<IContextDataProvider>(x => x.GetContextDataAsync() == Task.FromResult(data));
+        var absmartly = new ABsmartly.Sdk(_httpClientFactory, _serviceConfig,
+            new ABsmartlyConfig { ContextDataProvider = dataProvider });
+        // A long publish delay, so the timer cannot flush the exposure before PendingCount is read.
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
+        config.SetUnit("store_id", "s-1");
+        // The contexts read the system clock; the 400,000-hour period keeps the index stable.
+        var period = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / experiment.SwitchbackPeriodMs!.Value;
+        var expected = ABSmartly.Internal.SwitchbackAssigner.Assign("dev", period, 42, 2);
+
+        var with = (Context)absmartly.CreateContextWith(config, data);
+        with.GetTreatment("exp_sb").Should().Be(expected);
+        with.PendingCount.Should().Be(1, "an eligible cluster is exposed");
+
+        var pending = (Context)await absmartly.CreateContextAsync(config);
+        pending.GetTreatment("exp_sb").Should().Be(expected);
+        pending.PendingCount.Should().Be(1);
+    }
+
+    // As released, the service reads the caller's configuration on every request, and each context
+    // reads the collector attributes when it is created: a context created after a change serves with
+    // the values its requests carry, and one created before keeps serving with its own.
+    [Test]
+    public void ContextsReadTheServiceConfigurationWhenCreated()
+    {
+        var experiment = new Experiment
+        {
+            Id = 1, Name = "exp_sb", UnitType = "store_id", Iteration = 1, SeedHi = 0, SeedLo = 42,
+            Split = new[] { 0.5, 0.5 }, TrafficSeedHi = 1, TrafficSeedLo = 2, TrafficSplit = new[] { 0.0, 1.0 },
+            FullOnVariant = 0, Applications = new[] { new ExperimentApplication { Name = "website" } },
+            Variants = new[] { new ExperimentVariant { Name = "A" }, new ExperimentVariant { Name = "B" } },
+            RandomizationType = "switchback",
+            SwitchbackClusters = new[] { new KeyValuePair<string, string>("store_id", "environment") },
+            SwitchbackClusterValues = new[] { "production" },
+            SwitchbackStartAt = 0, SwitchbackPeriodMs = 400_000L * 3_600_000
+        };
+        var data = new ContextData { Experiments = new[] { experiment } };
+        var absmartly = new ABsmartly.Sdk(_httpClientFactory, _serviceConfig);
+        // A long publish delay, so the timer cannot flush the exposure before PendingCount is read.
+        var config = new ContextConfig { PublishDelay = TimeSpan.FromMinutes(10) };
+        config.SetUnit("store_id", "s-1");
+        var before = (Context)absmartly.CreateContextWith(config, data);
+
+        _serviceConfig.Environment = "production";
+        var after = (Context)absmartly.CreateContextWith(config, data);
+
+        after.GetTreatment("exp_sb");
+        after.PendingCount.Should().Be(1, "created after the change, it reads production");
+        before.GetTreatment("exp_sb");
+        before.PendingCount.Should().Be(0, "created before it, it keeps dev, outside the allow-list");
     }
 }

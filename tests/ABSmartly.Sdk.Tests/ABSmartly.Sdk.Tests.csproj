@@ -44,6 +44,13 @@
         <EmbeddedResource Include="Resources\holdouts_context.json"/>
         <None Remove="Resources\publish_without_holdouts.golden"/>
         <EmbeddedResource Include="Resources\publish_without_holdouts.golden"/>
+        <None Remove="Resources\switchback_context.json"/>
+        <EmbeddedResource Include="Resources\switchback_context.json"/>
+        <!-- Byte-identical copies of the platform's switchback fixtures; see SwitchbackFixtures.cs. -->
+        <None Remove="Resources\switchback\golden-vectors.json"/>
+        <EmbeddedResource Include="Resources\switchback\golden-vectors.json"/>
+        <None Remove="Resources\switchback\attribute-path-cases.json"/>
+        <EmbeddedResource Include="Resources\switchback\attribute-path-cases.json"/>
     </ItemGroup>
 
 </Project>

@@ -339,6 +339,35 @@ A holdout keeps a share of units out of a group of experiments, so their combine
 - The arm is kept until the holdout's iteration changes, even if a refresh changes its seed or split.
 - A holdout that cannot be read (for example an `id`, `iteration`, `seedHi` or `seedLo` that is null, fractional (`11.5`) or outside the 32-bit range) is ignored, so the experiments it covers are assigned as if it did not exist. An integral decimal such as `11.0` is read as that integer.
 
+### Switchback Experiments
+
+A switchback experiment is randomized over *clusters* and time rather than over units: every unit in the same cluster (for example a store's region) sees the same variant within a period, and the variant changes on a fixed time grid. It follows the cluster-defined contract the Collector serves, as in the Java SDK (`SWITCHBACK.md` in absmartly/java-sdk). Nothing changes in your code: `GetTreatment()`, `PeekTreatment()`, `GetVariableValue()` and `PeekVariableValue()` serve switchbacks, and you set the cluster value as an ordinary attribute.
+
+```csharp
+context.SetUnit("store_id", "store-1234");
+context.SetAttribute("store", new Dictionary<string, object> { ["region"] = "lisbon" });
+
+// The variant of the "lisbon" cluster for the current period.
+var treatment = context.GetTreatment("exp_delivery_fee");
+```
+
+- The experiment's `switchbackClusters` names, in order, the unit types it is linked to and the attribute path of each one's cluster value (`store/region` above; `/` nests, a quoted segment is a literal key, an integer segment indexes a list). The first linked unit, in that order, whose path gives a value serves the experiment; its value is the cluster key, used as is (never hashed).
+- A cluster value is read as it is published: a string with an unpaired surrogate is keyed with U+FFFD in its place, as the JSON encoder writes it, whether it is set at the root of a cluster path or nested. The Java SDK keys a root string unchanged.
+- A cluster value is a non-empty string, or a whole number of an integer type (`int`, `long`, ...), used as its base-10 text. Every floating-point number (including `3.0` and `Half`), `decimal` with a fraction or scale, boolean, object, array, empty string and `null` gives no value. An enum is read as its name, as the Java SDK reads it. Set integer cluster values with an integer type.
+- With no linked unit set, the experiment does not apply. With no value, disagreeing values, or a value outside `switchbackClusterValues`, the unit gets an ineligible control (variant 0) and nothing is published. Only `SetOverride()` still applies there.
+- Otherwise the usual precedence applies, in this order: override, assignment rule, strict audience, full-on, traffic (on the serving unit), custom assignment, then the schedule draw. Before the grid's start (`switchbackStartAt`), or with a schedule the Collector cannot serve, the draw gives a silent control.
+- Holdouts never apply to a switchback.
+- Each period is exposed once, stamped with the time the period's cluster value was read, so the Collector, which re-resolves the cluster from the published attributes, replays the cluster and period that served. Once switchback data has been installed, `DefaultContextEventSerializer` publishes attribute values as the cluster lookup reads them: a whole floating-point number as a float (`3.0`), a NaN or infinite number as `null` and an enum as its name; the `PublishEvent` values themselves are untouched. The cluster value is read once per period: a `SetAttribute()` later in the same period takes effect in the next one. (A cluster attribute changed in the same millisecond as the read that served it is the one limit: the Collector, which breaks setAt ties by the last value set, replays the new value.)
+- A switchback's assignment rules and audience see the application and environment its context was created with, the same values its cluster lookup and its requests use, so a rule or audience on the environment and a cluster on `environment` never disagree. An attribute you set under either name still wins. Unit experiments keep the SDK's configured values.
+- A cluster path can be rooted at `application`, `application_version` or `environment`. Unless you set an attribute of that name to a non-null value, it reads the value from `ABSmartlyServiceConfiguration` (`Application`, `ApplicationVersion` when it is a whole number, `Environment`), as the Collector does when it replays the cluster. (The Java SDK does not read these values, so there such a path finds no value and the cluster is ineligible.)
+- A context reads those configured values when it is created. The request headers are read from `ABSmartlyServiceConfiguration` on every request, as before, so a context created after you change its application, environment or version serves with the values its requests carry. Changing them while a context is in use is not supported for cluster paths rooted at them: that context keeps serving with the values it was created with, while its later requests carry the new ones.
+- Once switchback data is installed, a structured attribute value (a dictionary, list or object) is published as it was when you set it, or when a cluster lookup first read it. Mutating that object afterwards changes neither its cluster nor what is published; call `SetAttribute()` again for a new value. `PublishEvent.Attributes` still holds your object. A custom `IContextPublisher` that redacts a structured attribute must assign `Attribute.Value` (a new object, or the same one after changing it); changing it in place without assigning is not published.
+- Set each cluster attribute under one name. Names that differ only by leading or trailing spaces or control characters (`city` and `" city "`) are the same attribute to the cluster lookup, but the Collector may replay either value, so such aliases are not supported.
+- Changing a cluster attribute in the middle of a period is not supported, whether before the period's exposure is published or while it waits for a retry. Set the cluster attribute before the first switchback lookup of each period. The arm cached at the period's first read that can expose stays for the rest of the period (after a silent first read, such as before the start or with no usable value, a rebuilt lookup reads the cluster again), and the exposure is published (or retried) with it. The new value takes effect from the next period. This matches the Java SDK and the Collector, and no change to them is planned.
+- The published exposures and payload have no new fields; attributes are published with their timestamps, as before. The Collector replays each switchback exposure's cluster from the published units and attributes, so the SDK keeps that replay faithful. A switchback exposure served before another linked unit was set (a login) is published in its own request carrying only the units present when it was served. A cluster attribute set again after a switchback read it for an exposure, but with an earlier clock reading (the clock went back), is dated just after that read; other attributes, including a cluster attribute only a silent lookup (no exposure) has read, keep the clock reading, and a later lookup that can expose reads the cluster again. With a custom `IContextPublisher`, such a split means more than one `PublishAsync` call for one `Publish()`.
+
+Contexts read the period from their clock, `DateTimeOffset.UtcNow` unless you pass your own `Clock`.
+
 ### Tracking Goals
 
 Goals are created in the A/B Smartly web console.
@@ -354,7 +383,7 @@ context.Track("payment", new Dictionary<string, object> {
 
 Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector before proceeding. You can explicitly call the `Publish()` or `PublishAsync()` methods.
 
-If the context's publisher reports a failure by throwing, or by returning a faulted task, the events stay queued (`PendingCount`) and a later `Publish()`, `Close()` or `Dispose()` retries them. The default publisher doesn't report an HTTP failure that way: as in 1.3.0, an unsuccessful response from the collector is not raised, so those events are not retried. To retry them, supply an `IContextPublisher` that throws on failure.
+If the context's publisher reports a failure by throwing, or by returning a faulted task, the events stay queued (`PendingCount`) and a later `Publish()`, `Close()` or `Dispose()` retries them. The default publisher doesn't report an HTTP failure that way: as in 1.3.0, an unsuccessful response from the collector is not raised, so those events are not retried. To retry them, supply an `IContextPublisher` that throws on failure. The exception is a flush split into several requests, which only a context with switchback experiments sends: there the default publisher raises a request that failed in a way a retry can fix (a transport failure, or HTTP 408, 429 or 5xx), so that request and the ones after it stay queued and the next `Publish()`, `Close()` or `Dispose()` sends them again, split the same way when they still hold an exposure served before a later linked unit; while such a failure lasts, each of those calls raises it and the events stay queued, as with a publisher that throws. Other failures (an event that could not be serialized, another 4xx) are logged and dropped, as before.
 
 ```csharp
 await context.PublishAsync();
@@ -445,10 +474,12 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 | `Error`    | Context receives an error                                   | `Exception` object                                     |
 | `Ready`    | Context turns ready                                         | `ContextData` used to initialize the context           |
 | `Refresh`  | `Refresh()` method succeeds                                 | `ContextData` used to refresh the context              |
-| `Publish`  | `Publish()` or `PublishAsync()` method succeeds             | `PublishEvent` sent to the A/B Smartly event collector |
+| `Publish`  | The publisher completes a request (from `Publish()`, `PublishAsync()`, a timed flush or a close) | `PublishEvent` handed to the `IContextPublisher` |
 | `Exposure` | `GetTreatment()` method succeeds on first exposure          | `Exposure` enqueued for publishing                     |
 | `Goal`     | `Track()` method succeeds                                   | `GoalAchievement` enqueued for publishing              |
 | `Close`    | Context disposal, `Close()` or `FinalizeAsync()` succeeds   | `null`                                                 |
+
+A `Publish` event means the `IContextPublisher` task completed. The default publisher's task completes even when it logs a failure instead (the event could not be serialized, or the Collector returned an error status), so a `Publish` event is not an acknowledgement that the Collector accepted every event; in a split flush a request that a retry could deliver fails instead (see [Publishing Pending Data](#publishing-pending-data)). In a context with switchback experiments one flush or close can send more than one request (see [Switchback Experiments](#switchback-experiments)): each completed request logs its own `Publish` event, in order, and when a later request fails the earlier ones have already been logged before its `Error`.
 
 ## Platform-Specific Examples
 

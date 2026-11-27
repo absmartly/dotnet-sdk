@@ -7,6 +7,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A hung test (a read spinning on a retired assignment) must fail the job, not hold it open.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -20,8 +22,10 @@ jobs:
       - name: Run Build
         run: dotnet build src/ABSmartly.Sdk
 
+      # NUnit's [Timeout] reports a hung test but leaves its thread spinning; the blame-hang timeout
+      # kills the test host instead, so a spinning read cannot hold the job open.
       - name: Run Tests
-        run: dotnet test tests/ABSmartly.Sdk.Tests
+        run: dotnet test tests/ABSmartly.Sdk.Tests --blame-hang-timeout 5m
 
       # Same pack as the publish workflow, so a packaging or package-validation failure shows
       # up on the pull request instead of at release time.

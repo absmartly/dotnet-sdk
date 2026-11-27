@@ -146,6 +146,7 @@ public class ABSmartlyService : IABSmartlyServiceClient
 
     public async Task<bool> PublishAsync(PublishEvent publishEvent)
     {
+        var sending = false;
         try
         {
             using var httpClient = _httpClientFactory.CreateClient();
@@ -162,11 +163,14 @@ public class ABSmartlyService : IABSmartlyServiceClient
             var content = new ByteArrayContent(serializedEvent);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
+            sending = true;
             using var result = await httpClient.PutAsync(_url, content).ConfigureUnboundContinuation();
 
             if (!result.IsSuccessStatusCode)
             {
                 _logger?.LogError("Publish event failed: HTTP {StatusCode} {ReasonPhrase}", (int)result.StatusCode, result.ReasonPhrase);
+                var status = (int)result.StatusCode;
+                publishEvent.RetryableFailure = status >= 500 || status == 408 || status == 429;
                 return false;
             }
 
@@ -175,6 +179,8 @@ public class ABSmartlyService : IABSmartlyServiceClient
         catch (Exception e)
         {
             _logger?.LogError(e, "Error publishing event: {Message}", e.Message);
+            // A transport failure or timeout can succeed on a retry; a serializer that threw cannot.
+            publishEvent.RetryableFailure = sending;
             return false;
         }
     }

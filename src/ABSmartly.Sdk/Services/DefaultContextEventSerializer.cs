@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Text.Json;
+using ABSmartly.Internal;
 using ABSmartly.Models;
 using ABSmartly.Services.Json;
 using Microsoft.Extensions.Logging;
@@ -19,7 +20,10 @@ public class DefaultContextEventSerializer : IContextEventSerializer
     {
         try
         {
-            return JsonSerializer.SerializeToUtf8Bytes(publishEvent, JsonOptionsProvider.Default.SerializerOptions);
+            return JsonSerializer.SerializeToUtf8Bytes(publishEvent,
+                publishEvent is { SwitchbackWireAttributes: true }
+                    ? SwitchbackAttributePath.PublishOptions.Value
+                    : JsonOptionsProvider.Default.SerializerOptions);
         }
         catch (Exception e)
         {

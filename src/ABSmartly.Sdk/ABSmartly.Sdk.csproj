@@ -6,7 +6,7 @@
         <AssemblyName>ABSmartly.Sdk</AssemblyName>
         <PackageId>ABsmartly.Sdk</PackageId>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <PackageVersion>1.5.0</PackageVersion>
+        <PackageVersion>1.6.0</PackageVersion>
         <Title>A/B Smartly DotNet SDK</Title>
         <Authors>A/B Smartly</Authors>
         <Description>The A/B Smartly DotNet SDK is a client SDK for A/B Smartly service</Description>
@@ -18,9 +18,9 @@
         <PackageTags>a/b,ab,testing,experiment,metrics,analytics</PackageTags>
         <TargetFrameworks>net9.0;net8.0;netstandard2.0</TargetFrameworks>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>1.5.0.0</FileVersion>
+        <FileVersion>1.6.0.0</FileVersion>
         <EnablePackageValidation>true</EnablePackageValidation>
-        <PackageValidationBaselineVersion>1.4.1</PackageValidationBaselineVersion>
+        <PackageValidationBaselineVersion>1.5.0</PackageValidationBaselineVersion>
     </PropertyGroup>
 
     <ItemGroup>

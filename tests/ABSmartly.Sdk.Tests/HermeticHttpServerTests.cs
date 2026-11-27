@@ -34,11 +34,16 @@ public class HermeticHttpServerTests
     private Task _serverLoop = null!;
 
     private readonly ConcurrentQueue<RecordedRequest> _requests = new();
+    private string _contextBody = "{\"experiments\":[]}";
+    // HTTP status for each PUT in turn; 200 once it runs out.
+    private readonly ConcurrentQueue<int> _putStatuses = new();
 
     [SetUp]
     public void SetUp()
     {
         _requests.Clear();
+        while (_putStatuses.TryDequeue(out _)) { }
+        _contextBody = "{\"experiments\":[]}";
         var port = GetFreePort();
         _baseUrl = $"http://127.0.0.1:{port}";
 
@@ -162,10 +167,246 @@ public class HermeticHttpServerTests
         put!.Headers.Should().ContainKey("X-Application-Version").WhoseValue.Should().Be(expected);
     }
 
+    // A switchback context over real HTTP: the PUT body carries a whole floating-point cluster value
+    // as 3.0 (the Collector reads 3 as the integer key "3").
+    [Test]
+    public async Task SwitchbackPublishCarriesTheWireEncoding()
+    {
+        using (var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!)
+        using (var reader = new StreamReader(stream))
+            _contextBody = await reader.ReadToEndAsync();
+        var sdk = BuildSdk("1004");
+
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        config.SetUnit("device_id", "d-1");
+        config.SetAttribute("store", new Dictionary<string, object> { ["key"] = "porto" });
+        config.SetAttribute("geo", new Dictionary<string, object> { ["city"] = 3.0 });
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+        context.GetTreatment("exp_test_switchback");
+        await context.PublishAsync();
+
+        var put = WaitForRequest(r => r.Method == "PUT");
+        put.Should().NotBeNull();
+        put!.Body.Should().Contain("\"value\":{\"city\":3.0}");
+        var body = JObject.Parse(put.Body);
+        ((JArray)body["exposures"]!).Should().ContainSingle();
+    }
+
+    // The caller changes its configuration after building the SDK, as 1.4.1 allows: the requests
+    // carry the new application, environment and version, and a context created afterwards serves a
+    // switchback clustered on application_version with the version its PUT carries, so the
+    // Collector, which replays that cluster from the header, records the exposure it served.
+    [Test]
+    public async Task ConfigurationChangedAfterBuildReachesTheHeadersAndServing()
+    {
+        var data = JObject.Parse(await new StreamReader(GetType().Assembly
+            .GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!).ReadToEndAsync());
+        var experiment = (JObject)data["experiments"]![0]!;
+        experiment["switchbackClusters"] = new JObject { ["store_id"] = "application_version" };
+        experiment["switchbackClusterValues"] = new JArray("1005");
+        _contextBody = data.ToString();
+        var sdk = BuildSdk("1004", out var serviceConfig);
+        serviceConfig.ApplicationVersion = "1005";
+        serviceConfig.Environment = "staging";
+        serviceConfig.Application = "mobile";
+
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+        context.GetTreatment("exp_test_switchback");
+        await context.PublishAsync();
+
+        foreach (var request in new[] { WaitForRequest(r => r.Method == "GET")!, WaitForRequest(r => r.Method == "PUT")! })
+        {
+            request.Headers["X-Application-Version"].Should().Be("1005");
+            request.Headers["X-Environment"].Should().Be("staging");
+            request.Headers["X-Application"].Should().Be("mobile");
+        }
+
+        var put = JObject.Parse(WaitForRequest(r => r.Method == "PUT")!.Body);
+        ((JArray)put["exposures"]!).Should().ContainSingle().Which["eligible"]!.Value<bool>().Should().BeTrue();
+    }
+
+    // A switchback exposure served before a later linked unit was set is sent over real HTTP in its
+    // own PUT carrying only the units present when it was served; the goal tracked after the new
+    // unit goes in a second PUT with every unit. The Collector replays the cluster from each PUT's
+    // units, so the late unit's disagreeing cluster value cannot drop the exposure.
+    [Test]
+    public async Task ALateLinkedUnitSplitsThePublishIntoServingTimeRequests()
+    {
+        using (var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!)
+        using (var reader = new StreamReader(stream))
+            _contextBody = await reader.ReadToEndAsync();
+        var sdk = BuildSdk();
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        config.SetAttribute("store", new Dictionary<string, object> { ["key"] = "porto" });
+        config.SetAttribute("geo", new Dictionary<string, object> { ["city"] = "lisbon" });
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+
+        context.GetTreatment("exp_test_switchback");
+        context.SetUnit("device_id", "d-1");
+        context.Track("purchase", null!);
+        await context.PublishAsync();
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (_requests.Count(r => r.Method == "PUT") < 2 && DateTime.UtcNow < deadline) await Task.Delay(25);
+        var puts = _requests.Where(r => r.Method == "PUT").Select(r => JObject.Parse(r.Body)).ToList();
+        puts.Should().HaveCount(2);
+
+        string[] Units(JObject body) => ((JArray)body["units"]!).Select(u => (string)u["type"]!).ToArray();
+        var exposurePut = puts.Single(b => b["exposures"] is JArray { Count: > 0 });
+        var goalPut = puts.Single(b => b["goals"] is JArray { Count: > 0 });
+        Units(exposurePut).Should().Equal("store_id");
+        ((JArray)exposurePut["exposures"]!).Should().ContainSingle().Which["name"]!.Value<string>()
+            .Should().Be("exp_test_switchback");
+        Units(goalPut).Should().Equal("store_id", "device_id");
+    }
+
+    // The same split when the Collector answers the goal PUT with 500: the default publisher fails
+    // the flush instead of recording that request as delivered, so the goal stays queued and the
+    // close sends it again (only it: the accepted exposure PUT is not repeated).
+    [Test]
+    public async Task ARejectedSplitRequestIsRetriedByTheClose()
+    {
+        using (var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!)
+        using (var reader = new StreamReader(stream))
+            _contextBody = await reader.ReadToEndAsync();
+        _putStatuses.Enqueue(200);
+        _putStatuses.Enqueue(500);
+        var sdk = BuildSdk();
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        config.SetAttribute("store", new Dictionary<string, object> { ["key"] = "porto" });
+        config.SetAttribute("geo", new Dictionary<string, object> { ["city"] = "lisbon" });
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+
+        context.GetTreatment("exp_test_switchback");
+        context.SetUnit("device_id", "d-1");
+        context.Track("purchase", null!);
+        await FluentActions.Awaiting(() => context.PublishAsync()).Should().ThrowAsync<InvalidOperationException>();
+        context.PendingCount.Should().Be(1);
+
+        await ((Context)context).FinalizeAsync();
+        context.IsClosed().Should().BeTrue();
+        var puts = _requests.Where(r => r.Method == "PUT").Select(r => JObject.Parse(r.Body)).ToList();
+        puts.Should().HaveCount(3);
+        puts.Count(b => b["exposures"] is JArray { Count: > 0 }).Should().Be(1, "the accepted exposure is not resent");
+        puts.Skip(1).Select(b => (b["goals"] as JArray)?.Count).Should().Equal(new int?[] { 1, 1 }, "the rejected goal PUT is retried");
+    }
+
+    // A switchback clustered on environment, in a context created after the configuration changed
+    // from dev to staging: its environment-scoped rule sees the same staging its cluster and its PUT
+    // see, so a staging-only rule wins (ruleOverride) instead of being skipped for the old dev.
+    [Test]
+    public async Task SwitchbackRulesUseTheEnvironmentTheContextWasCreatedWith()
+    {
+        var data = JObject.Parse(await new StreamReader(GetType().Assembly
+            .GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!).ReadToEndAsync());
+        var experiment = (JObject)data["experiments"]![0]!;
+        experiment["switchbackClusters"] = new JObject { ["store_id"] = "environment" };
+        experiment["switchbackClusterValues"] = new JArray("staging");
+        experiment["fullOnVariant"] = 1;
+        experiment["assignmentRules"] =
+            "{\"rules\":[{\"type\":\"assign\",\"environments\":[\"staging\"],\"variant\":0}]}";
+        _contextBody = data.ToString();
+        var sdk = BuildSdk(null, out var serviceConfig);
+        serviceConfig.Environment = "staging";
+
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+        context.GetTreatment("exp_test_switchback").Should().Be(0, "the staging-only rule wins");
+        await context.PublishAsync();
+
+        var put = WaitForRequest(r => r.Method == "PUT")!;
+        put.Headers["X-Environment"].Should().Be("staging");
+        var exposure = ((JArray)JObject.Parse(put.Body)["exposures"]!).Should().ContainSingle().Subject;
+        exposure["ruleOverride"]!.Value<bool>().Should().BeTrue();
+        exposure["variant"]!.Value<int>().Should().Be(0);
+    }
+
+    // The same change after requests were already sent: the service reads the caller's configuration
+    // on every request, not once at its first, so the refresh, a second context's fetch and both
+    // PUTs carry the new values, and the second context serves the version its PUT carries.
+    [Test]
+    public async Task ConfigurationChangedAfterRequestsReachesLaterRequestsAndContexts()
+    {
+        var data = JObject.Parse(await new StreamReader(GetType().Assembly
+            .GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!).ReadToEndAsync());
+        var experiment = (JObject)data["experiments"]![0]!;
+        experiment["switchbackClusters"] = new JObject { ["store_id"] = "application_version" };
+        experiment["switchbackClusterValues"] = new JArray("1005");
+        _contextBody = data.ToString();
+        var sdk = BuildSdk("1004", out var serviceConfig);
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        var first = await sdk.CreateContextAsync(config);
+        first.GetTreatment("exp_test_switchback");
+        first.Track("before", null!);
+        await first.PublishAsync();
+        WaitForRequest(r => r.Method == "PUT")!.Headers["X-Application-Version"].Should().Be("1004");
+        _requests.Clear();
+
+        serviceConfig.ApplicationVersion = "1005";
+        serviceConfig.Environment = "staging";
+        serviceConfig.Application = "mobile";
+        await first.RefreshAsync();
+        first.Track("after", null!);
+        await first.PublishAsync();
+        var second = await sdk.CreateContextAsync(config);
+        second.GetTreatment("exp_test_switchback");
+        await second.PublishAsync();
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (_requests.Count < 4 && DateTime.UtcNow < deadline) await Task.Delay(25);
+        var requests = _requests.ToArray();
+        requests.Count(r => r.Method == "GET").Should().Be(2);
+        requests.Count(r => r.Method == "PUT").Should().Be(2);
+        foreach (var request in requests)
+        {
+            request.Headers["X-Application-Version"].Should().Be("1005");
+            request.Headers["X-Environment"].Should().Be("staging");
+            request.Headers["X-Application"].Should().Be("mobile");
+        }
+
+        var exposures = requests.Where(r => r.Method == "PUT").Select(r => JObject.Parse(r.Body))
+            .SelectMany(b => (JArray?)b["exposures"] ?? new JArray()).ToList();
+        exposures.Should().ContainSingle().Which["eligible"]!.Value<bool>().Should().BeTrue();
+    }
+
+    [Test]
+    public async Task CallerCredentialAndRotationsReachGetAndPut()
+    {
+        var sdk = BuildSdk(null, out var serviceConfig, "customer-secret-239");
+        var config = new ContextConfig();
+        config.SetUnit("session_id", "credential-test");
+        var context = await sdk.CreateContextAsync(config);
+        WaitForRequest(r => r.Method == "GET")!.Headers["X-API-Key"].Should().Be("customer-secret-239");
+        context.Track("first", null!);
+        await context.PublishAsync();
+        WaitForRequest(r => r.Method == "PUT")!.Headers["X-API-Key"].Should().Be("customer-secret-239");
+        _requests.Clear();
+        serviceConfig.ApiKey = "rotated-customer-secret-781";
+        await context.RefreshAsync();
+        WaitForRequest(r => r.Method == "GET")!.Headers["X-API-Key"].Should().Be("rotated-customer-secret-781");
+        context.Track("second", null!);
+        await context.PublishAsync();
+        WaitForRequest(r => r.Method == "PUT")!.Headers["X-API-Key"].Should().Be("rotated-customer-secret-781");
+    }
+
     // Builds the SDK using ONLY the public configuration surface, wiring the SDK's
     // REAL ABsmartlyHttpClientFactory over a REAL IHttpClientFactory so a genuine
     // System.Net.Http.HttpClient performs the requests.
-    private ABsmartly.Sdk BuildSdk(string? applicationVersion = null)
+    private ABsmartly.Sdk BuildSdk(string? applicationVersion = null) => BuildSdk(applicationVersion, out _);
+
+    private ABsmartly.Sdk BuildSdk(string? applicationVersion, out ABSmartlyServiceConfiguration serviceConfig, string apiKey = ApiKey)
     {
         var services = new ServiceCollection();
         services.AddHttpClient(ABsmartly.Sdk.HttpClientName);
@@ -174,10 +415,10 @@ public class HermeticHttpServerTests
 
         var httpClientFactory = provider.GetRequiredService<IABsmartlyHttpClientFactory>();
 
-        var serviceConfig = new ABSmartlyServiceConfiguration
+        serviceConfig = new ABSmartlyServiceConfiguration
         {
             Endpoint = _baseUrl,
-            ApiKey = ApiKey,
+            ApiKey = apiKey,
             Application = Application,
             Environment = Environment,
             ApplicationVersion = applicationVersion!
@@ -230,11 +471,11 @@ public class HermeticHttpServerTests
 
             byte[] payload;
             if (req.HttpMethod == "GET")
-                payload = Encoding.UTF8.GetBytes("{\"experiments\":[]}");
+                payload = Encoding.UTF8.GetBytes(_contextBody);
             else
                 payload = Encoding.UTF8.GetBytes("{}");
 
-            ctx.Response.StatusCode = 200;
+            ctx.Response.StatusCode = req.HttpMethod == "PUT" && _putStatuses.TryDequeue(out var status) ? status : 200;
             ctx.Response.ContentType = "application/json";
             ctx.Response.ContentLength64 = payload.Length;
             await ctx.Response.OutputStream.WriteAsync(payload, 0, payload.Length);

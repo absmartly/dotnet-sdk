@@ -30,7 +30,7 @@ jobs:
             8.0.x
             9.0.x
 
-      # The tag (v1.5.0) must match <PackageVersion>, which is also the version sent in X-Agent.
+      # The tag (for example v1.6.0) must match <PackageVersion>, which is also the version sent in X-Agent.
       - name: Check tag matches package version
         if: github.ref_type == 'tag'
         run: |

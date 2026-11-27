@@ -6,8 +6,23 @@ namespace ABSmartly.Models;
 public class Attribute
 {
     public string Name { get; set; }
-    public object Value { get; set; }
+    private object _value;
+    public object Value
+    {
+        get => _value;
+        set
+        {
+            _value = value;
+            WireValue = null;
+        }
+    }
     public long SetAt { get; set; }
+
+    // A switchback context's wire encoding of a structured Value (a boxed JsonElement, so it is
+    // published whole to a serializer on another thread), taken when it was set or first read by a
+    // cluster lookup, so a caller that later mutates the object it passed cannot change the cluster
+    // an earlier exposure replays from. Not compared, not public: Value is untouched.
+    internal object WireValue { get; set; }
 
     private string DebugView => $"Attribute{{name={Name}, value={Value}, setAt={SetAt}}}";
 
