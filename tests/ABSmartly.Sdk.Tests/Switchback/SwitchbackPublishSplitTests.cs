@@ -249,6 +249,44 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         accept.Should().BeEmpty();
     }
 
+    // The first split request fails in a way a retry can fix: the whole batch stays queued and the
+    // retry is split the same way (the exposure still has a later linked unit), so it raises again
+    // while the failure lasts, and once the Collector accepts it each request goes once.
+    [Test]
+    [Timeout(20000)]
+    public async Task AFailedFirstSplitRequestIsRetriedSplitAgain()
+    {
+        var sent = new List<PublishEvent>();
+        var accept = new Queue<bool>(new[] { false, false, true, true });
+        var client = new Mock<IABSmartlyServiceClient>();
+        client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns<PublishEvent>(e =>
+        {
+            var delivered = accept.Dequeue();
+            if (delivered) sent.Add(e);
+            else e.RetryableFailure = true;
+            return Task.FromResult(delivered);
+        });
+        Publisher = new DefaultContextPublisher(client.Object);
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("user_id", "u1");
+        context.Track("purchase", null!);
+
+        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
+        context.PendingCount.Should().Be(2);
+        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
+        context.PendingCount.Should().Be(2);
+
+        await context.FinalizeAsync();
+        context.IsClosed().Should().BeTrue();
+        sent.Select(e => e.Units.Length).Should().Equal(1, 2);
+        sent[0].Exposures.Should().ContainSingle();
+        sent[1].Goals!.Select(g => g.Name).Should().Equal("purchase");
+        accept.Should().BeEmpty();
+    }
+
     // A split request that failed in a way a retry cannot fix (an event that could not be serialized,
     // a 4xx) is logged and dropped as in 1.5.0, so it cannot block later publishes or the close.
     [Test]
