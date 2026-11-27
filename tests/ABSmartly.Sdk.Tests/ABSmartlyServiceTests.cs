@@ -289,6 +289,51 @@ public class ABSmartlyServiceTests
         VerifyDefaultHeaders(Mock.Get(_httpClient));
     }
 
+    // A failed publish is marked retryable only when a retry can succeed: HTTP 408, 429 or 5xx, or
+    // a transport failure. Another 4xx, or an event the serializer could not write, would fail again.
+    [TestCase(500, true)]
+    [TestCase(503, true)]
+    [TestCase(408, true)]
+    [TestCase(429, true)]
+    [TestCase(400, false)]
+    [TestCase(401, false)]
+    [TestCase(404, false)]
+    public async Task FailedPublishIsRetryableOnlyWhenARetryCanSucceed(int status, bool retryable)
+    {
+        var service = new ABSmartlyService(H.ServiceConfig("website", "https://localhost/v1", "dev", "test-api-key"),
+            _httpClientFactory, _deserializer, _serializer);
+        var publishEvent = new PublishEvent();
+        Mock.Get(_serializer).Setup(x => x.Serialize(publishEvent)).Returns(Array.Empty<byte>());
+        Mock.Get(_httpClient).Setup(x => x.PutAsync("https://localhost/v1/context", It.IsAny<HttpContent>()))
+            .Returns(() => GetResponse((HttpStatusCode)status, Array.Empty<byte>()));
+
+        (await service.PublishAsync(publishEvent)).Should().BeFalse();
+        publishEvent.RetryableFailure.Should().Be(retryable);
+    }
+
+    [Test]
+    public async Task TransportFailureIsRetryableButASerializerFailureIsNot()
+    {
+        var service = new ABSmartlyService(H.ServiceConfig("website", "https://localhost/v1", "dev", "test-api-key"),
+            _httpClientFactory, _deserializer, _serializer);
+        var sent = new PublishEvent();
+        Mock.Get(_serializer).Setup(x => x.Serialize(sent)).Returns(Array.Empty<byte>());
+        Mock.Get(_httpClient).Setup(x => x.PutAsync("https://localhost/v1/context", It.IsAny<HttpContent>()))
+            .ThrowsAsync(new HttpRequestException("connection refused"));
+        (await service.PublishAsync(sent)).Should().BeFalse();
+        sent.RetryableFailure.Should().BeTrue();
+
+        var unwritable = new PublishEvent();
+        Mock.Get(_serializer).Setup(x => x.Serialize(unwritable)).Throws(new InvalidOperationException("cycle"));
+        (await service.PublishAsync(unwritable)).Should().BeFalse();
+        unwritable.RetryableFailure.Should().BeFalse();
+
+        var nullBytes = new PublishEvent();
+        Mock.Get(_serializer).Setup(x => x.Serialize(nullBytes)).Returns((byte[])null!);
+        (await service.PublishAsync(nullBytes)).Should().BeFalse();
+        nullBytes.RetryableFailure.Should().BeFalse();
+    }
+
     private void VerifyDefaultHeaders(Mock<IABsmartlyHttpClient> httpClientMock)
     {
         httpClientMock.Verify(x => x.AddHeader("X-API-Key", "test-api-key"));

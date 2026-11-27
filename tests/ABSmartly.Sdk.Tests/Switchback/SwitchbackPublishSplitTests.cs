@@ -211,19 +211,21 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
     }
 
     // The default publisher over a client that delivers the first split request and reports the
-    // second undelivered (false: an HTTP error status or transport failure): the flush fails, the
-    // second request's events stay queued, and a later publish, then a close, retries them.
+    // second undelivered with a failure a retry can fix (ABSmartlyService: a transport error, 408,
+    // 429 or 5xx): the flush fails, the second request's events stay queued, and the close retries
+    // them (only them: the delivered exposure is not sent again).
     [Test]
     [Timeout(20000)]
     public async Task AClientThatDoesNotDeliverALaterSplitRequestKeepsItQueued()
     {
         var sent = new List<PublishEvent>();
-        var accept = new Queue<bool>(new[] { true, false, false, true });
+        var accept = new Queue<bool>(new[] { true, false, true });
         var client = new Mock<IABSmartlyServiceClient>();
         client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns<PublishEvent>(e =>
         {
             var delivered = accept.Dequeue();
             if (delivered) sent.Add(e);
+            else e.RetryableFailure = true;
             return Task.FromResult(delivered);
         });
         Publisher = new DefaultContextPublisher(client.Object);
@@ -238,9 +240,6 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         context.PendingCount.Should().Be(1, "only the undelivered goal request stays queued");
         sent.Should().ContainSingle().Which.Exposures.Should().ContainSingle();
 
-        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
-        context.PendingCount.Should().Be(1);
-
         await context.FinalizeAsync();
         context.IsClosed().Should().BeTrue();
         context.PendingCount.Should().Be(0);
@@ -250,13 +249,64 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         accept.Should().BeEmpty();
     }
 
+    // A split request that failed in a way a retry cannot fix (an event that could not be serialized,
+    // a 4xx) is logged and dropped as in 1.5.0, so it cannot block later publishes or the close.
+    [Test]
+    public void ASplitRequestThatCannotSucceedIsNotRetried()
+    {
+        var calls = 0;
+        var client = new Mock<IABSmartlyServiceClient>();
+        client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns<PublishEvent>(_ => Task.FromResult(++calls != 2));
+        Publisher = new DefaultContextPublisher(client.Object);
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("user_id", "u1");
+        context.Track("purchase", null!);
+
+        FluentActions.Invoking(() => context.Publish()).Should().NotThrow();
+        context.PendingCount.Should().Be(0);
+        context.Track("refund", null!);
+        context.Close();
+        context.IsClosed().Should().BeTrue();
+        calls.Should().Be(3);
+    }
+
+    // A flush that is not split keeps 1.5.0's behaviour in a context with switchbacks too: even a
+    // failure a retry could fix is logged, not raised.
+    [Test]
+    public void AnUnsplitFlushWithSwitchbacksDoesNotRaiseAFailure()
+    {
+        var client = new Mock<IABSmartlyServiceClient>();
+        client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns<PublishEvent>(e =>
+        {
+            e.RetryableFailure = true;
+            return Task.FromResult(false);
+        });
+        Publisher = new DefaultContextPublisher(client.Object);
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.Track("purchase", null!);
+
+        FluentActions.Invoking(() => context.Publish()).Should().NotThrow();
+        context.PendingCount.Should().Be(0);
+        client.Verify(x => x.PublishAsync(It.Is<PublishEvent>(e => !e.SplitRequest)), Times.Once);
+    }
+
     // Without switchbacks, the default publisher keeps 1.5.0's behaviour: a false client result is
     // logged by the client, not raised, so the events are not retried.
     [Test]
     public void WithoutSwitchbacksAFalseClientResultIsNotRaised()
     {
         var client = new Mock<IABSmartlyServiceClient>();
-        client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).ReturnsAsync(false);
+        client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns<PublishEvent>(e =>
+        {
+            e.RetryableFailure = true;
+            return Task.FromResult(false);
+        });
         Publisher = new DefaultContextPublisher(client.Object);
         var context = CreateContext(DataOf(AsUnit(NewSwitchback(2, Hour))));
         context.GetTreatment("exp_sb");

@@ -19,6 +19,16 @@ public class PublishEvent
     // 3.0), so the Collector re-resolves the same clusters. Not serialized; the values are untouched.
     internal bool SwitchbackWireAttributes { get; set; }
 
+    // Set by a context on each request of a flush split into several (switchback exposures served
+    // before a linked unit was set): a request that could be retried is then raised as a failure,
+    // so it and the later requests stay queued.
+    internal bool SplitRequest { get; set; }
+
+    // Set by ABSmartlyService when a publish failed in a way a retry can fix: a transport error or
+    // timeout, or HTTP 408, 429 or 5xx. Not for an event that could not be serialized, or another
+    // 4xx, which would fail again.
+    internal bool RetryableFailure { get; set; }
+
     private string DebugView =>
         $"PublishEvent{{hashedUnits={Hashed}, units={Units.ToArrayString()}, publishedAt={PublishedAt}, exposures={Exposures.ToArrayString()}, goals={Goals.ToArrayString()}, attributes={Attributes.ToArrayString()}}}";
 

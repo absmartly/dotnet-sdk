@@ -718,6 +718,7 @@ public class Context : IContextV2, IDisposable, IAsyncDisposable
                         // later attribute cannot change an earlier exposure's replay (units can).
                         Attributes = _attributes.Count == 0 ? null : _attributes.ToArray(),
                         SwitchbackWireAttributes = _hasSwitchbacks,
+                        SplitRequest = requests.Length > 1,
                         Exposures = request.Exposures,
                         Goals = request.Goals
                     };
