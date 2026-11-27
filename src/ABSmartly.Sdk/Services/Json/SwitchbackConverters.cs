@@ -179,7 +179,8 @@ internal sealed class LenientLongConverter : JsonConverter<long?>
 
             if (scale > 0) return null;
             // Accumulated as a negative value, which reaches long.MinValue too; checked arithmetic turns
-            // a value beyond the range into null within 20 steps, however many digits or zeros follow.
+            // a value beyond the range into null. digits starts with a non-zero digit, so the value is
+            // non-zero and overflows within 19 steps: an exponent as large as 10^18 still ends at once.
             long value = 0;
             checked
             {

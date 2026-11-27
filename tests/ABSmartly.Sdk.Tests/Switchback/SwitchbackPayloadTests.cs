@@ -120,6 +120,11 @@ public class SwitchbackPayloadTests
     [TestCase("0e-2147483648", 0L)]
     [TestCase("1e-9999999999", null)]
     [TestCase("1e99999999999999999999", null)]
+    [TestCase("1e999999999999999999", null)]
+    [TestCase("-9e999999999999999999", null)]
+    [TestCase("0.000000000000000001e999999999999999999", null)]
+    [TestCase("1e-999999999999999999", null)]
+    [TestCase("0e999999999999999999", 0L)]
     [TestCase("0e+99999999999999999999", 0L)]
     [TestCase("-0e99999999999999999999", 0L)]
     [Timeout(10000)]
@@ -133,6 +138,7 @@ public class SwitchbackPayloadTests
     [TestCase("1e-2147483648")]
     [TestCase("1e2147483647")]
     [TestCase("1e99999999999999999999")]
+    [TestCase("1e999999999999999999")]
     [Timeout(10000)]
     public void AnExtremeSixtyFourBitFieldDoesNotFailTheContext(string number)
     {
