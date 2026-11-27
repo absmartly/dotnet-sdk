@@ -210,6 +210,63 @@ public class SwitchbackPublishSplitTests : SwitchbackTestBase
         events.Select(e => e.Item1).Where(t => t != EventType.Ready).Should().Equal(EventType.Exposure, EventType.Goal, EventType.Publish, EventType.Error);
     }
 
+    // The default publisher over a client that delivers the first split request and reports the
+    // second undelivered (false: an HTTP error status or transport failure): the flush fails, the
+    // second request's events stay queued, and a later publish, then a close, retries them.
+    [Test]
+    [Timeout(20000)]
+    public async Task AClientThatDoesNotDeliverALaterSplitRequestKeepsItQueued()
+    {
+        var sent = new List<PublishEvent>();
+        var accept = new Queue<bool>(new[] { true, false, false, true });
+        var client = new Mock<IABSmartlyServiceClient>();
+        client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).Returns<PublishEvent>(e =>
+        {
+            var delivered = accept.Dequeue();
+            if (delivered) sent.Add(e);
+            return Task.FromResult(delivered);
+        });
+        Publisher = new DefaultContextPublisher(client.Object);
+        var context = CreateContext(DataOf(Linked()));
+        Clock.Now = Anchor + Hour + 1;
+        context.SetAttribute("city", "Faro");
+        context.GetTreatment("exp_sb");
+        context.SetUnit("user_id", "u1");
+        context.Track("purchase", null!);
+
+        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
+        context.PendingCount.Should().Be(1, "only the undelivered goal request stays queued");
+        sent.Should().ContainSingle().Which.Exposures.Should().ContainSingle();
+
+        FluentActions.Invoking(() => context.Publish()).Should().Throw<InvalidOperationException>();
+        context.PendingCount.Should().Be(1);
+
+        await context.FinalizeAsync();
+        context.IsClosed().Should().BeTrue();
+        context.PendingCount.Should().Be(0);
+        sent.Should().HaveCount(2);
+        sent[1].Goals!.Select(g => g.Name).Should().Equal("purchase");
+        sent[1].Exposures.Should().BeNull("the delivered exposure is not sent again");
+        accept.Should().BeEmpty();
+    }
+
+    // Without switchbacks, the default publisher keeps 1.5.0's behaviour: a false client result is
+    // logged by the client, not raised, so the events are not retried.
+    [Test]
+    public void WithoutSwitchbacksAFalseClientResultIsNotRaised()
+    {
+        var client = new Mock<IABSmartlyServiceClient>();
+        client.Setup(x => x.PublishAsync(It.IsAny<PublishEvent>())).ReturnsAsync(false);
+        Publisher = new DefaultContextPublisher(client.Object);
+        var context = CreateContext(DataOf(AsUnit(NewSwitchback(2, Hour))));
+        context.GetTreatment("exp_sb");
+        context.Track("purchase", null!);
+
+        FluentActions.Invoking(() => context.Publish()).Should().NotThrow();
+        context.PendingCount.Should().Be(0);
+        client.Verify(x => x.PublishAsync(It.IsAny<PublishEvent>()), Times.Once);
+    }
+
     [Test]
     public void TwoServingUnitCountsGiveOrderedRequests()
     {

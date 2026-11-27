@@ -383,7 +383,7 @@ context.Track("payment", new Dictionary<string, object> {
 
 Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector before proceeding. You can explicitly call the `Publish()` or `PublishAsync()` methods.
 
-If the context's publisher reports a failure by throwing, or by returning a faulted task, the events stay queued (`PendingCount`) and a later `Publish()`, `Close()` or `Dispose()` retries them. The default publisher doesn't report an HTTP failure that way: as in 1.3.0, an unsuccessful response from the collector is not raised, so those events are not retried. To retry them, supply an `IContextPublisher` that throws on failure.
+If the context's publisher reports a failure by throwing, or by returning a faulted task, the events stay queued (`PendingCount`) and a later `Publish()`, `Close()` or `Dispose()` retries them. The default publisher doesn't report an HTTP failure that way: as in 1.3.0, an unsuccessful response from the collector is not raised, so those events are not retried. To retry them, supply an `IContextPublisher` that throws on failure. The exception is a context with switchback experiments installed, where one flush can send several requests: there the default publisher raises a request the collector did not accept (an error status, a transport failure or an event that could not be serialized), so that request and the ones after it stay queued and are retried.
 
 ```csharp
 await context.PublishAsync();
@@ -479,7 +479,7 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 | `Goal`     | `Track()` method succeeds                                   | `GoalAchievement` enqueued for publishing              |
 | `Close`    | Context disposal, `Close()` or `FinalizeAsync()` succeeds   | `null`                                                 |
 
-A `Publish` event means the `IContextPublisher` task completed. The default publisher's task completes even when it logs a failure instead (the event could not be serialized, or the Collector returned an error status), so a `Publish` event is not an acknowledgement that the Collector accepted every event. In a context with switchback experiments one flush or close can send more than one request (see [Switchback Experiments](#switchback-experiments)): each completed request logs its own `Publish` event, in order, and when a later request fails the earlier ones have already been logged before its `Error`.
+A `Publish` event means the `IContextPublisher` task completed. Outside switchback contexts the default publisher's task completes even when it logs a failure instead (the event could not be serialized, or the Collector returned an error status), so a `Publish` event is not an acknowledgement that the Collector accepted every event; in a context with switchback experiments installed such a request fails instead (see [Publishing Pending Data](#publishing-pending-data)). In a context with switchback experiments one flush or close can send more than one request (see [Switchback Experiments](#switchback-experiments)): each completed request logs its own `Publish` event, in order, and when a later request fails the earlier ones have already been logged before its `Error`.
 
 ## Platform-Specific Examples
 

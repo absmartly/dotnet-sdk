@@ -35,11 +35,14 @@ public class HermeticHttpServerTests
 
     private readonly ConcurrentQueue<RecordedRequest> _requests = new();
     private string _contextBody = "{\"experiments\":[]}";
+    // HTTP status for each PUT in turn; 200 once it runs out.
+    private readonly ConcurrentQueue<int> _putStatuses = new();
 
     [SetUp]
     public void SetUp()
     {
         _requests.Clear();
+        while (_putStatuses.TryDequeue(out _)) { }
         _contextBody = "{\"experiments\":[]}";
         var port = GetFreePort();
         _baseUrl = $"http://127.0.0.1:{port}";
@@ -264,6 +267,39 @@ public class HermeticHttpServerTests
         Units(goalPut).Should().Equal("store_id", "device_id");
     }
 
+    // The same split when the Collector answers the goal PUT with 500: the default publisher fails
+    // the flush instead of recording that request as delivered, so the goal stays queued and the
+    // close sends it again (only it: the accepted exposure PUT is not repeated).
+    [Test]
+    public async Task ARejectedSplitRequestIsRetriedByTheClose()
+    {
+        using (var stream = GetType().Assembly.GetManifestResourceStream("ABSmartly.Sdk.Tests.Resources.switchback_context.json")!)
+        using (var reader = new StreamReader(stream))
+            _contextBody = await reader.ReadToEndAsync();
+        _putStatuses.Enqueue(200);
+        _putStatuses.Enqueue(500);
+        var sdk = BuildSdk();
+        var config = new ContextConfig();
+        config.SetUnit("store_id", "s-1");
+        config.SetAttribute("store", new Dictionary<string, object> { ["key"] = "porto" });
+        config.SetAttribute("geo", new Dictionary<string, object> { ["city"] = "lisbon" });
+        var context = await sdk.CreateContextAsync(config);
+        context.IsReady().Should().BeTrue();
+
+        context.GetTreatment("exp_test_switchback");
+        context.SetUnit("device_id", "d-1");
+        context.Track("purchase", null!);
+        await FluentActions.Awaiting(() => context.PublishAsync()).Should().ThrowAsync<InvalidOperationException>();
+        context.PendingCount.Should().Be(1);
+
+        await ((Context)context).FinalizeAsync();
+        context.IsClosed().Should().BeTrue();
+        var puts = _requests.Where(r => r.Method == "PUT").Select(r => JObject.Parse(r.Body)).ToList();
+        puts.Should().HaveCount(3);
+        puts.Count(b => b["exposures"] is JArray { Count: > 0 }).Should().Be(1, "the accepted exposure is not resent");
+        puts.Skip(1).Select(b => (b["goals"] as JArray)?.Count).Should().Equal(new int?[] { 1, 1 }, "the rejected goal PUT is retried");
+    }
+
     // A switchback clustered on environment, in a context created after the configuration changed
     // from dev to staging: its environment-scoped rule sees the same staging its cluster and its PUT
     // see, so a staging-only rule wins (ruleOverride) instead of being skipped for the old dev.
@@ -439,7 +475,7 @@ public class HermeticHttpServerTests
             else
                 payload = Encoding.UTF8.GetBytes("{}");
 
-            ctx.Response.StatusCode = 200;
+            ctx.Response.StatusCode = req.HttpMethod == "PUT" && _putStatuses.TryDequeue(out var status) ? status : 200;
             ctx.Response.ContentType = "application/json";
             ctx.Response.ContentLength64 = payload.Length;
             await ctx.Response.OutputStream.WriteAsync(payload, 0, payload.Length);
